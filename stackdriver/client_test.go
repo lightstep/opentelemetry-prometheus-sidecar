@@ -22,9 +22,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Stackdriver/stackdriver-prometheus-sidecar/opencensus"
 	"github.com/go-kit/kit/log"
 	"github.com/golang/protobuf/proto"
+	"github.com/lightstep/lightstep-prometheus-sidecar/opencensus"
 	"go.opencensus.io/metric/metricexport"
 	monitoring "google.golang.org/genproto/googleapis/monitoring/v3"
 	"google.golang.org/grpc"

@@ -23,9 +23,9 @@ import (
 	"path/filepath"
 	"time"
 
-	_ "github.com/Stackdriver/stackdriver-prometheus-sidecar/cmd/stackdriver-prometheus-sidecar/statik"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	_ "github.com/lightstep/lightstep-prometheus-sidecar/cmd/lightstep-prometheus-sidecar/statik"
 	"github.com/prometheus/common/version"
 	"github.com/rakyll/statik/fs"
 )

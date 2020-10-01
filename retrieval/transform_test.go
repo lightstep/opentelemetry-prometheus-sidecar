@@ -18,11 +18,11 @@ import (
 	"math"
 	"testing"
 
-	"github.com/Stackdriver/stackdriver-prometheus-sidecar/metadata"
-	"github.com/Stackdriver/stackdriver-prometheus-sidecar/targets"
 	"github.com/go-kit/kit/log"
 	timestamp_pb "github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/google/go-cmp/cmp"
+	"github.com/lightstep/lightstep-prometheus-sidecar/metadata"
+	"github.com/lightstep/lightstep-prometheus-sidecar/targets"
 	promlabels "github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/textparse"
 	"github.com/prometheus/tsdb"

@@ -22,10 +22,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Stackdriver/stackdriver-prometheus-sidecar/metadata"
-	"github.com/Stackdriver/stackdriver-prometheus-sidecar/retrieval"
 	"github.com/go-kit/kit/log"
 	"github.com/google/go-cmp/cmp"
+	"github.com/lightstep/lightstep-prometheus-sidecar/metadata"
+	"github.com/lightstep/lightstep-prometheus-sidecar/retrieval"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/textparse"
 	"github.com/prometheus/prometheus/promql"
