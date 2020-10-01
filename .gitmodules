@@ -1,0 +1,3 @@
+[submodule "upstream-fork"]
+	path = upstream-fork
+	url = git@github.com:Stackdriver/stackdriver-prometheus-sidecar.git
