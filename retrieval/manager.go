@@ -159,7 +159,6 @@ func (r *PrometheusReader) Run(ctx context.Context, startOffset int) error {
 		r.metricRenames,
 		r.targetGetter,
 		r.metadataGetter,
-		ResourceMappings,
 		r.metricsPrefix,
 		r.useGkeResource,
 		r.counterAggregator,
@@ -318,24 +317,23 @@ func pkgLabels(input tsdblabels.Labels) labels.Labels {
 	return output
 }
 
-func hashSeries(s *monitoring_pb.TimeSeries) uint64 {
+func hashSeries(s tsDesc) uint64 {
 	const sep = '\xff'
 	h := hashNew()
 
-	h = hashAdd(h, s.Resource.Type)
-	h = hashAddByte(h, sep)
-	h = hashAdd(h, s.Metric.Type)
+	h = hashAdd(h, s.Name)
 
 	// Map iteration is randomized. We thus convert the labels to sorted slices
 	// with labels.FromMap before hashing.
-	for _, l := range labels.FromMap(s.Resource.Labels) {
+	// @@@ PAY ATTENTION
+	for _, l := range s.Labels {
 		h = hashAddByte(h, sep)
 		h = hashAdd(h, l.Name)
 		h = hashAddByte(h, sep)
 		h = hashAdd(h, l.Value)
 	}
 	h = hashAddByte(h, sep)
-	for _, l := range labels.FromMap(s.Metric.Labels) {
+	for _, l := range s.Resource {
 		h = hashAddByte(h, sep)
 		h = hashAdd(h, l.Name)
 		h = hashAddByte(h, sep)

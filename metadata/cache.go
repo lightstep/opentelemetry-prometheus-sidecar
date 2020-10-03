@@ -27,7 +27,6 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/textparse"
-	metric_pb "google.golang.org/genproto/googleapis/api/metric"
 )
 
 // Cache populates and maintains a cache of metric metadata it retrieves
@@ -42,6 +41,20 @@ type Cache struct {
 	staticMetadata map[string]*Entry
 }
 
+type (
+	Kind      int
+	ValueType int
+)
+
+const (
+	GAUGE      Kind = 1
+	CUMULATIVE Kind = 2
+
+	DOUBLE       ValueType = 1
+	INT64        ValueType = 2
+	DISTRIBUTION ValueType = 3
+)
+
 // DefaultEndpointPath is the default HTTP path on which Prometheus serves
 // the target metadata endpoint.
 const DefaultEndpointPath = "api/v1/targets/metadata"
@@ -53,7 +66,7 @@ const MetricTypeUntyped = "untyped"
 type Entry struct {
 	Metric     string
 	MetricType textparse.MetricType
-	ValueType  metric_pb.MetricDescriptor_ValueType
+	ValueType  ValueType
 	Help       string
 }
 
@@ -243,22 +256,22 @@ var internalMetrics = map[string]*Entry{
 	"up": &Entry{
 		Metric:     "up",
 		MetricType: textparse.MetricTypeGauge,
-		ValueType:  metric_pb.MetricDescriptor_DOUBLE,
+		ValueType:  DOUBLE,
 		Help:       "Up indicates whether the last target scrape was successful"},
 	"scrape_samples_scraped": &Entry{
 		Metric:     "scrape_samples_scraped",
 		MetricType: textparse.MetricTypeGauge,
-		ValueType:  metric_pb.MetricDescriptor_DOUBLE,
+		ValueType:  DOUBLE,
 		Help:       "How many samples were scraped during the last successful scrape"},
 	"scrape_duration_seconds": &Entry{
 		Metric:     "scrape_duration_seconds",
 		MetricType: textparse.MetricTypeGauge,
-		ValueType:  metric_pb.MetricDescriptor_DOUBLE,
+		ValueType:  DOUBLE,
 		Help:       "Duration of the last scrape"},
 	"scrape_samples_post_metric_relabeling": &Entry{
 		Metric:     "scrape_samples_post_metric_relabeling",
 		MetricType: textparse.MetricTypeGauge,
-		ValueType:  metric_pb.MetricDescriptor_DOUBLE,
+		ValueType:  DOUBLE,
 		Help:       "How many samples were ingested after relabeling"},
 }
 

@@ -21,7 +21,6 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/lightstep/lightstep-prometheus-sidecar/metadata"
-	"github.com/lightstep/lightstep-prometheus-sidecar/targets"
 	"github.com/pkg/errors"
 	promlabels "github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/textparse"
@@ -31,9 +30,6 @@ import (
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
-	metric_pb "google.golang.org/genproto/googleapis/api/metric"
-	monitoredres_pb "google.golang.org/genproto/googleapis/api/monitoredres"
-	monitoring_pb "google.golang.org/genproto/googleapis/monitoring/v3"
 )
 
 var (
@@ -41,6 +37,16 @@ var (
 		"Number of series that were dropped instead of being sent to Stackdriver", stats.UnitDimensionless)
 
 	keyReason, _ = tag.NewKey("reason")
+)
+
+type (
+	tsDesc struct {
+		Name      string
+		Labels    []promlabels.Label
+		Resource  []promlabels.Label
+		Kind      metadata.Kind
+		ValueType metadata.ValueType
+	}
 )
 
 func init() {
@@ -76,9 +82,8 @@ type seriesCache struct {
 	dir               string
 	filtersets        [][]*promlabels.Matcher
 	targets           TargetGetter
-	metadata          MetadataGetter
+	metaget           MetadataGetter
 	counterAggregator *CounterAggregator
-	resourceMaps      []ResourceMap
 	metricsPrefix     string
 	useGkeResource    bool
 	renames           map[string]string
@@ -94,7 +99,7 @@ type seriesCache struct {
 }
 
 type seriesCacheEntry struct {
-	proto    *monitoring_pb.TimeSeries
+	desc     *tsDesc
 	metadata *metadata.Entry
 	lset     labels.Labels
 	suffix   string
@@ -128,7 +133,7 @@ type seriesCacheEntry struct {
 const refreshInterval = 3 * time.Minute
 
 func (e *seriesCacheEntry) populated() bool {
-	return e.proto != nil
+	return e.desc != nil
 }
 
 func (e *seriesCacheEntry) shouldRefresh() bool {
@@ -141,8 +146,7 @@ func newSeriesCache(
 	filtersets [][]*promlabels.Matcher,
 	renames map[string]string,
 	targets TargetGetter,
-	metadata MetadataGetter,
-	resourceMaps []ResourceMap,
+	metaget MetadataGetter,
 	metricsPrefix string,
 	useGkeResource bool,
 	counterAggregator *CounterAggregator,
@@ -155,8 +159,7 @@ func newSeriesCache(
 		dir:               dir,
 		filtersets:        filtersets,
 		targets:           targets,
-		metadata:          metadata,
-		resourceMaps:      resourceMaps,
+		metaget:           metaget,
 		entries:           map[uint64]*seriesCacheEntry{},
 		intervals:         map[uint64]sampleInterval{},
 		metricsPrefix:     metricsPrefix,
@@ -354,31 +357,11 @@ func (c *seriesCache) refresh(ctx context.Context, ref uint64) error {
 		level.Debug(c.logger).Log("msg", "target not found", "labels", entry.lset)
 		return nil
 	}
-	resource, entryLabels, ok := c.getResource(target.DiscoveredLabels, entryLabels)
-	if !ok {
-		ctx, _ = tag.New(ctx, tag.Insert(keyReason, "unknown_resource"))
-		stats.Record(ctx, droppedSeries.M(1))
-		level.Debug(c.logger).Log("msg", "unknown resource", "labels", target.Labels, "discovered_labels", target.DiscoveredLabels)
-		return nil
-	}
-
-	// Remove target labels and __name__ label.
-	// Stackdriver only accepts a limited amount of labels, so we choose to economize aggressively here. This should be OK
-	// because we expect that the target.Labels will be redundant with the Stackdriver MonitoredResource, which is derived
-	// from the target Labels and DiscoveredLabels.
-	finalLabels := targets.DropTargetLabels(entryLabels, target.Labels)
-	for i, l := range finalLabels {
+	for i, l := range entryLabels {
 		if l.Name == "__name__" {
-			finalLabels = append(finalLabels[:i], finalLabels[i+1:]...)
+			entryLabels = append(entryLabels[:i], entryLabels[i+1:]...)
 			break
 		}
-	}
-	// Drop series with too many labels.
-	if len(finalLabels) > maxLabelCount {
-		ctx, _ = tag.New(ctx, tag.Insert(keyReason, "too_many_labels"))
-		stats.Record(ctx, droppedSeries.M(1))
-		level.Debug(c.logger).Log("msg", "too many labels", "labels", entry.lset)
-		return nil
 	}
 
 	var (
@@ -388,21 +371,21 @@ func (c *seriesCache) refresh(ctx context.Context, ref uint64) error {
 		job            = entry.lset.Get("job")
 		instance       = entry.lset.Get("instance")
 	)
-	metadata, err := c.metadata.Get(ctx, job, instance, metricName)
+	meta, err := c.metaget.Get(ctx, job, instance, metricName)
 	if err != nil {
 		return errors.Wrap(err, "get metadata")
 	}
-	if metadata == nil {
+	if meta == nil {
 		// The full name didn't turn anything up. Check again in case it's a summary,
 		// histogram, or counter without the metric name suffix.
 		var ok bool
 		if baseMetricName, suffix, ok = stripComplexMetricSuffix(metricName); ok {
-			metadata, err = c.metadata.Get(ctx, job, instance, baseMetricName)
+			meta, err = c.metaget.Get(ctx, job, instance, baseMetricName)
 			if err != nil {
 				return errors.Wrap(err, "get metadata")
 			}
 		}
-		if metadata == nil {
+		if meta == nil {
 			ctx, _ = tag.New(ctx, tag.Insert(keyReason, "metadata_not_found"))
 			stats.Record(ctx, droppedSeries.M(1))
 			level.Debug(c.logger).Log("msg", "metadata not found", "metric_name", metricName)
@@ -411,95 +394,71 @@ func (c *seriesCache) refresh(ctx context.Context, ref uint64) error {
 	}
 	// Handle label modifications for histograms early so we don't build the label map twice.
 	// We have to remove the 'le' label which defines the bucket boundary.
-	if metadata.MetricType == textparse.MetricTypeHistogram {
-		for i, l := range finalLabels {
+	if meta.MetricType == textparse.MetricTypeHistogram {
+		for i, l := range entryLabels {
 			if l.Name == "le" {
-				finalLabels = append(finalLabels[:i], finalLabels[i+1:]...)
+				entryLabels = append(entryLabels[:i], entryLabels[i+1:]...)
 				break
 			}
 		}
 	}
-	ts := &monitoring_pb.TimeSeries{
-		Metric: &metric_pb.Metric{
-			Type:   c.getMetricType(c.metricsPrefix, metricName),
-			Labels: finalLabels.Map(),
-		},
-		Resource: resource,
+	ts := tsDesc{
+		Name:     c.getMetricName(c.metricsPrefix, metricName),
+		Labels:   entryLabels,
+		Resource: target.DiscoveredLabels,
 	}
 
-	switch metadata.MetricType {
+	switch meta.MetricType {
 	case textparse.MetricTypeCounter:
-		ts.MetricKind = metric_pb.MetricDescriptor_CUMULATIVE
-		ts.ValueType = metric_pb.MetricDescriptor_DOUBLE
-		if metadata.ValueType != metric_pb.MetricDescriptor_VALUE_TYPE_UNSPECIFIED {
-			ts.ValueType = metadata.ValueType
+		ts.Kind = metadata.CUMULATIVE
+		ts.ValueType = metadata.DOUBLE
+		if meta.ValueType != 0 {
+			ts.ValueType = meta.ValueType
 		}
 		if baseMetricName != "" && suffix == metricSuffixTotal {
-			ts.Metric.Type = c.getMetricType(c.metricsPrefix, baseMetricName)
+			ts.Name = c.getMetricName(c.metricsPrefix, baseMetricName)
 		}
 	case textparse.MetricTypeGauge, textparse.MetricTypeUnknown:
-		ts.MetricKind = metric_pb.MetricDescriptor_GAUGE
-		ts.ValueType = metric_pb.MetricDescriptor_DOUBLE
-		if metadata.ValueType != metric_pb.MetricDescriptor_VALUE_TYPE_UNSPECIFIED {
-			ts.ValueType = metadata.ValueType
+		ts.Kind = metadata.GAUGE
+		ts.ValueType = metadata.DOUBLE
+		if meta.ValueType != 0 {
+			ts.ValueType = meta.ValueType
 		}
 	case textparse.MetricTypeSummary:
 		switch suffix {
 		case metricSuffixSum:
-			ts.MetricKind = metric_pb.MetricDescriptor_CUMULATIVE
-			ts.ValueType = metric_pb.MetricDescriptor_DOUBLE
+			ts.Kind = metadata.CUMULATIVE
+			ts.ValueType = metadata.DOUBLE
 		case metricSuffixCount:
-			ts.MetricKind = metric_pb.MetricDescriptor_CUMULATIVE
-			ts.ValueType = metric_pb.MetricDescriptor_INT64
+			ts.Kind = metadata.CUMULATIVE
+			ts.ValueType = metadata.INT64
 		case "": // Actual quantiles.
-			ts.MetricKind = metric_pb.MetricDescriptor_GAUGE
-			ts.ValueType = metric_pb.MetricDescriptor_DOUBLE
+			ts.Kind = metadata.GAUGE
+			ts.ValueType = metadata.DOUBLE
 		default:
 			return errors.Errorf("unexpected metric name suffix %q", suffix)
 		}
 	case textparse.MetricTypeHistogram:
-		ts.Metric.Type = c.getMetricType(c.metricsPrefix, baseMetricName)
-		ts.MetricKind = metric_pb.MetricDescriptor_CUMULATIVE
-		ts.ValueType = metric_pb.MetricDescriptor_DISTRIBUTION
+		ts.Name = c.getMetricName(c.metricsPrefix, baseMetricName)
+		ts.Kind = metadata.CUMULATIVE
+		ts.ValueType = metadata.DISTRIBUTION
 	default:
-		return errors.Errorf("unexpected metric type %s", metadata.MetricType)
+		return errors.Errorf("unexpected metric type %s", meta.MetricType)
 	}
 
-	entry.proto = ts
-	entry.metadata = metadata
+	entry.desc = &ts
+	entry.metadata = meta
 	entry.suffix = suffix
 	entry.hash = hashSeries(ts)
 
 	return nil
 }
 
-func (c *seriesCache) getMetricType(prefix, name string) string {
+func (c *seriesCache) getMetricName(prefix, name string) string {
 	if repl, ok := c.renames[name]; ok {
 		name = repl
 	}
-	return getMetricType(prefix, name)
-}
-
-// getResource returns the monitored resource, the entry labels, and whether the operation succeeded.
-// The returned entry labels are a subset of `entryLabels` without the labels that were used as resource labels.
-func (c *seriesCache) getResource(discovered, entryLabels promlabels.Labels) (*monitoredres_pb.MonitoredResource, promlabels.Labels, bool) {
-	if c.useGkeResource {
-		if lset, finalLabels := GKEResourceMap.BestEffortTranslate(discovered, entryLabels); lset != nil {
-			return &monitoredres_pb.MonitoredResource{
-				Type:   GKEResourceMap.Type,
-				Labels: lset,
-			}, finalLabels, true
-		}
-	}
-	for _, m := range c.resourceMaps {
-		if lset, finalLabels := m.Translate(discovered, entryLabels); lset != nil {
-			return &monitoredres_pb.MonitoredResource{
-				Type:   m.Type,
-				Labels: lset,
-			}, finalLabels, true
-		}
-	}
-	return nil, entryLabels, false
+	return getMetricName(prefix, name)
 }
 
 // matchFiltersets checks whether any of the supplied filtersets passes.

@@ -62,7 +62,7 @@ func (b *sampleBuilder) next(ctx context.Context, samples []tsdb.RefSample) (*mo
 	}
 	// Get a shallow copy of the proto so we can overwrite the point field
 	// and safely send it into the remote queues.
-	ts := *entry.proto
+	ts := *entry.desc
 
 	point := &monitoring_pb.Point{
 		Interval: &monitoring_pb.TimeInterval{
@@ -161,7 +161,7 @@ const (
 	metricsPrefix = "external.googleapis.com/prometheus"
 )
 
-func getMetricType(prefix string, promName string) string {
+func getMetricName(prefix string, promName string) string {
 	if prefix == "" {
 		return metricsPrefix + "/" + promName
 	}

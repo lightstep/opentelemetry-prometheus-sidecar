@@ -577,7 +577,7 @@ func TestSeriesCache_RenameMetric(t *testing.T) {
 	if !entry.lset.Equals(labels.FromStrings("__name__", "metric1", "job", "job1", "instance", "inst1")) {
 		t.Fatalf("unexpected labels %q", entry.lset)
 	}
-	if want := getMetricType("", "metric1"); entry.proto.Metric.Type != want {
+	if want := getMetricName("", "metric1"); entry.proto.Metric.Type != want {
 		t.Fatalf("want proto metric type %q but got %q", want, entry.proto.Metric.Type)
 	}
 	err = c.set(ctx, 2, labels.FromStrings("__name__", "metric2", "job", "job1", "instance", "inst1"), 1)
@@ -588,7 +588,7 @@ func TestSeriesCache_RenameMetric(t *testing.T) {
 	if !ok || err != nil {
 		t.Fatalf("metric not found: %s", err)
 	}
-	if want := getMetricType("", "metric3"); entry.proto.Metric.Type != want {
+	if want := getMetricName("", "metric3"); entry.proto.Metric.Type != want {
 		t.Fatalf("want proto metric type %q but got %q", want, entry.proto.Metric.Type)
 	}
 }
