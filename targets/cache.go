@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"sort"
 	"sync"
 	"time"
 
@@ -118,6 +119,8 @@ func (c *Cache) refresh(ctx context.Context) error {
 				break
 			}
 		}
+
+		sort.Sort(&target.DiscoveredLabels)
 		repl[key] = append(repl[key], target)
 	}
 

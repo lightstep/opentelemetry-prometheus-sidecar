@@ -15,6 +15,7 @@ package retrieval
 
 import (
 	"context"
+	"sort"
 	"sync"
 	"time"
 
@@ -42,8 +43,8 @@ var (
 type (
 	tsDesc struct {
 		Name      string
-		Labels    []promlabels.Label
-		Resource  []promlabels.Label
+		Labels    promlabels.Labels // Sorted
+		Resource  promlabels.Labels // Sorted
 		Kind      metadata.Kind
 		ValueType metadata.ValueType
 	}
@@ -405,8 +406,9 @@ func (c *seriesCache) refresh(ctx context.Context, ref uint64) error {
 	ts := tsDesc{
 		Name:     c.getMetricName(c.metricsPrefix, metricName),
 		Labels:   entryLabels,
-		Resource: target.DiscoveredLabels,
+		Resource: target.DiscoveredLabels, // Note: pre-sorted
 	}
+	sort.Sort(&ts.Labels)
 
 	switch meta.MetricType {
 	case textparse.MetricTypeCounter:

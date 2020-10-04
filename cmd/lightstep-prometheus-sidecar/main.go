@@ -59,7 +59,6 @@ import (
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
-	metric_pb "google.golang.org/genproto/googleapis/api/metric"
 	"google.golang.org/grpc/resolver"
 	"google.golang.org/grpc/resolver/manual"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
@@ -773,14 +772,12 @@ func processFileConfig(fc fileConfig) (map[string]string, []*metadata.Entry, ret
 		default:
 			return nil, nil, nil, errors.Errorf("invalid metric type %q", sm.Type)
 		}
-		var valueType metric_pb.MetricDescriptor_ValueType
+		var valueType metadata.ValueType
 		switch sm.ValueType {
 		case "double":
-			valueType = metric_pb.MetricDescriptor_DOUBLE
+			valueType = metadata.DOUBLE
 		case "int64":
-			valueType = metric_pb.MetricDescriptor_INT64
-		case "":
-			valueType = metric_pb.MetricDescriptor_VALUE_TYPE_UNSPECIFIED
+			valueType = metadata.INT64
 		default:
 			return nil, nil, nil, errors.Errorf("invalid value type %q", sm.ValueType)
 		}

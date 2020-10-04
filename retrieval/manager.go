@@ -323,9 +323,7 @@ func hashSeries(s tsDesc) uint64 {
 
 	h = hashAdd(h, s.Name)
 
-	// Map iteration is randomized. We thus convert the labels to sorted slices
-	// with labels.FromMap before hashing.
-	// @@@ PAY ATTENTION
+	// Both lists are sorted
 	for _, l := range s.Labels {
 		h = hashAddByte(h, sep)
 		h = hashAdd(h, l.Name)

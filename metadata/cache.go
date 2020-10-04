@@ -53,6 +53,7 @@ const (
 	DOUBLE       ValueType = 1
 	INT64        ValueType = 2
 	DISTRIBUTION ValueType = 3
+	HISTOGRAM    ValueType = 4
 )
 
 // DefaultEndpointPath is the default HTTP path on which Prometheus serves
