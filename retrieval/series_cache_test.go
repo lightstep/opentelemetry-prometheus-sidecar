@@ -55,14 +55,13 @@ func TestScrapeCache_GarbageCollect(t *testing.T) {
 		}
 	}()
 	logger := log.NewLogfmtLogger(logBuffer)
-	aggr, _ := NewCounterAggregator(logger, new(CounterAggregatorConfig))
 	c := newSeriesCache(logger, dir, nil, nil,
 		targetMap{"/": &targets.Target{}},
 		metadataMap{"//": &metadata.Entry{MetricType: textparse.MetricTypeGauge, ValueType: metric_pb.MetricDescriptor_DOUBLE}},
 		[]ResourceMap{
 			{Type: "resource1", LabelMap: map[string]labelTranslation{}},
 		},
-		"", false, aggr,
+		"", false,
 	)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -202,8 +201,7 @@ func TestSeriesCache_Refresh(t *testing.T) {
 		}
 	}()
 	logger := log.NewLogfmtLogger(logBuffer)
-	aggr, _ := NewCounterAggregator(logger, new(CounterAggregatorConfig))
-	c := newSeriesCache(logger, "", nil, nil, targetMap, metadataMap, resourceMaps, "", false, aggr)
+	c := newSeriesCache(logger, "", nil, nil, targetMap, metadataMap, resourceMaps, "", false)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -278,8 +276,7 @@ func TestSeriesCache_RefreshTooManyLabels(t *testing.T) {
 	metadataMap := metadataMap{
 		"job1/inst1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: metric_pb.MetricDescriptor_DOUBLE},
 	}
-	aggr, _ := NewCounterAggregator(logger, new(CounterAggregatorConfig))
-	c := newSeriesCache(logger, "", nil, nil, targetMap, metadataMap, resourceMaps, "", false, aggr)
+	c := newSeriesCache(logger, "", nil, nil, targetMap, metadataMap, resourceMaps, "", false)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -330,8 +327,7 @@ func TestSeriesCache_RefreshUnknownResource(t *testing.T) {
 	metadataMap := metadataMap{
 		"job1/inst1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: metric_pb.MetricDescriptor_DOUBLE},
 	}
-	aggr, _ := NewCounterAggregator(logger, new(CounterAggregatorConfig))
-	c := newSeriesCache(logger, "", nil, nil, targetMap, metadataMap, resourceMaps, "", false, aggr)
+	c := newSeriesCache(logger, "", nil, nil, targetMap, metadataMap, resourceMaps, "", false)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -376,8 +372,7 @@ func TestSeriesCache_RefreshMetadataNotFound(t *testing.T) {
 		},
 	}
 	metadataMap := metadataMap{}
-	aggr, _ := NewCounterAggregator(logger, new(CounterAggregatorConfig))
-	c := newSeriesCache(logger, "", nil, nil, targetMap, metadataMap, resourceMaps, "", false, aggr)
+	c := newSeriesCache(logger, "", nil, nil, targetMap, metadataMap, resourceMaps, "", false)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -425,14 +420,13 @@ func TestSeriesCache_Filter(t *testing.T) {
 		}
 	}()
 	logger := log.NewLogfmtLogger(logBuffer)
-	aggr, _ := NewCounterAggregator(logger, new(CounterAggregatorConfig))
 	c := newSeriesCache(logger, "", [][]*promlabels.Matcher{
 		{
 			&promlabels.Matcher{Type: promlabels.MatchEqual, Name: "a", Value: "a1"},
 			&promlabels.Matcher{Type: promlabels.MatchEqual, Name: "b", Value: "b1"},
 		},
 		{&promlabels.Matcher{Type: promlabels.MatchEqual, Name: "c", Value: "c1"}},
-	}, nil, targetMap, metadataMap, resourceMaps, "", false, aggr)
+	}, nil, targetMap, metadataMap, resourceMaps, "", false)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -463,75 +457,6 @@ func TestSeriesCache_Filter(t *testing.T) {
 	}
 }
 
-func TestSeriesCache_CounterAggregator(t *testing.T) {
-	resourceMaps := []ResourceMap{
-		{
-			Type:     "resource2",
-			LabelMap: map[string]labelTranslation{"__resource_a": constValue("resource_a")},
-		},
-	}
-	// Populate the getters with data.
-	targetMap := targetMap{
-		"job1/inst1": &targets.Target{
-			Labels:           promlabels.FromStrings("job", "job1", "instance", "inst1"),
-			DiscoveredLabels: promlabels.FromStrings("__resource_a", "resource2_a"),
-		},
-	}
-	metadataMap := metadataMap{
-		"job1/inst1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: metric_pb.MetricDescriptor_DOUBLE},
-	}
-	logger := log.NewNopLogger()
-	aggr, _ := NewCounterAggregator(logger, &CounterAggregatorConfig{
-		"counter1": &CounterAggregatorMetricConfig{Matchers: [][]*promlabels.Matcher{
-			{&promlabels.Matcher{Type: promlabels.MatchEqual, Name: "a", Value: "a1"}},
-		}},
-	})
-	c := newSeriesCache(logger, "", [][]*promlabels.Matcher{
-		{&promlabels.Matcher{Type: promlabels.MatchEqual, Name: "b", Value: "b1"}},
-	}, nil, targetMap, metadataMap, resourceMaps, "", false, aggr)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	for idx, tt := range []struct {
-		name         string
-		lset         labels.Labels
-		wantExported bool // Metric is expected to be exported to Stackdriver.
-		wantTracked  bool // Metric is included in one of the aggregated counters, and should have non-nil counter tracker.
-	}{
-		{"exported and tracked", labels.FromStrings("__name__", "metric1", "job", "job1", "instance", "inst1", "a", "a1", "b", "b1"), true, true},
-		{"exported", labels.FromStrings("__name__", "metric1", "job", "job1", "instance", "inst1", "a", "a2", "b", "b1"), true, false},
-		{"tracked", labels.FromStrings("__name__", "metric1", "job", "job1", "instance", "inst1", "a", "a1", "b", "b2"), false, true},
-		{"unexported and untracked", labels.FromStrings("__name__", "metric1", "job", "job1", "instance", "inst1", "c", "c1"), false, false},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			err := c.set(ctx, uint64(idx), tt.lset, 1)
-			if err != nil {
-				t.Fatal(err)
-			}
-			entry, ok, err := c.get(ctx, uint64(idx))
-			if err != nil {
-				t.Fatalf("unexpected error: %s", err)
-			}
-			if !ok {
-				if tt.wantExported || tt.wantTracked {
-					t.Error("expected entry to exist, but it does not")
-				}
-			} else {
-				if !tt.wantExported && !tt.wantTracked {
-					t.Errorf("did not expect entry to exist: %v", tt)
-				}
-				if tt.wantExported != entry.exported {
-					t.Errorf("unexpected value of exported: %v; want %v", entry.exported, tt.wantExported)
-				}
-				if tt.wantTracked != (entry.tracker != nil) {
-					t.Errorf("unexpected value of tracker: %v; want %v", entry.tracker, tt.wantTracked)
-				}
-			}
-		})
-	}
-}
-
 func TestSeriesCache_RenameMetric(t *testing.T) {
 	resourceMaps := []ResourceMap{
 		{
@@ -557,10 +482,9 @@ func TestSeriesCache_RenameMetric(t *testing.T) {
 		}
 	}()
 	logger := log.NewLogfmtLogger(logBuffer)
-	aggr, _ := NewCounterAggregator(logger, new(CounterAggregatorConfig))
 	c := newSeriesCache(logger, "", nil,
 		map[string]string{"metric2": "metric3"},
-		targetMap, metadataMap, resourceMaps, "", false, aggr)
+		targetMap, metadataMap, resourceMaps, "", false)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

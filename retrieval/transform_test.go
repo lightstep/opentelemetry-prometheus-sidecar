@@ -18,7 +18,6 @@ import (
 	"math"
 	"testing"
 
-	"github.com/go-kit/kit/log"
 	timestamp_pb "github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/google/go-cmp/cmp"
 	"github.com/lightstep/lightstep-prometheus-sidecar/metadata"
@@ -986,8 +985,7 @@ func TestSampleBuilder(t *testing.T) {
 		var result []*monitoring_pb.TimeSeries
 		var hashes []uint64
 
-		aggr, _ := NewCounterAggregator(log.NewNopLogger(), new(CounterAggregatorConfig))
-		series := newSeriesCache(nil, "", nil, nil, c.targets, c.metadata, resourceMaps, c.metricPrefix, false, aggr)
+		series := newSeriesCache(nil, "", nil, nil, c.targets, c.metadata, resourceMaps, c.metricPrefix, false)
 		for ref, s := range c.series {
 			series.set(ctx, ref, s, 0)
 		}

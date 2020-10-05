@@ -24,7 +24,6 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/lightstep/lightstep-prometheus-sidecar/metadata"
-	"github.com/lightstep/lightstep-prometheus-sidecar/retrieval"
 	"github.com/prometheus/common/promlog"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/textparse"
@@ -66,10 +65,6 @@ func TestStatuszHandler(t *testing.T) {
 		logger:    log.NewLogfmtLogger(os.Stdout),
 		projectID: "my-project",
 		cfg: &mainConfig{
-			Aggregations: retrieval.CounterAggregatorConfig{
-				"aggmetric1": {Matchers: [][]*labels.Matcher{{matcher}}},
-				"aggmetric2": {Matchers: [][]*labels.Matcher{{matcher}}},
-			},
 			ConfigFilename: "/my/config",
 			Filters:        []string{"filter1", "filter2"},
 			Filtersets:     []string{"filterset1", "filterset2"},
@@ -139,10 +134,6 @@ func TestStatuszHandler(t *testing.T) {
 		regexp.MustCompile(`<h2>Static metadata</h2>`),
 		regexp.MustCompile(`<tr><td>metric1</td><td>type1</td><td>INT64</td></tr>`),
 		regexp.MustCompile(`<tr><td>metric2</td><td>type2</td><td>DOUBLE</td></tr>`),
-		// for aggregations
-		regexp.MustCompile(`<h2>Aggregations</h2>`),
-		regexp.MustCompile(`<tr><td>aggmetric1</td><td>\[\[k=.*v.*\]\]</td></tr>`),
-		regexp.MustCompile(`<tr><td>aggmetric2</td><td>\[\[k=.*v.*\]\]</td></tr>`),
 
 		// closing </html> ensures the template completed execution
 		regexp.MustCompile(`(?m)^</html>$`),
