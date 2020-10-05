@@ -25,7 +25,6 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/google/go-cmp/cmp"
 	"github.com/lightstep/lightstep-prometheus-sidecar/metadata"
-	"github.com/lightstep/lightstep-prometheus-sidecar/retrieval"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/textparse"
 	"github.com/prometheus/prometheus/promql"
@@ -170,7 +169,6 @@ func TestProcessFileConfig(t *testing.T) {
 		config         fileConfig
 		renameMappings map[string]string
 		staticMetadata []*metadata.Entry
-		aggregations   retrieval.CounterAggregatorConfig
 		err            error
 	}{
 		{
@@ -178,7 +176,6 @@ func TestProcessFileConfig(t *testing.T) {
 			fileConfig{},
 			map[string]string{},
 			[]*metadata.Entry{},
-			retrieval.CounterAggregatorConfig{},
 			nil,
 		},
 		{
@@ -206,15 +203,6 @@ func TestProcessFileConfig(t *testing.T) {
 				&metadata.Entry{Metric: "double_gauge", MetricType: textparse.MetricTypeGauge, ValueType: metric_pb.MetricDescriptor_DOUBLE, Help: "help2"},
 				&metadata.Entry{Metric: "default_gauge", MetricType: textparse.MetricTypeGauge},
 			},
-			retrieval.CounterAggregatorConfig{
-				"network_transmit_bytes": &retrieval.CounterAggregatorMetricConfig{
-					Matchers: [][]*labels.Matcher{
-						mustParseMetricSelector("filter1"),
-						mustParseMetricSelector("filter2"),
-					},
-					Help: "total number of bytes sent over eth0",
-				},
-			},
 			nil,
 		},
 		{
@@ -233,9 +221,6 @@ func TestProcessFileConfig(t *testing.T) {
 			}
 			if diff := cmp.Diff(tt.staticMetadata, staticMetadata); diff != "" {
 				t.Errorf("staticMetadata mismatch: %v", diff)
-			}
-			if diff := cmp.Diff(tt.aggregations, aggregations); diff != "" {
-				t.Errorf("aggregations mismatch: %v", diff)
 			}
 			if (tt.err != nil && err != nil && tt.err.Error() != err.Error()) ||
 				(tt.err == nil && err != nil) || (tt.err != nil && err == nil) {
