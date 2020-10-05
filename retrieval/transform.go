@@ -33,6 +33,14 @@ import (
 	monitoring_pb "google.golang.org/genproto/googleapis/monitoring/v3"
 )
 
+// Appender appends a time series with exactly one data point. A hash for the series
+// (but not the data point) must be provided.
+// The client may cache the computed hash more easily, which is why its part of the call
+// and not done by the Appender's implementation.
+type Appender interface {
+	Append(hash uint64, s *monitoring_pb.TimeSeries) error
+}
+
 type sampleBuilder struct {
 	series seriesGetter
 }
@@ -184,15 +192,11 @@ func stripComplexMetricSuffix(name string) (prefix string, suffix string, ok boo
 	return name, "", false
 }
 
-const (
-	metricsPrefix = "external.googleapis.com/prometheus"
-)
-
 func getMetricName(prefix string, promName string) string {
 	if prefix == "" {
-		return metricsPrefix + "/" + promName
+		return promName
 	}
-	return prefix + "/" + promName
+	return prefix + "." + promName
 }
 
 // getTimestamp converts a millisecond timestamp into a protobuf timestamp.
