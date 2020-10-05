@@ -22,6 +22,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/lightstep/lightstep-prometheus-sidecar/metadata"
+	"github.com/lightstep/lightstep-prometheus-sidecar/targets"
 	"github.com/pkg/errors"
 	promlabels "github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/textparse"
@@ -358,12 +359,16 @@ func (c *seriesCache) refresh(ctx context.Context, ref uint64) error {
 		level.Debug(c.logger).Log("msg", "target not found", "labels", entry.lset)
 		return nil
 	}
+	// Remove __name__ label.
 	for i, l := range entryLabels {
 		if l.Name == "__name__" {
 			entryLabels = append(entryLabels[:i], entryLabels[i+1:]...)
 			break
 		}
 	}
+
+	// Remove target.Labels, which are redundant with Resource.
+	entryLabels = targets.DropTargetLabels(entryLabels, target.Labels)
 
 	var (
 		metricName     = entry.lset.Get("__name__")
