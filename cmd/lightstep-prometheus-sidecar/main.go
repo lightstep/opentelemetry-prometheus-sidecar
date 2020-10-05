@@ -37,8 +37,8 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/lightstep/lightstep-prometheus-sidecar/metadata"
+	"github.com/lightstep/lightstep-prometheus-sidecar/otlp"
 	"github.com/lightstep/lightstep-prometheus-sidecar/retrieval"
-	"github.com/lightstep/lightstep-prometheus-sidecar/stackdriver"
 	"github.com/lightstep/lightstep-prometheus-sidecar/tail"
 	"github.com/lightstep/lightstep-prometheus-sidecar/targets"
 	conntrack "github.com/mwitkow/go-conntrack"
@@ -401,14 +401,14 @@ func main() {
 	// to write to the different metric type, which we do fairly often at
 	// this point, so lots of writes fail, and most writes fail.
 	// config.DefaultQueueConfig.MaxSamplesPerSend = 1
-	config.DefaultQueueConfig.MaxSamplesPerSend = stackdriver.MaxTimeseriesesPerRequest
+	config.DefaultQueueConfig.MaxSamplesPerSend = otlp.MaxTimeseriesesPerRequest
 	// We want the queues to have enough buffer to ensure consistent flow with full batches
 	// being available for every new request.
 	// Testing with different latencies and shard numbers have shown that 3x of the batch size
 	// works well.
-	config.DefaultQueueConfig.Capacity = 3 * stackdriver.MaxTimeseriesesPerRequest
+	config.DefaultQueueConfig.Capacity = 3 * otlp.MaxTimeseriesesPerRequest
 
-	var scf stackdriver.StorageClientFactory
+	var scf otlp.StorageClientFactory
 
 	if len(cfg.StoreInFilesDirectory) > 0 {
 		err := os.MkdirAll(cfg.StoreInFilesDirectory, 0700)
@@ -432,7 +432,7 @@ func main() {
 		}
 	}
 
-	queueManager, err := stackdriver.NewQueueManager(
+	queueManager, err := otlp.NewQueueManager(
 		log.With(logger, "component", "queue_manager"),
 		config.DefaultQueueConfig,
 		scf,
@@ -600,8 +600,8 @@ type stackdriverClientFactory struct {
 	manualResolver    *manual.Resolver
 }
 
-func (s *stackdriverClientFactory) New() stackdriver.StorageClient {
-	return stackdriver.NewClient(&stackdriver.ClientConfig{
+func (s *stackdriverClientFactory) New() otlp.StorageClient {
+	return otlp.NewClient(&otlp.ClientConfig{
 		Logger:    s.logger,
 		ProjectID: s.projectIDResource,
 		URL:       s.url,
@@ -621,17 +621,17 @@ type fileClientFactory struct {
 	logger log.Logger
 }
 
-// New creates an instance of stackdriver.StorageClient. Each instance
+// New creates an instance of otlp.StorageClient. Each instance
 // writes to a different file under dir. The returned instance is not
 // thread-safe.
-func (fcf *fileClientFactory) New() stackdriver.StorageClient {
+func (fcf *fileClientFactory) New() otlp.StorageClient {
 	f, err := ioutil.TempFile(fcf.dir, "*.txt")
 	if err != nil {
 		level.Error(fcf.logger).Log(
 			"msg", "failure creating files.",
 			"err", err)
 	}
-	return stackdriver.NewCreateTimeSeriesRequestWriterCloser(f, fcf.logger)
+	return otlp.NewCreateTimeSeriesRequestWriterCloser(f, fcf.logger)
 }
 
 func (fcf *fileClientFactory) Name() string {
