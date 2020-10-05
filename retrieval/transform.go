@@ -63,10 +63,6 @@ func (b *sampleBuilder) next(ctx context.Context, samples []tsdb.RefSample) (*mo
 		return nil, 0, tailSamples, nil
 	}
 
-	if entry.tracker != nil {
-		entry.tracker.newPoint(ctx, entry.lset, sample.T, sample.V)
-	}
-
 	if !entry.exported {
 		return nil, 0, tailSamples, nil
 	}

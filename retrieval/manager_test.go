@@ -21,7 +21,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-kit/kit/log"
 	"github.com/lightstep/lightstep-prometheus-sidecar/metadata"
 	"github.com/lightstep/lightstep-prometheus-sidecar/tail"
 	"github.com/lightstep/lightstep-prometheus-sidecar/targets"
@@ -85,8 +84,7 @@ func TestReader_Progress(t *testing.T) {
 		"job1/inst1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, Help: "help"},
 	}
 
-	aggr, _ := NewCounterAggregator(log.NewNopLogger(), new(CounterAggregatorConfig))
-	r := NewPrometheusReader(nil, dir, tailer, nil, nil, targetMap, metadataMap, &nopAppender{}, "", false, aggr)
+	r := NewPrometheusReader(nil, dir, tailer, nil, nil, targetMap, metadataMap, &nopAppender{}, "", false)
 	r.progressSaveInterval = 200 * time.Millisecond
 
 	// Populate sample data

@@ -179,7 +179,6 @@ type mainConfig struct {
 	EnableStatusz         bool
 	Filters               []string
 	Filtersets            []string
-	Aggregations          retrieval.CounterAggregatorConfig
 	MetricRenames         map[string]string
 	StaticMetadata        []*metadata.Entry
 	UseRestrictedIPs      bool
@@ -268,24 +267,11 @@ func main() {
 
 	logger := promlog.New(&cfg.PromlogConfig)
 	if cfg.ConfigFilename != "" {
-		cfg.MetricRenames, cfg.StaticMetadata, cfg.Aggregations, err = parseConfigFile(cfg.ConfigFilename)
+		cfg.MetricRenames, cfg.StaticMetadata, err = parseConfigFile(cfg.ConfigFilename)
 		if err != nil {
 			msg := fmt.Sprintf("Parse config file %s", cfg.ConfigFilename)
 			level.Error(logger).Log("msg", msg, "err", err)
 			os.Exit(2)
-		}
-
-		// Enable Stackdriver monitoring backend if counter aggregator configuration is present.
-		if len(cfg.Aggregations) > 0 {
-			sdEnabled := false
-			for _, backend := range cfg.MonitoringBackends {
-				if backend == "stackdriver" {
-					sdEnabled = true
-				}
-			}
-			if !sdEnabled {
-				cfg.MonitoringBackends = append(cfg.MonitoringBackends, "stackdriver")
-			}
 		}
 	}
 
@@ -457,15 +443,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	counterAggregator, err := retrieval.NewCounterAggregator(
-		log.With(logger, "component", "counter_aggregator"),
-		&cfg.Aggregations)
-	if err != nil {
-		level.Error(logger).Log("msg", "Creating counter aggregator failed", "err", err)
-		os.Exit(1)
-	}
-	defer counterAggregator.Close()
-
 	prometheusReader := retrieval.NewPrometheusReader(
 		log.With(logger, "component", "Prometheus reader"),
 		cfg.WALDirectory,
@@ -477,7 +454,6 @@ func main() {
 		queueManager,
 		cfg.MetricsPrefix,
 		cfg.UseGKEResource,
-		counterAggregator,
 	)
 
 	// Exclude kingpin default flags to expose only Prometheus ones.
@@ -744,19 +720,19 @@ func fillMetadata(staticConfig *map[string]string) {
 	}
 }
 
-func parseConfigFile(filename string) (map[string]string, []*metadata.Entry, retrieval.CounterAggregatorConfig, error) {
+func parseConfigFile(filename string) (map[string]string, []*metadata.Entry, error) {
 	b, err := ioutil.ReadFile(filename)
 	if err != nil {
-		return nil, nil, nil, errors.Wrap(err, "reading file")
+		return nil, nil, errors.Wrap(err, "reading file")
 	}
 	var fc fileConfig
 	if err := yaml.Unmarshal(b, &fc); err != nil {
-		return nil, nil, nil, errors.Wrap(err, "invalid YAML")
+		return nil, nil, errors.Wrap(err, "invalid YAML")
 	}
 	return processFileConfig(fc)
 }
 
-func processFileConfig(fc fileConfig) (map[string]string, []*metadata.Entry, retrieval.CounterAggregatorConfig, error) {
+func processFileConfig(fc fileConfig) (map[string]string, []*metadata.Entry, error) {
 	renameMapping := map[string]string{}
 	for _, r := range fc.MetricRenames {
 		renameMapping[r.From] = r.To
@@ -770,7 +746,7 @@ func processFileConfig(fc fileConfig) (map[string]string, []*metadata.Entry, ret
 		case textparse.MetricTypeCounter, textparse.MetricTypeGauge, textparse.MetricTypeHistogram,
 			textparse.MetricTypeSummary, textparse.MetricTypeUnknown:
 		default:
-			return nil, nil, nil, errors.Errorf("invalid metric type %q", sm.Type)
+			return nil, nil, errors.Errorf("invalid metric type %q", sm.Type)
 		}
 		var valueType metadata.ValueType
 		switch sm.ValueType {
@@ -779,26 +755,10 @@ func processFileConfig(fc fileConfig) (map[string]string, []*metadata.Entry, ret
 		case "int64":
 			valueType = metadata.INT64
 		default:
-			return nil, nil, nil, errors.Errorf("invalid value type %q", sm.ValueType)
+			return nil, nil, errors.Errorf("invalid value type %q", sm.ValueType)
 		}
 		staticMetadata = append(staticMetadata,
 			&metadata.Entry{Metric: sm.Metric, MetricType: textparse.MetricType(sm.Type), ValueType: valueType, Help: sm.Help})
 	}
-
-	aggregations := make(retrieval.CounterAggregatorConfig)
-	for _, c := range fc.AggregatedCounters {
-		if _, ok := aggregations[c.Metric]; ok {
-			return nil, nil, nil, errors.Errorf("duplicate counter aggregator metric %s", c.Metric)
-		}
-		a := &retrieval.CounterAggregatorMetricConfig{Help: c.Help}
-		for _, f := range c.Filters {
-			matcher, err := promql.ParseMetricSelector(f)
-			if err != nil {
-				return nil, nil, nil, errors.Errorf("cannot parse metric selector '%s': %q", f, err)
-			}
-			a.Matchers = append(a.Matchers, matcher)
-		}
-		aggregations[c.Metric] = a
-	}
-	return renameMapping, staticMetadata, aggregations, nil
+	return renameMapping, staticMetadata, nil
 }
