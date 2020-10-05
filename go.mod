@@ -1,5 +1,14 @@
 module github.com/lightstep/lightstep-prometheus-sidecar
 
+// Note: we have trouble upgrading the prometheus dependencies here
+// because v2.  The last version without a go.mod is 2.0.5, but the
+// effort to update here is non-trivial.
+//
+// server response: not found:
+// github.com/prometheus/prometheus@v2.21.0+incompatible: invalid
+// version: +incompatible suffix not allowed: module contains a go.mod
+// file, so semantic import versioning is required
+
 require (
 	cloud.google.com/go v0.49.0
 	contrib.go.opencensus.io/exporter/prometheus v0.1.0
