@@ -18,6 +18,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -118,6 +120,8 @@ func (c *Cache) refresh(ctx context.Context) error {
 				break
 			}
 		}
+
+		sort.Sort(&target.DiscoveredLabels)
 		repl[key] = append(repl[key], target)
 	}
 
@@ -168,7 +172,20 @@ func (c *Cache) Get(ctx context.Context, lset labels.Labels) (*Target, error) {
 			return nil, nil
 		}
 	}
+	// Note: "instance" and "__name__" are Labels, while "job" and
+	// several other __-prefixed labels (e.g., "__address__") are
+	// in DiscoveredLabels.
 	t, _ := targetMatch(ts, lset)
+
+	// Remove __ prefixes from DiscoveredLabels.
+	o := 0
+	for _, l := range t.DiscoveredLabels {
+		if !strings.HasPrefix(l.Name, "__") {
+			t.DiscoveredLabels[o] = l
+			o++
+		}
+	}
+	t.DiscoveredLabels = t.DiscoveredLabels[:o]
 	return t, nil
 }
 

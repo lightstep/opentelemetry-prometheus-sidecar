@@ -22,12 +22,14 @@ import (
 	"time"
 
 	timestamp_pb "github.com/golang/protobuf/ptypes/timestamp"
+	"github.com/lightstep/lightstep-prometheus-sidecar/metadata"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/textparse"
 	"github.com/prometheus/tsdb"
 	tsdbLabels "github.com/prometheus/tsdb/labels"
 	distribution_pb "google.golang.org/genproto/googleapis/api/distribution"
 	metric_pb "google.golang.org/genproto/googleapis/api/metric"
+	monitoredres_pb "google.golang.org/genproto/googleapis/api/monitoredres"
 	monitoring_pb "google.golang.org/genproto/googleapis/monitoring/v3"
 )
 
@@ -60,9 +62,8 @@ func (b *sampleBuilder) next(ctx context.Context, samples []tsdb.RefSample) (*mo
 	if !entry.exported {
 		return nil, 0, tailSamples, nil
 	}
-	// Get a shallow copy of the proto so we can overwrite the point field
-	// and safely send it into the remote queues.
-	ts := *entry.proto
+	// Allocate the proto and fill in its metadata.
+	ts := protoTimeseries(entry.desc)
 
 	point := &monitoring_pb.Point{
 		Interval: &monitoring_pb.TimeInterval{
@@ -130,7 +131,34 @@ func (b *sampleBuilder) next(ctx context.Context, samples []tsdb.RefSample) (*mo
 	if !b.series.updateSampleInterval(entry.hash, resetTimestamp, sample.T) {
 		return nil, 0, tailSamples, nil
 	}
-	return &ts, entry.hash, tailSamples, nil
+	return ts, entry.hash, tailSamples, nil
+}
+
+func protoTimeseries(desc *tsDesc) *monitoring_pb.TimeSeries {
+	return &monitoring_pb.TimeSeries{
+		Metric: &metric_pb.Metric{
+			Type:   desc.Name,
+			Labels: desc.Labels.Map(),
+		},
+		Resource: &monitoredres_pb.MonitoredResource{
+			Type:   "generic_task",
+			Labels: desc.Resource.Map(),
+		},
+	}
+}
+
+func protoKind(k metadata.Kind) metric_pb.MetricDescriptor_MetricKind {
+	switch k {
+	case metadata.GAUGE:
+		return metric_pb.MetricDescriptor_GAUGE
+	case metadata.CUMULATIVE:
+		return metric_pb.MetricDescriptor_CUMULATIVE
+	default:
+		return metric_pb.MetricDescriptor_METRIC_KIND_UNSPECIFIED
+	}
+}
+
+func protoValueType() {
 }
 
 const (
@@ -157,11 +185,10 @@ func stripComplexMetricSuffix(name string) (prefix string, suffix string, ok boo
 }
 
 const (
-	maxLabelCount = 10
 	metricsPrefix = "external.googleapis.com/prometheus"
 )
 
-func getMetricType(prefix string, promName string) string {
+func getMetricName(prefix string, promName string) string {
 	if prefix == "" {
 		return metricsPrefix + "/" + promName
 	}
@@ -355,8 +382,9 @@ func histogramLabelsEqual(a, b tsdbLabels.Labels) bool {
 	return i == len(a) && j == len(b)
 }
 
-func buildTypedValue(valueType metric_pb.MetricDescriptor_ValueType, v float64) *monitoring_pb.TypedValue {
-	if valueType == metric_pb.MetricDescriptor_INT64 {
+func buildTypedValue(valueType metadata.ValueType, v float64) *monitoring_pb.TypedValue {
+	//  metric_pb.MetricDescriptor_ValueType
+	if valueType == metadata.INT64 {
 		return &monitoring_pb.TypedValue{Value: &monitoring_pb.TypedValue_Int64Value{int64(math.Round(v))}}
 	}
 	// Default to double, which is the only type supported by Prometheus.
