@@ -96,97 +96,55 @@ func (b *sampleBuilder) next(ctx context.Context, samples []tsdb.RefSample) (*me
 			// TODO: counter
 			return nil, 0, tailSamples, nil
 		}
-		startNanos := getNanos(resetTimestamp)
-		sampleNanos := getNanos(sample.T)
 
 		if entry.metadata.ValueType == metadata.INT64 {
-			integer := &metric_pb.IntDataPoint{
-				Labels:            labels,
-				StartTimeUnixNano: startNanos,
-				TimeUnixNano:      sampleNanos,
-				Value:             int64(value),
-			}
-			data := &metric_pb.IntSum{
-				IsMonotonic:            true,
-				AggregationTemporality: otlpCUMULATIVE,
-				DataPoints:             []*metric_pb.IntDataPoint{integer},
-			}
 			point.Data = &metric_pb.Metric_IntSum{
-				IntSum: data,
+				IntSum: monotonicIntegerPoint(labels, resetTimestamp, sample.T, value),
 			}
-
 		} else {
-			double := &metric_pb.DoubleDataPoint{
-				Labels:            labels,
-				StartTimeUnixNano: startNanos,
-				TimeUnixNano:      sampleNanos,
-				Value:             value,
-			}
-			data := &metric_pb.DoubleSum{
-				IsMonotonic:            true,
-				AggregationTemporality: otlpCUMULATIVE,
-				DataPoints:             []*metric_pb.DoubleDataPoint{double},
-			}
 			point.Data = &metric_pb.Metric_DoubleSum{
-				DoubleSum: data,
+				DoubleSum: monotonicDoublePoint(labels, resetTimestamp, sample.T, value),
 			}
 		}
 
 	case textparse.MetricTypeGauge, textparse.MetricTypeUnknown:
-		sampleNanos := getNanos(sample.T)
-
 		if entry.metadata.ValueType == metadata.INT64 {
-			integer := &metric_pb.IntDataPoint{
-				Labels:       labels,
-				TimeUnixNano: sampleNanos,
-				Value:        int64(sample.V),
-			}
-			data := &metric_pb.IntGauge{
-				DataPoints: []*metric_pb.IntDataPoint{integer},
-			}
 			point.Data = &metric_pb.Metric_IntGauge{
-				IntGauge: data,
+				IntGauge: intGauge(labels, sample.T, sample.V),
 			}
 		} else {
-			double := &metric_pb.DoubleDataPoint{
-				Labels:       labels,
-				TimeUnixNano: sampleNanos,
-				Value:        sample.V,
-			}
-			data := &metric_pb.DoubleGauge{
-				DataPoints: []*metric_pb.DoubleDataPoint{double},
-			}
 			point.Data = &metric_pb.Metric_DoubleGauge{
-				DoubleGauge: data,
+				DoubleGauge: doubleGauge(labels, sample.T, sample.V),
 			}
 		}
 
 	case textparse.MetricTypeSummary:
-		return nil, 0, tailSamples, errors.Errorf("unimplemented metric type %q", entry.metadata.MetricType)
-
-	// case textparse.MetricTypeSummary:
-	// 	switch entry.suffix {
-	// 	case metricSuffixSum:
-	// 		var v float64
-	// 		resetTimestamp, v, ok = b.series.getResetAdjusted(sample.Ref, sample.T, sample.V)
-	// 		if !ok {
-	// 			return nil, 0, tailSamples, nil
-	// 		}
-	// 		point.Interval.StartTime = getTimestamp(resetTimestamp)
-	// 		point.Value = &monitoring_pb.TypedValue{Value: &monitoring_pb.TypedValue_DoubleValue{v}}
-	// 	case metricSuffixCount:
-	// 		var v float64
-	// 		resetTimestamp, v, ok = b.series.getResetAdjusted(sample.Ref, sample.T, sample.V)
-	// 		if !ok {
-	// 			return nil, 0, tailSamples, nil
-	// 		}
-	// 		point.Interval.StartTime = getTimestamp(resetTimestamp)
-	// 		point.Value = &monitoring_pb.TypedValue{Value: &monitoring_pb.TypedValue_Int64Value{int64(v)}}
-	// 	case "": // Actual quantiles.
-	// 		point.Value = &monitoring_pb.TypedValue{Value: &monitoring_pb.TypedValue_DoubleValue{sample.V}}
-	// 	default:
-	// 		return nil, 0, tailSamples, errors.Errorf("unexpected metric name suffix %q", entry.suffix)
-	// 	}
+		switch entry.suffix {
+		case metricSuffixSum:
+			var value float64
+			resetTimestamp, value, ok = b.series.getResetAdjusted(sample.Ref, sample.T, sample.V)
+			if !ok {
+				return nil, 0, tailSamples, nil
+			}
+			point.Data = &metric_pb.Metric_DoubleSum{
+				DoubleSum: monotonicDoublePoint(labels, resetTimestamp, sample.T, value),
+			}
+		case metricSuffixCount:
+			var value float64
+			resetTimestamp, value, ok = b.series.getResetAdjusted(sample.Ref, sample.T, sample.V)
+			if !ok {
+				return nil, 0, tailSamples, nil
+			}
+			point.Data = &metric_pb.Metric_IntSum{
+				IntSum: monotonicIntegerPoint(labels, resetTimestamp, sample.T, value),
+			}
+		case "": // Actual quantiles.
+			point.Data = &metric_pb.Metric_DoubleGauge{
+				DoubleGauge: doubleGauge(labels, sample.T, sample.V),
+			}
+		default:
+			return nil, 0, tailSamples, errors.Errorf("unexpected metric name suffix %q", entry.suffix)
+		}
 
 	case textparse.MetricTypeHistogram:
 		// We pass in the original lset for matching since Prometheus's target label must
@@ -471,4 +429,54 @@ func histogramLabelsEqual(a, b tsdbLabels.Labels) bool {
 	}
 	// If one label set still has labels left, they are not equal.
 	return i == len(a) && j == len(b)
+}
+
+func monotonicIntegerPoint(labels []*common_pb.StringKeyValue, start, end int64, value float64) *metric_pb.IntSum {
+	integer := &metric_pb.IntDataPoint{
+		Labels:            labels,
+		StartTimeUnixNano: getNanos(start),
+		TimeUnixNano:      getNanos(end),
+		Value:             int64(value),
+	}
+	return &metric_pb.IntSum{
+		IsMonotonic:            true,
+		AggregationTemporality: otlpCUMULATIVE,
+		DataPoints:             []*metric_pb.IntDataPoint{integer},
+	}
+}
+
+func monotonicDoublePoint(labels []*common_pb.StringKeyValue, start, end int64, value float64) *metric_pb.DoubleSum {
+	double := &metric_pb.DoubleDataPoint{
+		Labels:            labels,
+		StartTimeUnixNano: getNanos(start),
+		TimeUnixNano:      getNanos(end),
+		Value:             value,
+	}
+	return &metric_pb.DoubleSum{
+		IsMonotonic:            true,
+		AggregationTemporality: otlpCUMULATIVE,
+		DataPoints:             []*metric_pb.DoubleDataPoint{double},
+	}
+}
+
+func intGauge(labels []*common_pb.StringKeyValue, ts int64, value float64) *metric_pb.IntGauge {
+	integer := &metric_pb.IntDataPoint{
+		Labels:       labels,
+		TimeUnixNano: getNanos(ts),
+		Value:        int64(value),
+	}
+	return &metric_pb.IntGauge{
+		DataPoints: []*metric_pb.IntDataPoint{integer},
+	}
+}
+
+func doubleGauge(labels []*common_pb.StringKeyValue, ts int64, value float64) *metric_pb.DoubleGauge {
+	double := &metric_pb.DoubleDataPoint{
+		Labels:       labels,
+		TimeUnixNano: getNanos(ts),
+		Value:        value,
+	}
+	return &metric_pb.DoubleGauge{
+		DataPoints: []*metric_pb.DoubleDataPoint{double},
+	}
 }
