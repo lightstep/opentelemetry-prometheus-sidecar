@@ -34,7 +34,6 @@ import (
 	"github.com/prometheus/tsdb/wal"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
-	monitoring_pb "google.golang.org/genproto/googleapis/monitoring/v3"
 )
 
 type TargetGetter interface {
@@ -65,14 +64,6 @@ func (tg *targetsWithDiscoveredLabels) Get(ctx context.Context, lset labels.Labe
 
 type MetadataGetter interface {
 	Get(ctx context.Context, job, instance, metric string) (*metadata.Entry, error)
-}
-
-// Appender appends a time series with exactly one data point. A hash for the series
-// (but not the data point) must be provided.
-// The client may cache the computed hash more easily, which is why its part of the call
-// and not done by the Appender's implementation.
-type Appender interface {
-	Append(hash uint64, s *monitoring_pb.TimeSeries) error
 }
 
 // NewPrometheusReader is the PrometheusReader constructor
@@ -235,9 +226,8 @@ Outer:
 					time.Sleep(backoff)
 				}
 
-				var outputSample *monitoring_pb.TimeSeries
-				var hash uint64
-				outputSample, hash, samples, err = builder.next(ctx, samples)
+				outputSample, hash, newSamples, err := builder.next(ctx, samples)
+				samples = newSamples
 				if err != nil {
 					level.Warn(r.logger).Log("msg", "Failed to build sample", "err", err)
 					backoff = exponential(backoff)

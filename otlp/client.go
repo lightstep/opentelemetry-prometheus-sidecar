@@ -11,7 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package stackdriver
+package otlp
 
 import (
 	"context"
@@ -23,11 +23,11 @@ import (
 	"sync"
 	"time"
 
+	metricsService "github.com/lightstep/lightstep-prometheus-sidecar/internal/opentelemetry-proto-gen/collector/metrics/v1"
 	"go.opencensus.io/plugin/ocgrpc"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
-	monitoring "google.golang.org/genproto/googleapis/monitoring/v3"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/balancer/roundrobin"
 	"google.golang.org/grpc/codes"
@@ -161,8 +161,8 @@ func (c *Client) getConnection(ctx context.Context) (*grpc.ClientConn, error) {
 }
 
 // Store sends a batch of samples to the HTTP endpoint.
-func (c *Client) Store(req *monitoring.CreateTimeSeriesRequest) error {
-	tss := req.TimeSeries
+func (c *Client) Store(req *metricsService.ExportMetricsServiceRequest) error {
+	tss := req.ResourceMetrics
 	if len(tss) == 0 {
 		// Nothing to do, return silently.
 		return nil
@@ -176,7 +176,7 @@ func (c *Client) Store(req *monitoring.CreateTimeSeriesRequest) error {
 		return err
 	}
 
-	service := monitoring.NewMetricServiceClient(conn)
+	service := metricsService.NewMetricsServiceClient(conn)
 
 	errors := make(chan error, len(tss)/MaxTimeseriesesPerRequest+1)
 	var wg sync.WaitGroup
@@ -188,11 +188,10 @@ func (c *Client) Store(req *monitoring.CreateTimeSeriesRequest) error {
 		wg.Add(1)
 		go func(begin int, end int) {
 			defer wg.Done()
-			req_copy := &monitoring.CreateTimeSeriesRequest{
-				Name:       c.projectID,
-				TimeSeries: req.TimeSeries[begin:end],
+			req_copy := &metricsService.ExportMetricsServiceRequest{
+				ResourceMetrics: req.ResourceMetrics[begin:end],
 			}
-			_, err := service.CreateTimeSeries(ctx, req_copy)
+			_, err := service.Export(ctx, req_copy)
 			if err == nil {
 				// The response is empty if all points were successfully written.
 				stats.RecordWithTags(ctx,
@@ -203,36 +202,17 @@ func (c *Client) Store(req *monitoring.CreateTimeSeriesRequest) error {
 					"msg", "Partial failure calling CreateTimeSeries",
 					"err", err)
 				status, ok := status.FromError(err)
+				// TODO metrics
 				if !ok {
 					level.Warn(c.logger).Log("msg", "Unexpected error message type from Monitoring API", "err", err)
 					errors <- err
 					return
 				}
-				for _, details := range status.Details() {
-					if summary, ok := details.(*monitoring.CreateTimeSeriesSummary); ok {
-						level.Debug(c.logger).Log("summary", summary)
-						stats.RecordWithTags(ctx,
-							[]tag.Mutator{tag.Upsert(StatusTag, "0")},
-							PointCount.M(int64(summary.SuccessPointCount)))
-						for _, e := range summary.Errors {
-							stats.RecordWithTags(ctx,
-								[]tag.Mutator{tag.Upsert(StatusTag, fmt.Sprint(uint32(e.Status.Code)))},
-								PointCount.M(int64(e.PointCount)))
-						}
-					}
-				}
 				switch status.Code() {
-				// codes.DeadlineExceeded:
-				//   It is safe to retry
-				//   google.monitoring.v3.MetricService.CreateTimeSeries
-				//   requests with backoff because QueueManager
-				//   enforces in-order writes on a time series, which
-				//   is a requirement for Stackdriver monitoring.
-				//
-				// codes.Unavailable:
-				//   The condition is most likely transient. The request can
-				//   be retried with backoff.
-				case codes.DeadlineExceeded, codes.Unavailable:
+				case codes.DeadlineExceeded, codes.Canceled, codes.ResourceExhausted,
+					codes.Aborted, codes.OutOfRange, codes.Unavailable, codes.DataLoss:
+					// See https://github.com/open-telemetry/opentelemetry-specification/
+					// blob/master/specification/protocol/otlp.md#response
 					errors <- recoverableError{err}
 				default:
 					errors <- err

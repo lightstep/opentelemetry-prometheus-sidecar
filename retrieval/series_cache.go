@@ -41,15 +41,15 @@ var (
 	keyReason, _ = tag.NewKey("reason")
 )
 
-type (
-	tsDesc struct {
-		Name      string
-		Labels    promlabels.Labels // Sorted
-		Resource  promlabels.Labels // Sorted
-		Kind      metadata.Kind
-		ValueType metadata.ValueType
-	}
-)
+// tsDesc has complete, proto-independent data about a metric data
+// point.
+type tsDesc struct {
+	Name      string
+	Labels    promlabels.Labels // Sorted
+	Resource  promlabels.Labels // Sorted
+	Kind      metadata.Kind
+	ValueType metadata.ValueType
+}
 
 func init() {
 	if err := view.Register(&view.View{

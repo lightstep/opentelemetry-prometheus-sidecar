@@ -15,6 +15,7 @@ require (
 	contrib.go.opencensus.io/exporter/stackdriver v0.12.8
 	github.com/ghodss/yaml v1.0.0
 	github.com/go-kit/kit v0.9.0
+	github.com/gogo/protobuf v1.3.1
 	github.com/golang/protobuf v1.3.2
 	github.com/google/go-cmp v0.3.1
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
