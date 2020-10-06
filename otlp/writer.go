@@ -22,33 +22,33 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/golang/protobuf/proto"
-	monitoring "google.golang.org/genproto/googleapis/monitoring/v3"
+	metricsService "github.com/lightstep/lightstep-prometheus-sidecar/internal/opentelemetry-proto-gen/collector/metrics/v1"
 )
 
-// CreateTimeSeriesRequestWriterCloser allows writing protobuf message
-// monitoring.CreateTimeSeriesRequest as wire format into the writerCloser.
-type CreateTimeSeriesRequestWriterCloser struct {
+// ExportMetricsRequestWriterCloser allows writing protobuf message
+// monitoring.ExportMetricsRequest as wire format into the writerCloser.
+type ExportMetricsRequestWriterCloser struct {
 	logger      log.Logger
 	writeCloser io.WriteCloser
 }
 
-func NewCreateTimeSeriesRequestWriterCloser(writeCloser io.WriteCloser, logger log.Logger) *CreateTimeSeriesRequestWriterCloser {
+func NewExportMetricsServiceRequestWriterCloser(writeCloser io.WriteCloser, logger log.Logger) *ExportMetricsRequestWriterCloser {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
-	return &CreateTimeSeriesRequestWriterCloser{
+	return &ExportMetricsRequestWriterCloser{
 		writeCloser: writeCloser,
 		logger:      logger,
 	}
 }
 
-// Store writes protobuf message monitoring.CreateTimeSeriesRequest as wire
+// Store writes protobuf message monitoring.ExportMetricsRequest as wire
 // format into the writeCloser.
-func (c *CreateTimeSeriesRequestWriterCloser) Store(req *monitoring.CreateTimeSeriesRequest) error {
+func (c *ExportMetricsRequestWriterCloser) Store(req *metricsService.ExportMetricsServiceRequest) error {
 	data, err := proto.Marshal(req)
 	if err != nil {
 		level.Warn(c.logger).Log(
-			"msg", "failure marshaling CreateTimeSeriesRequest.",
+			"msg", "failure marshaling ExportMetricsRequest.",
 			"err", err)
 		return err
 	}
@@ -62,6 +62,6 @@ func (c *CreateTimeSeriesRequestWriterCloser) Store(req *monitoring.CreateTimeSe
 	return nil
 }
 
-func (c *CreateTimeSeriesRequestWriterCloser) Close() error {
+func (c *ExportMetricsRequestWriterCloser) Close() error {
 	return c.writeCloser.Close()
 }

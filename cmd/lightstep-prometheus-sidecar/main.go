@@ -631,7 +631,7 @@ func (fcf *fileClientFactory) New() otlp.StorageClient {
 			"msg", "failure creating files.",
 			"err", err)
 	}
-	return otlp.NewCreateTimeSeriesRequestWriterCloser(f, fcf.logger)
+	return otlp.NewExportMetricsServiceRequestWriterCloser(f, fcf.logger)
 }
 
 func (fcf *fileClientFactory) Name() string {
