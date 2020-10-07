@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	metric_pb "github.com/lightstep/lightstep-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
 	"github.com/lightstep/lightstep-prometheus-sidecar/metadata"
 	"github.com/lightstep/lightstep-prometheus-sidecar/tail"
 	"github.com/lightstep/lightstep-prometheus-sidecar/targets"
@@ -29,16 +30,18 @@ import (
 	"github.com/prometheus/tsdb"
 	"github.com/prometheus/tsdb/labels"
 	"github.com/prometheus/tsdb/wal"
-	metric_pb "google.golang.org/genproto/googleapis/api/metric"
 	monitoredres_pb "google.golang.org/genproto/googleapis/api/monitoredres"
 	monitoring_pb "google.golang.org/genproto/googleapis/monitoring/v3"
+	// metric_pb "google.golang.org/genproto/googleapis/api/metric"
+	// monitoredres_pb "google.golang.org/genproto/googleapis/api/monitoredres"
+	// monitoring_pb "google.golang.org/genproto/googleapis/monitoring/v3"
 )
 
 type nopAppender struct {
-	samples []*monitoring_pb.TimeSeries
+	samples []*metric_pb.ResourceMetrics
 }
 
-func (a *nopAppender) Append(hash uint64, s *monitoring_pb.TimeSeries) error {
+func (a *nopAppender) Append(hash uint64, s *metric_pb.ResourceMetrics) error {
 	a.samples = append(a.samples, s)
 	return nil
 }
@@ -75,8 +78,8 @@ func TestReader_Progress(t *testing.T) {
 		"job1/inst1": &targets.Target{
 			Labels: promlabels.FromStrings("job", "job1", "instance", "inst1"),
 			DiscoveredLabels: promlabels.FromStrings(
-				ProjectIDLabel, "proj1",
-				GenericNamespaceLabel, "ns1", GenericLocationLabel, "loc1",
+				"project_id", "proj1",
+				"namespace", "ns1", "location", "loc1",
 				"job", "job1", "__address__", "inst1"),
 		},
 	}
@@ -84,7 +87,7 @@ func TestReader_Progress(t *testing.T) {
 		"job1/inst1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, Help: "help"},
 	}
 
-	r := NewPrometheusReader(nil, dir, tailer, nil, nil, targetMap, metadataMap, &nopAppender{}, "", false)
+	r := NewPrometheusReader(nil, dir, tailer, nil, nil, targetMap, metadataMap, &nopAppender{}, "")
 	r.progressSaveInterval = 200 * time.Millisecond
 
 	// Populate sample data
@@ -141,7 +144,7 @@ func TestReader_Progress(t *testing.T) {
 	}
 
 	recorder := &nopAppender{}
-	r = NewPrometheusReader(nil, dir, tailer, nil, nil, targetMap, metadataMap, recorder, "", false, aggr)
+	r = NewPrometheusReader(nil, dir, tailer, nil, nil, targetMap, metadataMap, recorder, "")
 	go r.Run(ctx, progressOffset)
 
 	// Wait for reader to process until the end.
@@ -161,7 +164,9 @@ func TestReader_Progress(t *testing.T) {
 		t.Fatal("expected records but got none")
 	}
 	for i, s := range recorder.samples {
-		if ts := s.Points[0].Interval.EndTime.Seconds; ts <= int64(progressOffset)-progressBufferMargin {
+		im0 := s.InstrumentationLibraryMetrics[0].Metrics[0]
+
+		if ts := im0.EndTime.Seconds; ts <= int64(progressOffset)-progressBufferMargin {
 			t.Fatalf("unexpected record %d for offset %d", i, ts)
 		}
 	}
