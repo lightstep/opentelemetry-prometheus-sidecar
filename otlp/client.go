@@ -16,7 +16,9 @@ package otlp
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"net/url"
 	"strconv"
@@ -32,7 +34,6 @@ import (
 	"google.golang.org/grpc/balancer/roundrobin"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/oauth"
 	"google.golang.org/grpc/resolver/manual"
 	"google.golang.org/grpc/status"
 
@@ -43,7 +44,6 @@ import (
 
 const (
 	MaxTimeseriesesPerRequest = 200
-	MonitoringWriteScope      = "https://www.googleapis.com/auth/monitoring.write"
 )
 
 var (
@@ -71,22 +71,24 @@ func init() {
 // implementation may hit a single backend, so the application should create a
 // number of these clients.
 type Client struct {
-	logger    log.Logger
-	projectID string
-	url       *url.URL
-	timeout   time.Duration
-	resolver  *manual.Resolver
+	logger     log.Logger
+	projectID  string
+	url        *url.URL
+	timeout    time.Duration
+	resolver   *manual.Resolver
+	caCertFile string
 
 	conn *grpc.ClientConn
 }
 
 // ClientConfig configures a Client.
 type ClientConfig struct {
-	Logger    log.Logger
-	ProjectID string // The Stackdriver project ID in "projects/name-or-number" format.
-	URL       *url.URL
-	Timeout   time.Duration
-	Resolver  *manual.Resolver
+	Logger     log.Logger
+	ProjectID  string // The Stackdriver project ID in "projects/name-or-number" format.
+	URL        *url.URL
+	Timeout    time.Duration
+	Resolver   *manual.Resolver
+	CACertFile string
 }
 
 // NewClient creates a new Client.
@@ -96,11 +98,12 @@ func NewClient(conf *ClientConfig) *Client {
 		logger = log.NewNopLogger()
 	}
 	return &Client{
-		logger:    logger,
-		projectID: conf.ProjectID,
-		url:       conf.URL,
-		timeout:   conf.Timeout,
-		resolver:  conf.Resolver,
+		logger:     logger,
+		projectID:  conf.ProjectID,
+		url:        conf.URL,
+		timeout:    conf.Timeout,
+		resolver:   conf.Resolver,
+		caCertFile: conf.CACertFile,
 	}
 }
 
@@ -109,7 +112,7 @@ type recoverableError struct {
 }
 
 // version.* is populated for 'promu' builds, so this will look broken in unit tests.
-var userAgent = fmt.Sprintf("StackdriverPrometheus/%s", version.Version)
+var userAgent = fmt.Sprintf("LightstepPrometheus/%s", version.Version)
 
 func (c *Client) getConnection(ctx context.Context) (*grpc.ClientConn, error) {
 	if c.conn != nil {
@@ -134,14 +137,25 @@ func (c *Client) getConnection(ctx context.Context) (*grpc.ClientConn, error) {
 		grpc.WithStatsHandler(&ocgrpc.ClientHandler{}),
 	}
 	if useAuth {
-		rpcCreds, err := oauth.NewApplicationDefault(context.Background(), MonitoringWriteScope)
-		if err != nil {
-			return nil, err
+		var tcfg tls.Config
+		if c.caCertFile != "" {
+			certPool := x509.NewCertPool()
+			bs, err := ioutil.ReadFile(c.caCertFile)
+			if err != nil {
+				return nil, fmt.Errorf("could not read certificate authority certificate: %s: %w", c.caCertFile, err)
+			}
+
+			ok := certPool.AppendCertsFromPEM(bs)
+			if !ok {
+				return nil, fmt.Errorf("could not parse certificate authority certificate: %s: %w", c.caCertFile, err)
+			}
+
+			tcfg = tls.Config{
+				ServerName: c.url.Hostname(),
+				RootCAs:    certPool,
+			}
 		}
-		tlsCreds := credentials.NewTLS(&tls.Config{})
-		dopts = append(dopts,
-			grpc.WithTransportCredentials(tlsCreds),
-			grpc.WithPerRPCCredentials(rpcCreds))
+		dopts = append(dopts, grpc.WithTransportCredentials(credentials.NewTLS(&tcfg)))
 	} else {
 		dopts = append(dopts, grpc.WithInsecure())
 	}

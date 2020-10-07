@@ -162,6 +162,10 @@ type fileConfig struct {
 	AggregatedCounters []aggregatedCountersConfig `json:"aggregated_counters"`
 }
 
+type securityConfig struct {
+	RootCertificate string `json:"root_certificate"`
+}
+
 // Note: When adding a new config field, consider adding it to
 // statusz-tmpl.html
 type mainConfig struct {
@@ -185,6 +189,7 @@ type mainConfig struct {
 	manualResolver        *manual.Resolver
 	MonitoringBackends    []string
 	PromlogConfig         promlog.Config
+	Security              securityConfig
 }
 
 func main() {
@@ -238,7 +243,7 @@ func main() {
 	a.Flag("prometheus.wal-directory", "Directory from where to read the Prometheus TSDB WAL.").
 		Default("data/wal").StringVar(&cfg.WALDirectory)
 
-	a.Flag("prometheus.api-address", "Address to listen on for UI, API, and telemetry.").
+	a.Flag("prometheus.api-address", "Address to listen on for UI, API, and telemetry.  Use ?auth=false for an insecure connection.").
 		Default("http://127.0.0.1:9090/").URLVar(&cfg.PrometheusURL)
 
 	a.Flag("monitoring.backend", "Monitoring backend(s) for internal metrics").Default("prometheus").
@@ -255,6 +260,9 @@ func main() {
 
 	a.Flag("filter", "PromQL-style matcher for a single label which must pass for a series to be forwarded to Stackdriver. If repeated, the series must pass all filters to be forwarded. Deprecated, please use --include instead.").
 		StringsVar(&cfg.Filters)
+
+	a.Flag("security.root-certificate", "Location of the certificate authority public certificate to use for OTLP connections (e.g., server.crt). If not set, the system root will be used unless the URL has ?auth=false.").
+		StringVar(&cfg.Security.RootCertificate)
 
 	promlogflag.AddFlags(a, &cfg.PromlogConfig)
 
@@ -429,6 +437,7 @@ func main() {
 			url:               cfg.StackdriverAddress,
 			timeout:           10 * time.Second,
 			manualResolver:    cfg.manualResolver,
+			security:          cfg.Security,
 		}
 	}
 
@@ -598,15 +607,17 @@ type stackdriverClientFactory struct {
 	url               *url.URL
 	timeout           time.Duration
 	manualResolver    *manual.Resolver
+	security          securityConfig
 }
 
 func (s *stackdriverClientFactory) New() otlp.StorageClient {
 	return otlp.NewClient(&otlp.ClientConfig{
-		Logger:    s.logger,
-		ProjectID: s.projectIDResource,
-		URL:       s.url,
-		Timeout:   s.timeout,
-		Resolver:  s.manualResolver,
+		Logger:     s.logger,
+		ProjectID:  s.projectIDResource,
+		URL:        s.url,
+		Timeout:    s.timeout,
+		Resolver:   s.manualResolver,
+		CACertFile: s.security.RootCertificate,
 	})
 }
 
