@@ -34,6 +34,7 @@ import (
 	"google.golang.org/grpc/balancer/roundrobin"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
+	grpcMetadata "google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/resolver/manual"
 	"google.golang.org/grpc/status"
 
@@ -71,24 +72,26 @@ func init() {
 // implementation may hit a single backend, so the application should create a
 // number of these clients.
 type Client struct {
-	logger     log.Logger
-	projectID  string
-	url        *url.URL
-	timeout    time.Duration
-	resolver   *manual.Resolver
-	caCertFile string
+	logger    log.Logger
+	projectID string
+	url       *url.URL
+	timeout   time.Duration
+	resolver  *manual.Resolver
+	certFile  string
+	headers   grpcMetadata.MD
 
 	conn *grpc.ClientConn
 }
 
 // ClientConfig configures a Client.
 type ClientConfig struct {
-	Logger     log.Logger
-	ProjectID  string // The Stackdriver project ID in "projects/name-or-number" format.
-	URL        *url.URL
-	Timeout    time.Duration
-	Resolver   *manual.Resolver
-	CACertFile string
+	Logger    log.Logger
+	ProjectID string // The Stackdriver project ID in "projects/name-or-number" format.
+	URL       *url.URL
+	Timeout   time.Duration
+	Resolver  *manual.Resolver
+	CertFile  string
+	Headers   grpcMetadata.MD
 }
 
 // NewClient creates a new Client.
@@ -98,12 +101,13 @@ func NewClient(conf *ClientConfig) *Client {
 		logger = log.NewNopLogger()
 	}
 	return &Client{
-		logger:     logger,
-		projectID:  conf.ProjectID,
-		url:        conf.URL,
-		timeout:    conf.Timeout,
-		resolver:   conf.Resolver,
-		caCertFile: conf.CACertFile,
+		logger:    logger,
+		projectID: conf.ProjectID,
+		url:       conf.URL,
+		timeout:   conf.Timeout,
+		resolver:  conf.Resolver,
+		certFile:  conf.CertFile,
+		headers:   conf.Headers,
 	}
 }
 
@@ -112,7 +116,7 @@ type recoverableError struct {
 }
 
 // version.* is populated for 'promu' builds, so this will look broken in unit tests.
-var userAgent = fmt.Sprintf("LightstepPrometheus/%s", version.Version)
+var userAgent = fmt.Sprintf("OpenTelemetryPrometheus/%s", version.Version)
 
 func (c *Client) getConnection(ctx context.Context) (*grpc.ClientConn, error) {
 	if c.conn != nil {
@@ -138,16 +142,16 @@ func (c *Client) getConnection(ctx context.Context) (*grpc.ClientConn, error) {
 	}
 	if useAuth {
 		var tcfg tls.Config
-		if c.caCertFile != "" {
+		if c.certFile != "" {
 			certPool := x509.NewCertPool()
-			bs, err := ioutil.ReadFile(c.caCertFile)
+			bs, err := ioutil.ReadFile(c.certFile)
 			if err != nil {
-				return nil, fmt.Errorf("could not read certificate authority certificate: %s: %w", c.caCertFile, err)
+				return nil, fmt.Errorf("could not read certificate authority certificate: %s: %w", c.certFile, err)
 			}
 
 			ok := certPool.AppendCertsFromPEM(bs)
 			if !ok {
-				return nil, fmt.Errorf("could not parse certificate authority certificate: %s: %w", c.caCertFile, err)
+				return nil, fmt.Errorf("could not parse certificate authority certificate: %s: %w", c.certFile, err)
 			}
 
 			tcfg = tls.Config{
@@ -205,7 +209,7 @@ func (c *Client) Store(req *metricsService.ExportMetricsServiceRequest) error {
 			req_copy := &metricsService.ExportMetricsServiceRequest{
 				ResourceMetrics: req.ResourceMetrics[begin:end],
 			}
-			_, err := service.Export(ctx, req_copy)
+			_, err := service.Export(grpcMetadata.NewOutgoingContext(ctx, c.headers), req_copy)
 			if err == nil {
 				// The response is empty if all points were successfully written.
 				stats.RecordWithTags(ctx,
