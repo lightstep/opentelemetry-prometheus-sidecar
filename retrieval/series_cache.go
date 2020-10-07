@@ -80,14 +80,13 @@ type seriesGetter interface {
 // It can garbage collect obsolete entries based on the most recent WAL checkpoint.
 // Implements seriesGetter.
 type seriesCache struct {
-	logger         log.Logger
-	dir            string
-	filtersets     [][]*promlabels.Matcher
-	targets        TargetGetter
-	metaget        MetadataGetter
-	metricsPrefix  string
-	useGkeResource bool
-	renames        map[string]string
+	logger        log.Logger
+	dir           string
+	filtersets    [][]*promlabels.Matcher
+	targets       TargetGetter
+	metaget       MetadataGetter
+	metricsPrefix string
+	renames       map[string]string
 
 	// lastCheckpoint holds the index of the last checkpoint we garbage collected for.
 	// We don't have to redo garbage collection until a higher checkpoint appears.
@@ -143,22 +142,20 @@ func newSeriesCache(
 	targets TargetGetter,
 	metaget MetadataGetter,
 	metricsPrefix string,
-	useGkeResource bool,
 ) *seriesCache {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
 	return &seriesCache{
-		logger:         logger,
-		dir:            dir,
-		filtersets:     filtersets,
-		targets:        targets,
-		metaget:        metaget,
-		entries:        map[uint64]*seriesCacheEntry{},
-		intervals:      map[uint64]sampleInterval{},
-		metricsPrefix:  metricsPrefix,
-		useGkeResource: useGkeResource,
-		renames:        renames,
+		logger:        logger,
+		dir:           dir,
+		filtersets:    filtersets,
+		targets:       targets,
+		metaget:       metaget,
+		entries:       map[uint64]*seriesCacheEntry{},
+		intervals:     map[uint64]sampleInterval{},
+		metricsPrefix: metricsPrefix,
+		renames:       renames,
 	}
 }
 

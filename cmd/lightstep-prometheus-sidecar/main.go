@@ -30,7 +30,6 @@ import (
 	"syscall"
 	"time"
 
-	md "cloud.google.com/go/compute/metadata"
 	oc_prometheus "contrib.go.opencensus.io/exporter/prometheus"
 	"github.com/ghodss/yaml"
 	"github.com/go-kit/kit/log"
@@ -148,16 +147,9 @@ type staticMetadataConfig struct {
 	Help      string `json:"help"`
 }
 
-type aggregatedCountersConfig struct {
-	Metric  string   `json:"metric"`
-	Filters []string `json:"filters"`
-	Help    string   `json:"help"`
-}
-
 type fileConfig struct {
-	MetricRenames      []metricRenamesConfig      `json:"metric_renames"`
-	StaticMetadata     []staticMetadataConfig     `json:"static_metadata"`
-	AggregatedCounters []aggregatedCountersConfig `json:"aggregated_counters"`
+	MetricRenames  []metricRenamesConfig  `json:"metric_renames"`
+	StaticMetadata []staticMetadataConfig `json:"static_metadata"`
 }
 
 type securityConfig struct {
@@ -169,26 +161,20 @@ type grpcConfig struct {
 }
 
 type mainConfig struct {
-	ConfigFilename        string
-	ProjectIDResource     string
-	KubernetesLabels      kubernetesConfig
-	GenericLabels         genericConfig
-	StackdriverAddress    *url.URL
-	MetricsPrefix         string
-	UseGKEResource        bool
-	StoreInFilesDirectory string
-	WALDirectory          string
-	PrometheusURL         *url.URL
-	ListenAddress         string
-	Filters               []string
-	Filtersets            []string
-	MetricRenames         map[string]string
-	StaticMetadata        []*metadata.Entry
-	manualResolver        *manual.Resolver
-	MonitoringBackends    []string
-	PromlogConfig         promlog.Config
-	Security              securityConfig
-	GRPC                  grpcConfig
+	ConfigFilename     string
+	StackdriverAddress *url.URL
+	MetricsPrefix      string
+	WALDirectory       string
+	PrometheusURL      *url.URL
+	ListenAddress      string
+	Filtersets         []string
+	MetricRenames      map[string]string
+	StaticMetadata     []*metadata.Entry
+	manualResolver     *manual.Resolver
+	MonitoringBackends []string
+	PromlogConfig      promlog.Config
+	Security           securityConfig
+	GRPC               grpcConfig
 }
 
 func main() {
@@ -207,34 +193,11 @@ func main() {
 
 	a.Flag("config-file", "A configuration file.").StringVar(&cfg.ConfigFilename)
 
-	projectID := a.Flag("stackdriver.project-id", "The Google project ID where Stackdriver will store the metrics.").
-		Required().
-		String()
-
 	a.Flag("stackdriver.api-address", "Address of the Stackdriver Monitoring API.").
-		Default("https://monitoring.googleapis.com:443/").URLVar(&cfg.StackdriverAddress)
+		Default("").URLVar(&cfg.StackdriverAddress)
 
-	a.Flag("stackdriver.kubernetes.location", "Value of the 'location' label in the Kubernetes Stackdriver MonitoredResources.").
-		StringVar(&cfg.KubernetesLabels.Location)
-
-	a.Flag("stackdriver.kubernetes.cluster-name", "Value of the 'cluster_name' label in the Kubernetes Stackdriver MonitoredResources.").
-		StringVar(&cfg.KubernetesLabels.ClusterName)
-
-	a.Flag("stackdriver.generic.location", "Location for metrics written with the generic resource, e.g. a cluster or data center name.").
-		StringVar(&cfg.GenericLabels.Location)
-
-	a.Flag("stackdriver.generic.namespace", "Namespace for metrics written with the generic resource, e.g. a cluster or data center name.").
-		StringVar(&cfg.GenericLabels.Namespace)
-
-	a.Flag("stackdriver.metrics-prefix", "Customized prefix for Stackdriver metrics. If not set, external.googleapis.com/prometheus will be used").
+	a.Flag("stackdriver.metrics-prefix", "Customized prefix for exporter metrics. If not set, none will be used").
 		StringVar(&cfg.MetricsPrefix)
-
-	a.Flag("stackdriver.use-gke-resource",
-		"Whether to use the legacy gke_container MonitoredResource type instead of k8s_container").
-		Default("false").BoolVar(&cfg.UseGKEResource)
-
-	a.Flag("stackdriver.store-in-files-directory", "If specified, store the CreateTimeSeriesRequest protobuf messages to files under this directory, instead of sending protobuf messages to Stackdriver Monitoring API.").
-		StringVar(&cfg.StoreInFilesDirectory)
 
 	a.Flag("prometheus.wal-directory", "Directory from where to read the Prometheus TSDB WAL.").
 		Default("data/wal").StringVar(&cfg.WALDirectory)
@@ -243,16 +206,13 @@ func main() {
 		Default("http://127.0.0.1:9090/").URLVar(&cfg.PrometheusURL)
 
 	a.Flag("monitoring.backend", "Monitoring backend(s) for internal metrics").Default("prometheus").
-		EnumsVar(&cfg.MonitoringBackends, "prometheus", "stackdriver")
+		EnumsVar(&cfg.MonitoringBackends, "prometheus")
 
 	a.Flag("web.listen-address", "Address to listen on for UI, API, and telemetry.").
 		Default("0.0.0.0:9091").StringVar(&cfg.ListenAddress)
 
 	a.Flag("include", "PromQL metric and label matcher which must pass for a series to be forwarded to Stackdriver. If repeated, the series must pass any of the filter sets to be forwarded.").
 		StringsVar(&cfg.Filtersets)
-
-	a.Flag("filter", "PromQL-style matcher for a single label which must pass for a series to be forwarded to Stackdriver. If repeated, the series must pass all filters to be forwarded. Deprecated, please use --include instead.").
-		StringsVar(&cfg.Filters)
 
 	a.Flag("security.server-certificate", "Public certificate for the server to use for TLS connections (e.g., server.crt, in pem format).").
 		StringVar(&cfg.Security.ServerCertificate)
@@ -304,17 +264,13 @@ func main() {
 		c := time.Tick(60 * time.Second)
 		for now := range c {
 			stats.RecordWithTags(ctx,
-				[]tag.Mutator{tag.Upsert(VersionTag, fmt.Sprintf("stackdriver-prometheus-sidecar/%s", version.Version))},
+				[]tag.Mutator{tag.Upsert(VersionTag, fmt.Sprintf("opentelemetry-prometheus-sidecar/%s", version.Version))},
 				UptimeMeasure.M(int64(now.Sub(uptimeUpdateTime).Seconds())))
 			uptimeUpdateTime = now
 		}
 	}()
 
 	httpClient := &http.Client{Transport: &ochttp.Transport{}}
-
-	if *projectID == "" {
-		*projectID = getGCEProjectID()
-	}
 
 	for _, backend := range cfg.MonitoringBackends {
 		switch backend {
@@ -333,27 +289,12 @@ func main() {
 		}
 	}
 
-	var staticLabels = map[string]string{
-		retrieval.ProjectIDLabel:             *projectID,
-		retrieval.KubernetesLocationLabel:    cfg.KubernetesLabels.Location,
-		retrieval.KubernetesClusterNameLabel: cfg.KubernetesLabels.ClusterName,
-		retrieval.GenericLocationLabel:       cfg.GenericLabels.Location,
-		retrieval.GenericNamespaceLabel:      cfg.GenericLabels.Namespace,
-	}
-	fillMetadata(&staticLabels)
-	for k, v := range staticLabels {
-		if v == "" {
-			delete(staticLabels, k)
-		}
-	}
-
-	filtersets, err := parseFiltersets(logger, cfg.Filtersets, cfg.Filters)
+	filtersets, err := parseFiltersets(logger, cfg.Filtersets)
 	if err != nil {
-		level.Error(logger).Log("msg", "Error parsing --include (or --filter)", "err", err)
+		level.Error(logger).Log("msg", "Error parsing --include", "err", err)
 		os.Exit(2)
 	}
 
-	cfg.ProjectIDResource = fmt.Sprintf("projects/%v", *projectID)
 	targetsURL, err := cfg.PrometheusURL.Parse(targets.DefaultAPIEndpoint)
 	if err != nil {
 		panic(err)
@@ -383,30 +324,13 @@ func main() {
 	// works well.
 	config.DefaultQueueConfig.Capacity = 3 * otlp.MaxTimeseriesesPerRequest
 
-	var scf otlp.StorageClientFactory
-
-	if len(cfg.StoreInFilesDirectory) > 0 {
-		err := os.MkdirAll(cfg.StoreInFilesDirectory, 0700)
-		if err != nil {
-			level.Error(logger).Log(
-				"msg", "Failure creating directory.",
-				"err", err)
-			os.Exit(1)
-		}
-		scf = &fileClientFactory{
-			dir:    cfg.StoreInFilesDirectory,
-			logger: log.With(logger, "component", "storage"),
-		}
-	} else {
-		scf = &otlpClientFactory{
-			logger:            log.With(logger, "component", "storage"),
-			projectIDResource: cfg.ProjectIDResource,
-			url:               cfg.StackdriverAddress,
-			timeout:           10 * time.Second,
-			manualResolver:    cfg.manualResolver,
-			security:          cfg.Security,
-			headers:           grpcHeaders,
-		}
+	var scf otlp.StorageClientFactory = &otlpClientFactory{
+		logger:         log.With(logger, "component", "storage"),
+		url:            cfg.StackdriverAddress,
+		timeout:        10 * time.Second,
+		manualResolver: cfg.manualResolver,
+		security:       cfg.Security,
+		headers:        grpcHeaders,
 	}
 
 	queueManager, err := otlp.NewQueueManager(
@@ -426,11 +350,10 @@ func main() {
 		tailer,
 		filtersets,
 		cfg.MetricRenames,
-		retrieval.TargetsWithDiscoveredLabels(targetCache, labels.FromMap(staticLabels)),
+		targetCache,
 		metadataCache,
 		queueManager,
 		cfg.MetricsPrefix,
-		cfg.UseGKEResource,
 	)
 
 	// Exclude kingpin default flags to expose only Prometheus ones.
@@ -447,6 +370,7 @@ func main() {
 		conntrack.DialWithTracing(),
 	)
 
+	// TODO: this should be _if_ the prom monitoring is selected
 	http.Handle("/metrics", promhttp.Handler())
 
 	var g group.Group
@@ -562,53 +486,27 @@ func main() {
 }
 
 type otlpClientFactory struct {
-	logger            log.Logger
-	projectIDResource string
-	url               *url.URL
-	timeout           time.Duration
-	manualResolver    *manual.Resolver
-	security          securityConfig
-	headers           grpcMetadata.MD
+	logger         log.Logger
+	url            *url.URL
+	timeout        time.Duration
+	manualResolver *manual.Resolver
+	security       securityConfig
+	headers        grpcMetadata.MD
 }
 
 func (s *otlpClientFactory) New() otlp.StorageClient {
 	return otlp.NewClient(&otlp.ClientConfig{
-		Logger:    s.logger,
-		ProjectID: s.projectIDResource,
-		URL:       s.url,
-		Timeout:   s.timeout,
-		Resolver:  s.manualResolver,
-		CertFile:  s.security.ServerCertificate,
-		Headers:   s.headers,
+		Logger:   s.logger,
+		URL:      s.url,
+		Timeout:  s.timeout,
+		Resolver: s.manualResolver,
+		CertFile: s.security.ServerCertificate,
+		Headers:  s.headers,
 	})
 }
 
 func (s *otlpClientFactory) Name() string {
 	return s.url.String()
-}
-
-// fileClientFactory generates StorageClient which writes to a newly
-// created file under dir. It requires dir an existing valid directory.
-type fileClientFactory struct {
-	dir    string
-	logger log.Logger
-}
-
-// New creates an instance of otlp.StorageClient. Each instance
-// writes to a different file under dir. The returned instance is not
-// thread-safe.
-func (fcf *fileClientFactory) New() otlp.StorageClient {
-	f, err := ioutil.TempFile(fcf.dir, "*.txt")
-	if err != nil {
-		level.Error(fcf.logger).Log(
-			"msg", "failure creating files.",
-			"err", err)
-	}
-	return otlp.NewExportMetricsServiceRequestWriterCloser(f, fcf.logger)
-}
-
-func (fcf *fileClientFactory) Name() string {
-	return "fileClientFactory"
 }
 
 func waitForPrometheus(ctx context.Context, logger log.Logger, promURL *url.URL) {
@@ -638,17 +536,8 @@ func waitForPrometheus(ctx context.Context, logger log.Logger, promURL *url.URL)
 
 // parseFiltersets parses two flags that contain PromQL-style metric/label selectors and
 // returns a list of the resulting matchers.
-func parseFiltersets(logger log.Logger, filtersets, filters []string) ([][]*labels.Matcher, error) {
+func parseFiltersets(logger log.Logger, filtersets []string) ([][]*labels.Matcher, error) {
 	var matchers [][]*labels.Matcher
-	if len(filters) > 0 {
-		level.Warn(logger).Log("msg", "--filter is deprecated; please use --include instead")
-		f := fmt.Sprintf("{%s}", strings.Join(filters, ","))
-		m, err := promql.ParseMetricSelector(f)
-		if err != nil {
-			return nil, errors.Errorf("cannot parse --filter flag (metric filter '%s'): %q", f, err)
-		}
-		matchers = append(matchers, m)
-	}
 	for _, f := range filtersets {
 		m, err := promql.ParseMetricSelector(f)
 		if err != nil {
@@ -657,40 +546,6 @@ func parseFiltersets(logger log.Logger, filtersets, filters []string) ([][]*labe
 		matchers = append(matchers, m)
 	}
 	return matchers, nil
-}
-
-func getGCEProjectID() string {
-	if !md.OnGCE() {
-		return ""
-	}
-	if id, err := md.ProjectID(); err == nil {
-		return strings.TrimSpace(id)
-	}
-	return ""
-}
-
-func fillMetadata(staticConfig *map[string]string) {
-	if !md.OnGCE() {
-		return
-	}
-	if (*staticConfig)[retrieval.ProjectIDLabel] == "" {
-		if id, err := md.ProjectID(); err == nil {
-			id = strings.TrimSpace(id)
-			(*staticConfig)[retrieval.ProjectIDLabel] = id
-		}
-	}
-	if (*staticConfig)[retrieval.KubernetesLocationLabel] == "" {
-		if l, err := md.InstanceAttributeValue("cluster-location"); err == nil {
-			l = strings.TrimSpace(l)
-			(*staticConfig)[retrieval.KubernetesLocationLabel] = l
-		}
-	}
-	if (*staticConfig)[retrieval.KubernetesClusterNameLabel] == "" {
-		if cn, err := md.InstanceAttributeValue("cluster-name"); err == nil {
-			cn = strings.TrimSpace(cn)
-			(*staticConfig)[retrieval.KubernetesClusterNameLabel] = cn
-		}
-	}
 }
 
 func parseConfigFile(filename string) (map[string]string, []*metadata.Entry, error) {

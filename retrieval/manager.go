@@ -77,7 +77,6 @@ func NewPrometheusReader(
 	metadataGetter MetadataGetter,
 	appender Appender,
 	metricsPrefix string,
-	useGkeResource bool,
 ) *PrometheusReader {
 	if logger == nil {
 		logger = log.NewNopLogger()
@@ -93,7 +92,6 @@ func NewPrometheusReader(
 		progressSaveInterval: time.Minute,
 		metricRenames:        metricRenames,
 		metricsPrefix:        metricsPrefix,
-		useGkeResource:       useGkeResource,
 	}
 }
 
@@ -108,7 +106,6 @@ type PrometheusReader struct {
 	appender             Appender
 	progressSaveInterval time.Duration
 	metricsPrefix        string
-	useGkeResource       bool
 }
 
 var (
@@ -148,7 +145,6 @@ func (r *PrometheusReader) Run(ctx context.Context, startOffset int) error {
 		r.targetGetter,
 		r.metadataGetter,
 		r.metricsPrefix,
-		r.useGkeResource,
 	)
 	go seriesCache.run(ctx)
 
