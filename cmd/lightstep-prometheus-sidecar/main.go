@@ -171,8 +171,6 @@ type grpcConfig struct {
 	Headers []string `json:"headers"`
 }
 
-// Note: When adding a new config field, consider adding it to
-// statusz-tmpl.html
 type mainConfig struct {
 	ConfigFilename        string
 	ProjectIDResource     string
@@ -185,7 +183,6 @@ type mainConfig struct {
 	WALDirectory          string
 	PrometheusURL         *url.URL
 	ListenAddress         string
-	EnableStatusz         bool
 	Filters               []string
 	Filtersets            []string
 	MetricRenames         map[string]string
@@ -257,9 +254,6 @@ func main() {
 
 	a.Flag("web.listen-address", "Address to listen on for UI, API, and telemetry.").
 		Default("0.0.0.0:9091").StringVar(&cfg.ListenAddress)
-
-	a.Flag("web.enable-statusz", "If true, then enables a /statusz endpoint on the web server with diagnostic information.").
-		Default("true").BoolVar(&cfg.EnableStatusz)
 
 	a.Flag("include", "PromQL metric and label matcher which must pass for a series to be forwarded to Stackdriver. If repeated, the series must pass any of the filter sets to be forwarded.").
 		StringsVar(&cfg.Filtersets)
@@ -501,14 +495,6 @@ func main() {
 	)
 
 	http.Handle("/metrics", promhttp.Handler())
-
-	if cfg.EnableStatusz {
-		http.Handle("/statusz", &statuszHandler{
-			logger:    logger,
-			projectID: *projectID,
-			cfg:       &cfg,
-		})
-	}
 
 	var g group.Group
 	{
