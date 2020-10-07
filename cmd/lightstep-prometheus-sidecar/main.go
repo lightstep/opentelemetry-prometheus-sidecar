@@ -32,7 +32,6 @@ import (
 
 	md "cloud.google.com/go/compute/metadata"
 	oc_prometheus "contrib.go.opencensus.io/exporter/prometheus"
-	oc_stackdriver "contrib.go.opencensus.io/exporter/stackdriver"
 	"github.com/ghodss/yaml"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -55,7 +54,6 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"go.opencensus.io/plugin/ocgrpc"
 	"go.opencensus.io/plugin/ochttp"
-	"go.opencensus.io/resource"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
@@ -73,7 +71,7 @@ var (
 	// UptimeMeasure is a cumulative metric.
 	UptimeMeasure = stats.Int64(
 		"agent.googleapis.com/agent/uptime",
-		"uptime of the Stackdriver Prometheus collector",
+		"uptime of the OpenTelemetry Prometheus collector",
 		stats.UnitSeconds)
 )
 
@@ -329,31 +327,6 @@ func main() {
 				os.Exit(1)
 			}
 			view.RegisterExporter(promExporter)
-		case "stackdriver":
-			const reportingInterval = 60 * time.Second
-			sd, err := oc_stackdriver.NewExporter(oc_stackdriver.Options{
-				ProjectID: *projectID,
-				// If the OpenCensus resource environment variables aren't set, the monitored resource will likely fall back to `generic_task`.
-				ResourceDetector:  resource.FromEnv,
-				ReportingInterval: reportingInterval,
-				// Disable default `opencensus_task` label.
-				DefaultMonitoringLabels: &oc_stackdriver.Labels{},
-				GetMetricType: func(v *view.View) string {
-					// Curated metrics produced by this process.
-					if strings.Contains(v.Name, "agent.googleapis.com") {
-						return v.Name
-					}
-					// Default OpenCensus behavior.
-					return path.Join("custom.googleapis.com", "opencensus", v.Name)
-				},
-			})
-			if err != nil {
-				level.Error(logger).Log("msg", "Creating Stackdriver exporter failed", "err", err)
-				os.Exit(1)
-			}
-			defer sd.Flush()
-			view.RegisterExporter(sd)
-			view.SetReportingPeriod(reportingInterval)
 		default:
 			level.Error(logger).Log("msg", "Unknown monitoring backend", "backend", backend)
 			os.Exit(1)
@@ -553,7 +526,7 @@ func main() {
 			},
 			func(err error) {
 				if err := queueManager.Stop(); err != nil {
-					level.Error(logger).Log("msg", "Error stopping Stackdriver writer", "err", err)
+					level.Error(logger).Log("msg", "Error stopping OpenTelemetry writer", "err", err)
 				}
 				close(cancel)
 			},
