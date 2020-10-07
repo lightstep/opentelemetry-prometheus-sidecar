@@ -77,7 +77,6 @@ func NewPrometheusReader(
 	metadataGetter MetadataGetter,
 	appender Appender,
 	metricsPrefix string,
-	useGkeResource bool,
 ) *PrometheusReader {
 	if logger == nil {
 		logger = log.NewNopLogger()
@@ -93,7 +92,6 @@ func NewPrometheusReader(
 		progressSaveInterval: time.Minute,
 		metricRenames:        metricRenames,
 		metricsPrefix:        metricsPrefix,
-		useGkeResource:       useGkeResource,
 	}
 }
 
@@ -108,12 +106,11 @@ type PrometheusReader struct {
 	appender             Appender
 	progressSaveInterval time.Duration
 	metricsPrefix        string
-	useGkeResource       bool
 }
 
 var (
 	samplesProcessed = stats.Int64("prometheus_sidecar/samples_processed", "Number of WAL samples processed", stats.UnitDimensionless)
-	samplesProduced  = stats.Int64("prometheus_sidecar/samples_produced", "Number of Stackdriver samples produced", stats.UnitDimensionless)
+	samplesProduced  = stats.Int64("prometheus_sidecar/samples_produced", "Number of Metric samples produced", stats.UnitDimensionless)
 )
 
 func init() {
@@ -131,7 +128,7 @@ func init() {
 	})
 	view.Register(&view.View{
 		Name:        "prometheus_sidecar/samples_produced",
-		Description: "Number of Stackdriver samples produced",
+		Description: "Number of samples produced",
 		Measure:     samplesProduced,
 		Aggregation: view.Sum(),
 	})
@@ -148,7 +145,6 @@ func (r *PrometheusReader) Run(ctx context.Context, startOffset int) error {
 		r.targetGetter,
 		r.metadataGetter,
 		r.metricsPrefix,
-		r.useGkeResource,
 	)
 	go seriesCache.run(ctx)
 
@@ -249,7 +245,7 @@ Outer:
 }
 
 const (
-	progressFilename     = "stackdriver_sidecar.json"
+	progressFilename     = "opentelemetry_sidecar.json"
 	progressBufferMargin = 512 * 1024
 )
 
