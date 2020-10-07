@@ -110,7 +110,7 @@ type PrometheusReader struct {
 
 var (
 	samplesProcessed = stats.Int64("prometheus_sidecar/samples_processed", "Number of WAL samples processed", stats.UnitDimensionless)
-	samplesProduced  = stats.Int64("prometheus_sidecar/samples_produced", "Number of Stackdriver samples produced", stats.UnitDimensionless)
+	samplesProduced  = stats.Int64("prometheus_sidecar/samples_produced", "Number of Metric samples produced", stats.UnitDimensionless)
 )
 
 func init() {
@@ -128,7 +128,7 @@ func init() {
 	})
 	view.Register(&view.View{
 		Name:        "prometheus_sidecar/samples_produced",
-		Description: "Number of Stackdriver samples produced",
+		Description: "Number of samples produced",
 		Measure:     samplesProduced,
 		Aggregation: view.Sum(),
 	})
@@ -245,7 +245,7 @@ Outer:
 }
 
 const (
-	progressFilename     = "stackdriver_sidecar.json"
+	progressFilename     = "opentelemetry_sidecar.json"
 	progressBufferMargin = 512 * 1024
 )
 

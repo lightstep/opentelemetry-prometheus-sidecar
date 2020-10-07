@@ -372,7 +372,7 @@ Loop:
 		return nil, 0, samples[consumed:], nil
 	}
 	// We do not assume that the buckets in the sample batch are in order, so we sort them again here.
-	// The code below relies on this to convert between Prometheus's and Stackdriver's bucketing approaches.
+	// The code below relies on this to convert between Prometheus's and the output's bucketing approaches.
 	sort.Sort(&dist)
 	// Reuse slices we already populated to build final bounds and values.
 	var (

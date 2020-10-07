@@ -36,7 +36,7 @@ import (
 
 var (
 	droppedSeries = stats.Int64("prometheus_sidecar/dropped_series",
-		"Number of series that were dropped instead of being sent to Stackdriver", stats.UnitDimensionless)
+		"Number of series that were dropped instead of being sent to OpenTelemetry", stats.UnitDimensionless)
 
 	keyReason, _ = tag.NewKey("reason")
 )
@@ -54,7 +54,7 @@ type tsDesc struct {
 func init() {
 	if err := view.Register(&view.View{
 		Name:        "prometheus_sidecar/dropped_series",
-		Description: "Number of series that were dropped instead of being sent to Stackdriver",
+		Description: "Number of series that were dropped instead of being sent to OpenTelemetry",
 		Measure:     droppedSeries,
 		TagKeys:     []tag.Key{keyReason},
 		Aggregation: view.Count(),
@@ -332,8 +332,8 @@ func (c *seriesCache) refresh(ctx context.Context, ref uint64) error {
 	entryLabels := pkgLabels(entry.lset)
 
 	// Probe for the target, its applicable resource, and the series metadata.
-	// They will be used subsequently for all other Prometheus series that map to the same complex
-	// Stackdriver series.
+	// They will be used subsequently for all other Prometheus series that map to the same
+	// OpenTelemetry series.
 	// If either of those pieces of data is missing, the series will be skipped.
 	target, err := c.targets.Get(ctx, entryLabels)
 	if err != nil {

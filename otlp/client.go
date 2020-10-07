@@ -72,26 +72,24 @@ func init() {
 // implementation may hit a single backend, so the application should create a
 // number of these clients.
 type Client struct {
-	logger    log.Logger
-	projectID string
-	url       *url.URL
-	timeout   time.Duration
-	resolver  *manual.Resolver
-	certFile  string
-	headers   grpcMetadata.MD
+	logger   log.Logger
+	url      *url.URL
+	timeout  time.Duration
+	resolver *manual.Resolver
+	certFile string
+	headers  grpcMetadata.MD
 
 	conn *grpc.ClientConn
 }
 
 // ClientConfig configures a Client.
 type ClientConfig struct {
-	Logger    log.Logger
-	ProjectID string // The Stackdriver project ID in "projects/name-or-number" format.
-	URL       *url.URL
-	Timeout   time.Duration
-	Resolver  *manual.Resolver
-	CertFile  string
-	Headers   grpcMetadata.MD
+	Logger   log.Logger
+	URL      *url.URL
+	Timeout  time.Duration
+	Resolver *manual.Resolver
+	CertFile string
+	Headers  grpcMetadata.MD
 }
 
 // NewClient creates a new Client.
@@ -101,13 +99,12 @@ func NewClient(conf *ClientConfig) *Client {
 		logger = log.NewNopLogger()
 	}
 	return &Client{
-		logger:    logger,
-		projectID: conf.ProjectID,
-		url:       conf.URL,
-		timeout:   conf.Timeout,
-		resolver:  conf.Resolver,
-		certFile:  conf.CertFile,
-		headers:   conf.Headers,
+		logger:   logger,
+		url:      conf.URL,
+		timeout:  conf.Timeout,
+		resolver: conf.Resolver,
+		certFile: conf.CertFile,
+		headers:  conf.Headers,
 	}
 }
 
