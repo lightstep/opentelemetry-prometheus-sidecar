@@ -60,7 +60,6 @@ import (
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
 	grpcMetadata "google.golang.org/grpc/metadata"
-	"google.golang.org/grpc/resolver"
 	"google.golang.org/grpc/resolver/manual"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
@@ -187,7 +186,6 @@ type mainConfig struct {
 	Filtersets            []string
 	MetricRenames         map[string]string
 	StaticMetadata        []*metadata.Entry
-	UseRestrictedIPs      bool
 	manualResolver        *manual.Resolver
 	MonitoringBackends    []string
 	PromlogConfig         promlog.Config
@@ -217,9 +215,6 @@ func main() {
 
 	a.Flag("stackdriver.api-address", "Address of the Stackdriver Monitoring API.").
 		Default("https://monitoring.googleapis.com:443/").URLVar(&cfg.StackdriverAddress)
-
-	a.Flag("stackdriver.use-restricted-ips", "If true, send all requests through restricted VIPs (EXPERIMENTAL).").
-		Default("false").BoolVar(&cfg.UseRestrictedIPs)
 
 	a.Flag("stackdriver.kubernetes.location", "Value of the 'location' label in the Kubernetes Stackdriver MonitoredResources.").
 		StringVar(&cfg.KubernetesLabels.Location)
@@ -386,21 +381,6 @@ func main() {
 	}
 
 	cfg.ProjectIDResource = fmt.Sprintf("projects/%v", *projectID)
-	if cfg.UseRestrictedIPs {
-		// manual.GenerateAndRegisterManualResolver generates a Resolver and a random scheme.
-		// It also registers the resolver. rb.InitialAddrs adds the addresses we are using
-		// to resolve GCP API calls to the resolver.
-		cfg.manualResolver, _ = manual.GenerateAndRegisterManualResolver()
-		// These IP addresses correspond to restricted.googleapis.com and are not expected to change.
-		cfg.manualResolver.InitialState(resolver.State{
-			Addresses: []resolver.Address{
-				{Addr: "199.36.153.4:443"},
-				{Addr: "199.36.153.5:443"},
-				{Addr: "199.36.153.6:443"},
-				{Addr: "199.36.153.7:443"},
-			},
-		})
-	}
 	targetsURL, err := cfg.PrometheusURL.Parse(targets.DefaultAPIEndpoint)
 	if err != nil {
 		panic(err)
