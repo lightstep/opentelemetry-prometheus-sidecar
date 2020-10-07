@@ -125,16 +125,6 @@ func init() {
 	}
 }
 
-type kubernetesConfig struct {
-	Location    string
-	ClusterName string
-}
-
-type genericConfig struct {
-	Location  string
-	Namespace string
-}
-
 type metricRenamesConfig struct {
 	From string `json:"from"`
 	To   string `json:"to"`
@@ -161,20 +151,20 @@ type grpcConfig struct {
 }
 
 type mainConfig struct {
-	ConfigFilename     string
-	StackdriverAddress *url.URL
-	MetricsPrefix      string
-	WALDirectory       string
-	PrometheusURL      *url.URL
-	ListenAddress      string
-	Filtersets         []string
-	MetricRenames      map[string]string
-	StaticMetadata     []*metadata.Entry
-	manualResolver     *manual.Resolver
-	MonitoringBackends []string
-	PromlogConfig      promlog.Config
-	Security           securityConfig
-	GRPC               grpcConfig
+	ConfigFilename       string
+	OpenTelemetryAddress *url.URL
+	MetricsPrefix        string
+	WALDirectory         string
+	PrometheusURL        *url.URL
+	ListenAddress        string
+	Filtersets           []string
+	MetricRenames        map[string]string
+	StaticMetadata       []*metadata.Entry
+	manualResolver       *manual.Resolver
+	MonitoringBackends   []string
+	PromlogConfig        promlog.Config
+	Security             securityConfig
+	GRPC                 grpcConfig
 }
 
 func main() {
@@ -193,10 +183,10 @@ func main() {
 
 	a.Flag("config-file", "A configuration file.").StringVar(&cfg.ConfigFilename)
 
-	a.Flag("stackdriver.api-address", "Address of the Stackdriver Monitoring API.").
-		Default("").URLVar(&cfg.StackdriverAddress)
+	a.Flag("opentelemetry.api-address", "Address of the OpenTelemetry Metrics API.").
+		Default("").URLVar(&cfg.OpenTelemetryAddress)
 
-	a.Flag("stackdriver.metrics-prefix", "Customized prefix for exporter metrics. If not set, none will be used").
+	a.Flag("opentelemetry.metrics-prefix", "Customized prefix for exporter metrics. If not set, none will be used").
 		StringVar(&cfg.MetricsPrefix)
 
 	a.Flag("prometheus.wal-directory", "Directory from where to read the Prometheus TSDB WAL.").
@@ -211,7 +201,7 @@ func main() {
 	a.Flag("web.listen-address", "Address to listen on for UI, API, and telemetry.").
 		Default("0.0.0.0:9091").StringVar(&cfg.ListenAddress)
 
-	a.Flag("include", "PromQL metric and label matcher which must pass for a series to be forwarded to Stackdriver. If repeated, the series must pass any of the filter sets to be forwarded.").
+	a.Flag("include", "PromQL metric and label matcher which must pass for a series to be forwarded to OpenTelemetry. If repeated, the series must pass any of the filter sets to be forwarded.").
 		StringsVar(&cfg.Filtersets)
 
 	a.Flag("security.server-certificate", "Public certificate for the server to use for TLS connections (e.g., server.crt, in pem format).").
@@ -326,7 +316,7 @@ func main() {
 
 	var scf otlp.StorageClientFactory = &otlpClientFactory{
 		logger:         log.With(logger, "component", "storage"),
-		url:            cfg.StackdriverAddress,
+		url:            cfg.OpenTelemetryAddress,
 		timeout:        10 * time.Second,
 		manualResolver: cfg.manualResolver,
 		security:       cfg.Security,
