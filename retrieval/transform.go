@@ -23,6 +23,7 @@ import (
 
 	"github.com/lightstep/lightstep-prometheus-sidecar/metadata"
 	"github.com/pkg/errors"
+	"github.com/prometheus/common/version"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/textparse"
 	"github.com/prometheus/tsdb"
@@ -37,7 +38,6 @@ const (
 	otlpCUMULATIVE = metric_pb.AggregationTemporality_AGGREGATION_TEMPORALITY_CUMULATIVE
 
 	promInstLibrary = "github.com/lightstep/lightstep-prometheus-sidecar"
-	promInstVersion = "0.1"
 )
 
 // Appender appends a time series with exactly one data point. A hash for the series
@@ -229,7 +229,7 @@ func protoTimeseries(desc *tsDesc) (*metric_pb.ResourceMetrics, *metric_pb.Metri
 			&metric_pb.InstrumentationLibraryMetrics{
 				InstrumentationLibrary: &common_pb.InstrumentationLibrary{
 					Name:    promInstLibrary,
-					Version: promInstVersion,
+					Version: version.Version,
 				},
 				Metrics: []*metric_pb.Metric{metric},
 			},

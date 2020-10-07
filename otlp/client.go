@@ -16,7 +16,9 @@ package otlp
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"net/url"
 	"strconv"
@@ -32,7 +34,7 @@ import (
 	"google.golang.org/grpc/balancer/roundrobin"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/oauth"
+	grpcMetadata "google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/resolver/manual"
 	"google.golang.org/grpc/status"
 
@@ -43,7 +45,6 @@ import (
 
 const (
 	MaxTimeseriesesPerRequest = 200
-	MonitoringWriteScope      = "https://www.googleapis.com/auth/monitoring.write"
 )
 
 var (
@@ -76,6 +77,8 @@ type Client struct {
 	url       *url.URL
 	timeout   time.Duration
 	resolver  *manual.Resolver
+	certFile  string
+	headers   grpcMetadata.MD
 
 	conn *grpc.ClientConn
 }
@@ -87,6 +90,8 @@ type ClientConfig struct {
 	URL       *url.URL
 	Timeout   time.Duration
 	Resolver  *manual.Resolver
+	CertFile  string
+	Headers   grpcMetadata.MD
 }
 
 // NewClient creates a new Client.
@@ -101,6 +106,8 @@ func NewClient(conf *ClientConfig) *Client {
 		url:       conf.URL,
 		timeout:   conf.Timeout,
 		resolver:  conf.Resolver,
+		certFile:  conf.CertFile,
+		headers:   conf.Headers,
 	}
 }
 
@@ -109,7 +116,7 @@ type recoverableError struct {
 }
 
 // version.* is populated for 'promu' builds, so this will look broken in unit tests.
-var userAgent = fmt.Sprintf("StackdriverPrometheus/%s", version.Version)
+var userAgent = fmt.Sprintf("OpenTelemetryPrometheus/%s", version.Version)
 
 func (c *Client) getConnection(ctx context.Context) (*grpc.ClientConn, error) {
 	if c.conn != nil {
@@ -134,14 +141,25 @@ func (c *Client) getConnection(ctx context.Context) (*grpc.ClientConn, error) {
 		grpc.WithStatsHandler(&ocgrpc.ClientHandler{}),
 	}
 	if useAuth {
-		rpcCreds, err := oauth.NewApplicationDefault(context.Background(), MonitoringWriteScope)
-		if err != nil {
-			return nil, err
+		var tcfg tls.Config
+		if c.certFile != "" {
+			certPool := x509.NewCertPool()
+			bs, err := ioutil.ReadFile(c.certFile)
+			if err != nil {
+				return nil, fmt.Errorf("could not read certificate authority certificate: %s: %w", c.certFile, err)
+			}
+
+			ok := certPool.AppendCertsFromPEM(bs)
+			if !ok {
+				return nil, fmt.Errorf("could not parse certificate authority certificate: %s: %w", c.certFile, err)
+			}
+
+			tcfg = tls.Config{
+				ServerName: c.url.Hostname(),
+				RootCAs:    certPool,
+			}
 		}
-		tlsCreds := credentials.NewTLS(&tls.Config{})
-		dopts = append(dopts,
-			grpc.WithTransportCredentials(tlsCreds),
-			grpc.WithPerRPCCredentials(rpcCreds))
+		dopts = append(dopts, grpc.WithTransportCredentials(credentials.NewTLS(&tcfg)))
 	} else {
 		dopts = append(dopts, grpc.WithInsecure())
 	}
@@ -191,7 +209,7 @@ func (c *Client) Store(req *metricsService.ExportMetricsServiceRequest) error {
 			req_copy := &metricsService.ExportMetricsServiceRequest{
 				ResourceMetrics: req.ResourceMetrics[begin:end],
 			}
-			_, err := service.Export(ctx, req_copy)
+			_, err := service.Export(grpcMetadata.NewOutgoingContext(ctx, c.headers), req_copy)
 			if err == nil {
 				// The response is empty if all points were successfully written.
 				stats.RecordWithTags(ctx,

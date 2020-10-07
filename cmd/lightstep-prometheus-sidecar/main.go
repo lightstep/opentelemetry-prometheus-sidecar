@@ -59,6 +59,7 @@ import (
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
+	grpcMetadata "google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/resolver"
 	"google.golang.org/grpc/resolver/manual"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
@@ -162,6 +163,14 @@ type fileConfig struct {
 	AggregatedCounters []aggregatedCountersConfig `json:"aggregated_counters"`
 }
 
+type securityConfig struct {
+	ServerCertificate string `json:"server_certificate"`
+}
+
+type grpcConfig struct {
+	Headers []string `json:"headers"`
+}
+
 // Note: When adding a new config field, consider adding it to
 // statusz-tmpl.html
 type mainConfig struct {
@@ -185,6 +194,8 @@ type mainConfig struct {
 	manualResolver        *manual.Resolver
 	MonitoringBackends    []string
 	PromlogConfig         promlog.Config
+	Security              securityConfig
+	GRPC                  grpcConfig
 }
 
 func main() {
@@ -238,7 +249,7 @@ func main() {
 	a.Flag("prometheus.wal-directory", "Directory from where to read the Prometheus TSDB WAL.").
 		Default("data/wal").StringVar(&cfg.WALDirectory)
 
-	a.Flag("prometheus.api-address", "Address to listen on for UI, API, and telemetry.").
+	a.Flag("prometheus.api-address", "Address to listen on for UI, API, and telemetry.  Use ?auth=false for an insecure connection.").
 		Default("http://127.0.0.1:9090/").URLVar(&cfg.PrometheusURL)
 
 	a.Flag("monitoring.backend", "Monitoring backend(s) for internal metrics").Default("prometheus").
@@ -255,6 +266,12 @@ func main() {
 
 	a.Flag("filter", "PromQL-style matcher for a single label which must pass for a series to be forwarded to Stackdriver. If repeated, the series must pass all filters to be forwarded. Deprecated, please use --include instead.").
 		StringsVar(&cfg.Filters)
+
+	a.Flag("security.server-certificate", "Public certificate for the server to use for TLS connections (e.g., server.crt, in pem format).").
+		StringVar(&cfg.Security.ServerCertificate)
+
+	a.Flag("grpc.header", "Headers for gRPC connection (e.g., MyHeader=Value1). May be repeated.").
+		StringsVar(&cfg.GRPC.Headers)
 
 	promlogflag.AddFlags(a, &cfg.PromlogConfig)
 
@@ -275,10 +292,21 @@ func main() {
 		}
 	}
 
-	level.Info(logger).Log("msg", "Starting Stackdriver Prometheus sidecar", "version", version.Info())
+	level.Info(logger).Log("msg", "Starting OpenTelemetry Prometheus sidecar", "version", version.Info())
 	level.Info(logger).Log("build_context", version.BuildContext())
 	level.Info(logger).Log("host_details", Uname())
 	level.Info(logger).Log("fd_limits", FdLimits())
+
+	grpcHeadersMap := map[string]string{}
+	for _, hdr := range cfg.GRPC.Headers {
+		kvs := strings.SplitN(hdr, "=", 2)
+		if len(kvs) != 2 {
+			level.Error(logger).Log("msg", "grpc header should have key=value syntax", "ex", hdr)
+			os.Exit(2)
+		}
+		grpcHeadersMap[kvs[0]] = kvs[1]
+	}
+	grpcHeaders := grpcMetadata.New(grpcHeadersMap)
 
 	// We instantiate a context here since the tailer is used by two other components.
 	// The context will be used in the lifecycle of prometheusReader further down.
@@ -423,12 +451,14 @@ func main() {
 			logger: log.With(logger, "component", "storage"),
 		}
 	} else {
-		scf = &stackdriverClientFactory{
+		scf = &otlpClientFactory{
 			logger:            log.With(logger, "component", "storage"),
 			projectIDResource: cfg.ProjectIDResource,
 			url:               cfg.StackdriverAddress,
 			timeout:           10 * time.Second,
 			manualResolver:    cfg.manualResolver,
+			security:          cfg.Security,
+			headers:           grpcHeaders,
 		}
 	}
 
@@ -551,7 +581,7 @@ func main() {
 				if err := queueManager.Start(); err != nil {
 					return err
 				}
-				level.Info(logger).Log("msg", "Stackdriver client started")
+				level.Info(logger).Log("msg", "OpenTelemetry client started")
 				<-cancel
 				return nil
 			},
@@ -592,25 +622,29 @@ func main() {
 	level.Info(logger).Log("msg", "See you next time!")
 }
 
-type stackdriverClientFactory struct {
+type otlpClientFactory struct {
 	logger            log.Logger
 	projectIDResource string
 	url               *url.URL
 	timeout           time.Duration
 	manualResolver    *manual.Resolver
+	security          securityConfig
+	headers           grpcMetadata.MD
 }
 
-func (s *stackdriverClientFactory) New() otlp.StorageClient {
+func (s *otlpClientFactory) New() otlp.StorageClient {
 	return otlp.NewClient(&otlp.ClientConfig{
 		Logger:    s.logger,
 		ProjectID: s.projectIDResource,
 		URL:       s.url,
 		Timeout:   s.timeout,
 		Resolver:  s.manualResolver,
+		CertFile:  s.security.ServerCertificate,
+		Headers:   s.headers,
 	})
 }
 
-func (s *stackdriverClientFactory) Name() string {
+func (s *otlpClientFactory) Name() string {
 	return s.url.String()
 }
 
