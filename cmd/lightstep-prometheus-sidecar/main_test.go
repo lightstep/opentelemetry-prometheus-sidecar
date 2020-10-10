@@ -17,6 +17,7 @@ import (
 	"bytes"
 	"errors"
 	"net/http"
+	"fmt"
 	"os"
 	"os/exec"
 	"testing"
@@ -25,10 +26,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/google/go-cmp/cmp"
 	"github.com/lightstep/lightstep-prometheus-sidecar/metadata"
-	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/textparse"
-	"github.com/prometheus/prometheus/promql"
-	metric_pb "google.golang.org/genproto/googleapis/api/metric"
 )
 
 func TestMain(m *testing.M) {
@@ -46,7 +44,7 @@ func TestStartupInterrupt(t *testing.T) {
 		t.Skip("skipping test in short mode.")
 	}
 
-	cmd := exec.Command(os.Args[0], "--stackdriver.project-id=1234", "--prometheus.wal-directory=testdata/wal")
+	cmd := exec.Command(os.Args[0], "--prometheus.wal-directory=testdata/wal")
 	cmd.Env = append(os.Environ(), "RUN_MAIN=1")
 	var bout, berr bytes.Buffer
 	cmd.Stdout = &bout
@@ -87,7 +85,7 @@ Loop:
 		time.Sleep(500 * time.Millisecond)
 	}
 
-	t.Logf("stodut: %v\n", bout.String())
+	t.Logf("stdout: %v\n", bout.String())
 	t.Logf("stderr: %v\n", berr.String())
 	if !startedOk {
 		t.Errorf("prometheus-stackdriver-sidecar didn't start in the specified timeout")
@@ -100,32 +98,19 @@ Loop:
 	}
 }
 
-func TestParseWhitelists(t *testing.T) {
+func TestParseFiltersets(t *testing.T) {
 	logger := log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
 	for _, tt := range []struct {
 		name         string
 		filtersets   []string
-		filters      []string
 		wantMatchers int
 	}{
-		{"both filters and filtersets defined",
-			[]string{
-				`metric_name`,
-				`metric_name{label="value"}`,
-			},
-			[]string{
-				`__name__="test1"`,
-				`a1=~"test2.+"`,
-				`a2!="test3"`,
-				`a3!~"test4.*"`,
-			}, 3},
-		{"just filtersets", []string{"metric_name"}, []string{}, 1},
-		{"just filters", []string{}, []string{`__name__="foo"`}, 1},
-		{"neither filtersets nor filters", []string{}, []string{}, 0},
+		{"just filtersets", []string{"metric_name"}, 1},
+		{"no filtersets", []string{}, 0},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			// Test success cases.
-			parsed, err := parseFiltersets(logger, tt.filtersets, tt.filters)
+			parsed, err := parseFiltersets(logger, tt.filtersets)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -139,17 +124,12 @@ func TestParseWhitelists(t *testing.T) {
 	for _, tt := range []struct {
 		name       string
 		filtersets []string
-		filters    []string
 	}{
-		{"Invalid character in key", []string{}, []string{`a-b="1"`}},
-		{"Missing trailing quote", []string{}, []string{`a="1`}},
-		{"Missing leading quote", []string{}, []string{`a=1"`}},
-		{"Invalid operator", []string{}, []string{`a!=="1"`}},
-		{"Invalid operator in filterset", []string{`{a!=="1"}`}, []string{}},
-		{"Empty filterset", []string{""}, []string{}},
+		{"Invalid operator in filterset", []string{`{a!=="1"}`}},
+		{"Empty filterset", []string{""}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			if _, err := parseFiltersets(logger, tt.filtersets, tt.filters); err == nil {
+			if _, err := parseFiltersets(logger, tt.filtersets); err == nil {
 				t.Fatalf("expected error, but got none")
 			}
 		})
@@ -157,13 +137,6 @@ func TestParseWhitelists(t *testing.T) {
 }
 
 func TestProcessFileConfig(t *testing.T) {
-	mustParseMetricSelector := func(input string) []*labels.Matcher {
-		m, err := promql.ParseMetricSelector(input)
-		if err != nil {
-			t.Fatalf("bad test input %v: %v", input, err)
-		}
-		return m
-	}
 	for _, tt := range []struct {
 		name           string
 		config         fileConfig
@@ -189,19 +162,12 @@ func TestProcessFileConfig(t *testing.T) {
 					{Metric: "double_gauge", Type: "gauge", ValueType: "double", Help: "help2"},
 					{Metric: "default_gauge", Type: "gauge"},
 				},
-				AggregatedCounters: []aggregatedCountersConfig{
-					{
-						Metric:  "network_transmit_bytes",
-						Help:    "total number of bytes sent over eth0",
-						Filters: []string{"filter1", "filter2"},
-					},
-				},
 			},
 			map[string]string{"from": "to"},
 			[]*metadata.Entry{
-				&metadata.Entry{Metric: "int64_counter", MetricType: textparse.MetricTypeCounter, ValueType: metric_pb.MetricDescriptor_INT64, Help: "help1"},
-				&metadata.Entry{Metric: "double_gauge", MetricType: textparse.MetricTypeGauge, ValueType: metric_pb.MetricDescriptor_DOUBLE, Help: "help2"},
-				&metadata.Entry{Metric: "default_gauge", MetricType: textparse.MetricTypeGauge},
+				&metadata.Entry{Metric: "int64_counter", MetricType: textparse.MetricTypeCounter, ValueType: metadata.INT64, Help: "help1"},
+				&metadata.Entry{Metric: "double_gauge", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE, Help: "help2"},
+				&metadata.Entry{Metric: "default_gauge", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
 			},
 			nil,
 		},
@@ -210,12 +176,13 @@ func TestProcessFileConfig(t *testing.T) {
 			fileConfig{
 				StaticMetadata: []staticMetadataConfig{{Metric: "int64_default", ValueType: "int64"}},
 			},
-			nil, nil, nil,
+			nil, nil,
 			errors.New("invalid metric type \"\""),
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			renameMappings, staticMetadata, aggregations, err := processFileConfig(tt.config)
+			renameMappings, staticMetadata, err := processFileConfig(tt.config)
+			fmt.Println("ERR", err)
 			if diff := cmp.Diff(tt.renameMappings, renameMappings); diff != "" {
 				t.Errorf("renameMappings mismatch: %v", diff)
 			}
