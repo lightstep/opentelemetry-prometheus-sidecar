@@ -177,15 +177,17 @@ func (c *Cache) Get(ctx context.Context, lset labels.Labels) (*Target, error) {
 	// in DiscoveredLabels.
 	t, _ := targetMatch(ts, lset)
 
-	// Remove __ prefixes from DiscoveredLabels.
-	o := 0
-	for _, l := range t.DiscoveredLabels {
-		if !strings.HasPrefix(l.Name, "__") {
-			t.DiscoveredLabels[o] = l
-			o++
+	if t != nil {
+		// Remove __ prefixes from DiscoveredLabels.
+		o := 0
+		for _, l := range t.DiscoveredLabels {
+			if !strings.HasPrefix(l.Name, "__") {
+				t.DiscoveredLabels[o] = l
+				o++
+			}
 		}
+		t.DiscoveredLabels = t.DiscoveredLabels[:o]
 	}
-	t.DiscoveredLabels = t.DiscoveredLabels[:o]
 	return t, nil
 }
 

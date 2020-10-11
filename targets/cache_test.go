@@ -110,7 +110,7 @@ func TestTargetCache_Success(t *testing.T) {
 		return []*Target{
 			{
 				Labels:           labels.FromStrings("job", "job1", "instance", "instance1"),
-				DiscoveredLabels: labels.FromStrings("__job", "job1", "__instance", "instance1"),
+				DiscoveredLabels: labels.FromStrings("__job", "job1", "__instance", "instance1", "something", "else"),
 			},
 			{Labels: labels.FromStrings("job", "job1", "instance", "instance2")},
 			// Two targets with the same job/instance combination
@@ -125,7 +125,7 @@ func TestTargetCache_Success(t *testing.T) {
 	if !labelsEqual(target1.Labels, labels.FromStrings("job", "job1", "instance", "instance1")) {
 		t.Fatalf("unexpected target labels %s", target1.Labels)
 	}
-	if !labelsEqual(target1.DiscoveredLabels, labels.FromStrings("__job", "job1", "__instance", "instance1")) {
+	if !labelsEqual(target1.DiscoveredLabels, labels.FromStrings("something", "else")) {
 		t.Fatalf("unexpected discovered target labels %s", target1.DiscoveredLabels)
 	}
 	// Get a non-existant target. The first time it should attempt a refresh.
