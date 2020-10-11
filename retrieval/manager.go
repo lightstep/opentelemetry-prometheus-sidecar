@@ -304,6 +304,7 @@ func hashSeries(s tsDesc) uint64 {
 	h := hashNew()
 
 	h = hashAdd(h, s.Name)
+	h = hashAddByte(h, sep)
 
 	// Both lists are sorted
 	for _, l := range s.Labels {

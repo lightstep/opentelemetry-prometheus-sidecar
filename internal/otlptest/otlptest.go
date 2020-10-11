@@ -147,14 +147,23 @@ type Visitor func(
 	point interface{},
 ) error
 
-type visitorState struct {
+type VisitorState struct {
 	invalidCount int
+	pointCount   int
 }
 
-func (vs *visitorState) visitRequest(
+func (vs *VisitorState) PointCount() int {
+	return vs.pointCount
+}
+
+func (vs *VisitorState) InvalidCount() int {
+	return vs.invalidCount
+}
+
+func (vs *VisitorState) Visit(
 	ctx context.Context,
-	request *otlppb.ExportMetricsServiceRequest,
 	visitor Visitor,
+	metrics ...*otlpmetrics.ResourceMetrics,
 ) error {
 	var firstError error
 	noticeError := func(m *otlpmetrics.Metric, err error) {
@@ -168,7 +177,7 @@ func (vs *visitorState) visitRequest(
 		vs.invalidCount++
 	}
 
-	for _, rm := range request.ResourceMetrics {
+	for _, rm := range metrics {
 		res := rm.Resource
 		for _, il := range rm.InstrumentationLibraryMetrics {
 			for _, m := range il.Metrics {
