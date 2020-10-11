@@ -167,7 +167,6 @@ func TestReader_Progress(t *testing.T) {
 	ctx = context.Background()
 
 	for i, s := range recorder.samples {
-		tm := 0.0
 		vs := otlptest.VisitorState{}
 		vs.Visit(ctx, func(
 			resource *resource_pb.Resource,
@@ -182,6 +181,7 @@ func TestReader_Progress(t *testing.T) {
 			if tseconds <= int64(progressOffset)-progressBufferMargin {
 				t.Fatalf("unexpected record %d for offset %d", i, tseconds)
 			}
+			return nil
 		}, s)
 	}
 

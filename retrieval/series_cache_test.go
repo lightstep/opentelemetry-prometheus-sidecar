@@ -242,47 +242,6 @@ func TestSeriesCache_Refresh(t *testing.T) {
 	}
 }
 
-func TestSeriesCache_RefreshUnknownResource(t *testing.T) {
-	logBuffer := &bytes.Buffer{}
-	defer func() {
-		if logBuffer.Len() > 0 {
-			t.Log(logBuffer.String())
-		}
-	}()
-	logger := log.NewLogfmtLogger(logBuffer)
-	targetMap := targetMap{
-		"job1/inst1": &targets.Target{
-			Labels:           promlabels.FromStrings("job", "job1", "instance", "inst1"),
-			DiscoveredLabels: promlabels.FromStrings("__unknown_resource", "resource2_a"),
-		},
-	}
-	metadataMap := metadataMap{
-		"job1/inst1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
-	}
-	c := newSeriesCache(logger, "", nil, nil, targetMap, metadataMap, "")
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	const refID = 1
-	// Set will trigger a refresh.
-	if err := c.set(ctx, refID, labels.FromStrings("__name__", "metric1", "job", "job1", "instance", "inst1"), 5); err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
-	if !strings.Contains(logBuffer.String(), "unknown resource") {
-		t.Errorf("expected error \"unknown resource\", got: %v", logBuffer)
-	}
-
-	// Get shouldn't find data because of the previous error.
-	entry, ok, err := c.get(ctx, refID)
-	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
-	if ok || entry != nil {
-		t.Fatalf("unexpected series entry found: %v", entry)
-	}
-}
-
 func TestSeriesCache_RefreshMetadataNotFound(t *testing.T) {
 	logBuffer := &bytes.Buffer{}
 	defer func() {
