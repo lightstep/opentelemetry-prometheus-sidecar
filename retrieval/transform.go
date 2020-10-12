@@ -68,7 +68,7 @@ func (b *sampleBuilder) next(ctx context.Context, samples []tsdb.RefSample) (*me
 		return nil, 0, samples, errors.Wrap(err, "get series information")
 	}
 	if !ok {
-		// TODO: counter?
+		// TODO: counter?  simple negative lookup
 		return nil, 0, tailSamples, nil
 	}
 

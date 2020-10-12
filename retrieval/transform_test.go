@@ -54,21 +54,25 @@ func TestSampleBuilder(t *testing.T) {
 	var (
 		ResourceMetrics               = otlptest.ResourceMetrics
 		Resource                      = otlptest.Resource
+		ResourceLabels                = otlptest.ResourceLabels
 		KeyValue                      = otlptest.KeyValue
 		InstrumentationLibrary        = otlptest.InstrumentationLibrary
 		InstrumentationLibraryMetrics = otlptest.InstrumentationLibraryMetrics
-		// IntSumCumulativeMonotonic     = otlptest.IntSumCumulativeMonotonic
-		// IntGauge                      = otlptest.IntGauge
-		// IntDataPoint                  = otlptest.IntDataPoint
-		DoubleSumCumulativeMonotonic = otlptest.DoubleSumCumulativeMonotonic
-		DoubleGauge                  = otlptest.DoubleGauge
-		DoubleDataPoint              = otlptest.DoubleDataPoint
-		Labels                       = otlptest.Labels
-		ResourceLabels               = otlptest.ResourceLabels
-		Label                        = otlptest.Label
+		IntSumCumulativeMonotonic     = otlptest.IntSumCumulativeMonotonic
+		IntGauge                      = otlptest.IntGauge
+		IntDataPoint                  = otlptest.IntDataPoint
+		DoubleSumCumulativeMonotonic  = otlptest.DoubleSumCumulativeMonotonic
+		DoubleGauge                   = otlptest.DoubleGauge
+		DoubleDataPoint               = otlptest.DoubleDataPoint
+		Labels                        = otlptest.Labels
+		Label                         = otlptest.Label
 
 		resource2A = ResourceLabels(
-			KeyValue("__resource_a", "resource2_a"),
+			KeyValue("resource_a", "resource2_a"),
+		)
+		resource3A = ResourceLabels(
+			KeyValue("resource_a", "resource3_a"),
+			KeyValue("unused", "xxx"),
 		)
 
 		DoubleCounterPoint = func(
@@ -117,6 +121,53 @@ func TestSampleBuilder(t *testing.T) {
 				),
 			)
 		}
+
+		IntCounterPoint = func(
+			reslab []*common_pb.KeyValue,
+			labels []*common_pb.StringKeyValue,
+			name string,
+			start, end time.Time,
+			value int64,
+		) *metric_pb.ResourceMetrics {
+			return ResourceMetrics(
+				Resource(reslab...),
+				InstrumentationLibraryMetrics(
+					InstrumentationLibrary(promInstLibrary, version.Version),
+					IntSumCumulativeMonotonic(
+						name, "", "",
+						IntDataPoint(
+							labels,
+							start,
+							end,
+							value,
+						),
+					),
+				),
+			)
+		}
+		IntGaugePoint = func(
+			reslab []*common_pb.KeyValue,
+			labels []*common_pb.StringKeyValue,
+			name string,
+			end time.Time,
+			value int64,
+		) *metric_pb.ResourceMetrics {
+			return ResourceMetrics(
+				Resource(reslab...),
+				InstrumentationLibraryMetrics(
+					InstrumentationLibrary(promInstLibrary, version.Version),
+					IntGauge(
+						name, "", "",
+						IntDataPoint(
+							labels,
+							time.Unix(0, 0),
+							end,
+							value,
+						),
+					),
+				),
+			)
+		}
 	)
 	cases := []struct {
 		series       seriesMap
@@ -135,7 +186,7 @@ func TestSampleBuilder(t *testing.T) {
 					"a", "1", "b", "2", "c", "3", "d", "4", "e", "5", "f", "6", "g", "7", "h", "8", "i", "9", "j", "10"),
 				4: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "labelnum_11k",
 					"a", "1", "b", "2", "c", "3", "d", "4", "e", "5", "f", "6", "g", "7", "h", "8", "i", "9", "j", "10", "k", "11"),
-				5: labels.FromStrings("job", "job2", "instance", "instance1", "__name__", "resource_from_metric", "metric_label", "resource3_a", "a", "1"),
+				5: labels.FromStrings("job", "job2", "instance", "instance1", "__name__", "resource_from_metric", "metric_label", "aaa", "a", "1"),
 				6: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric3"),
 				7: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric4"),
 				8: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric5"),
@@ -144,11 +195,11 @@ func TestSampleBuilder(t *testing.T) {
 			targets: targetMap{
 				"job1/instance1": &targets.Target{
 					Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
-					DiscoveredLabels: promlabels.FromStrings("__resource_a", "resource2_a"),
+					DiscoveredLabels: promlabels.FromStrings("resource_a", "resource2_a"),
 				},
 				"job2/instance1": &targets.Target{
 					Labels:           promlabels.FromStrings("job", "job2", "instance", "instance1"),
-					DiscoveredLabels: promlabels.FromStrings("__unused", "xxx"),
+					DiscoveredLabels: promlabels.FromStrings("unused", "xxx", "resource_a", "resource3_a"),
 				},
 			},
 			metadata: metadataMap{
@@ -165,7 +216,7 @@ func TestSampleBuilder(t *testing.T) {
 				// Counter as default value type (double).
 				"job1/instance1/metric6":              &metadata.Entry{Metric: "metric6", MetricType: textparse.MetricTypeCounter},
 				"job1/instance1/labelnum_ok":          &metadata.Entry{Metric: "labelnum_ok", MetricType: textparse.MetricTypeUnknown, ValueType: metadata.DOUBLE},
-				"job1/instance1/labelnum_bad":         &metadata.Entry{Metric: "labelnum_bad", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
+				"job1/instance1/labelnum_11k":         &metadata.Entry{Metric: "labelnum_11k", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
 				"job2/instance1/resource_from_metric": &metadata.Entry{Metric: "resource_from_metric", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
 			},
 			input: []tsdb.RefSample{
@@ -176,17 +227,17 @@ func TestSampleBuilder(t *testing.T) {
 				{Ref: 1, T: 1000, V: 200},
 				{Ref: 3, T: 3000, V: 1},
 				{Ref: 4, T: 4000, V: 2},
-				// {Ref: 5, T: 1000, V: 200},
-				// {Ref: 6, T: 8000, V: 12.5},
-				// {Ref: 7, T: 6000, V: 1},
-				// {Ref: 7, T: 7000, V: 3.5},
+				{Ref: 5, T: 1000, V: 200},
+				{Ref: 6, T: 8000, V: 12.5},
+				{Ref: 7, T: 6000, V: 1},
+				{Ref: 7, T: 7000, V: 3.5},
 				// {Ref: 8, T: 8000, V: 22.5},
 				// {Ref: 9, T: 8000, V: 3},
 				// {Ref: 9, T: 9000, V: 4},
 			},
 			result: []*metric_pb.ResourceMetrics{
 				nil, // Skipped by reset timestamp handling.
-				DoubleCounterPoint( // 1
+				DoubleCounterPoint( // 1: second point in series, first reported.
 					resource2A,
 					Labels(),
 					"metric2",
@@ -194,7 +245,7 @@ func TestSampleBuilder(t *testing.T) {
 					time.Unix(3, 0),
 					2.5,
 				),
-				DoubleCounterPoint( // 2
+				DoubleCounterPoint( // 2: third point in series, secnod reported.
 					resource2A,
 					Labels(),
 					"metric2",
@@ -202,7 +253,7 @@ func TestSampleBuilder(t *testing.T) {
 					time.Unix(4, 0),
 					3.5,
 				),
-				DoubleCounterPoint( // 3
+				DoubleCounterPoint( // 3: A reset
 					// Timestamp set to 1ms before the end time to avoid
 					// conflict, see (*seriesCache).getResetAdjusted().
 					resource2A,
@@ -212,14 +263,14 @@ func TestSampleBuilder(t *testing.T) {
 					time.Unix(5, 0),
 					3,
 				),
-				DoubleGaugePoint( // 4
+				DoubleGaugePoint( // 4: A double Gauge
 					resource2A,
 					Labels(Label("a", "1")),
 					"metric1",
 					time.Unix(1, 0),
 					200,
 				),
-				DoubleGaugePoint( // 5
+				DoubleGaugePoint( // 5: A double gauge w/ 10 keys
 					resource2A,
 					Labels(
 						Label("a", "1"),
@@ -237,7 +288,7 @@ func TestSampleBuilder(t *testing.T) {
 					time.Unix(3, 0),
 					1,
 				),
-				DoubleGaugePoint( // 6
+				DoubleGaugePoint( // 6: A double gauge w/ 11 keys
 					resource2A,
 					Labels(
 						Label("a", "1"),
@@ -255,6 +306,35 @@ func TestSampleBuilder(t *testing.T) {
 					"labelnum_11k",
 					time.Unix(4, 0),
 					2,
+				),
+				DoubleGaugePoint( // 7
+					// A double gauge w/ 2 resource keys and 2 labels
+					resource3A,
+					Labels(
+						Label("a", "1"),
+						Label("metric_label", "aaa"),
+					),
+					"resource_from_metric",
+					time.Unix(1, 0),
+					200,
+				),
+				IntGaugePoint( // 8
+					// An integer gauge: rounding from 12.5 to 13
+					resource2A,
+					Labels(),
+					"metric3",
+					time.Unix(8, 0),
+					13,
+				),
+				nil, // 9; Skipped by reset timestamp handling.
+				IntCounterPoint( // 10
+					// An integer counter.
+					resource2A,
+					Labels(),
+					"metric4",
+					time.Unix(6, 0),
+					time.Unix(7, 0),
+					3,
 				),
 			},
 		},
