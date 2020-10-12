@@ -69,8 +69,17 @@ func Label(key, value string) *otlpcommon.StringKeyValue {
 }
 
 func Labels(kvs ...*otlpcommon.StringKeyValue) []*otlpcommon.StringKeyValue {
+	if len(kvs) == 0 {
+		return []*otlpcommon.StringKeyValue{}
+	}
 	return kvs
+}
 
+func ResourceLabels(kvs ...*otlpcommon.KeyValue) []*otlpcommon.KeyValue {
+	if len(kvs) == 0 {
+		return []*otlpcommon.KeyValue{}
+	}
+	return kvs
 }
 
 func IntSumCumulative(name, desc, unit string, idps ...*otlpmetrics.IntDataPoint) *otlpmetrics.Metric {
@@ -121,6 +130,59 @@ func IntGauge(name, desc, unit string, idps ...*otlpmetrics.IntDataPoint) *otlpm
 		Data: &otlpmetrics.Metric_IntGauge{
 			IntGauge: &otlpmetrics.IntGauge{
 				DataPoints: idps,
+			},
+		},
+	}
+}
+
+func DoubleSumCumulative(name, desc, unit string, ddps ...*otlpmetrics.DoubleDataPoint) *otlpmetrics.Metric {
+
+	return &otlpmetrics.Metric{
+		Name:        name,
+		Description: desc,
+		Unit:        unit,
+		Data: &otlpmetrics.Metric_DoubleSum{
+			DoubleSum: &otlpmetrics.DoubleSum{
+				AggregationTemporality: otlpmetrics.AggregationTemporality_AGGREGATION_TEMPORALITY_CUMULATIVE,
+				IsMonotonic:            false,
+				DataPoints:             ddps,
+			},
+		},
+	}
+}
+
+func DoubleSumCumulativeMonotonic(name, desc, unit string, ddps ...*otlpmetrics.DoubleDataPoint) *otlpmetrics.Metric {
+	return &otlpmetrics.Metric{
+		Name:        name,
+		Description: desc,
+		Unit:        unit,
+		Data: &otlpmetrics.Metric_DoubleSum{
+			DoubleSum: &otlpmetrics.DoubleSum{
+				AggregationTemporality: otlpmetrics.AggregationTemporality_AGGREGATION_TEMPORALITY_CUMULATIVE,
+				IsMonotonic:            true,
+				DataPoints:             ddps,
+			},
+		},
+	}
+}
+
+func DoubleDataPoint(labels []*otlpcommon.StringKeyValue, start, end time.Time, value float64) *otlpmetrics.DoubleDataPoint {
+	return &otlpmetrics.DoubleDataPoint{
+		Labels:            labels,
+		StartTimeUnixNano: uint64(start.UnixNano()),
+		TimeUnixNano:      uint64(end.UnixNano()),
+		Value:             value,
+	}
+}
+
+func DoubleGauge(name, desc, unit string, ddps ...*otlpmetrics.DoubleDataPoint) *otlpmetrics.Metric {
+	return &otlpmetrics.Metric{
+		Name:        name,
+		Description: desc,
+		Unit:        unit,
+		Data: &otlpmetrics.Metric_DoubleGauge{
+			DoubleGauge: &otlpmetrics.DoubleGauge{
+				DataPoints: ddps,
 			},
 		},
 	}
