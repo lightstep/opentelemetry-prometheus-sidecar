@@ -51,7 +51,7 @@ ifdef DEBUG
 endif
 
 # TODO: Reenable staticcheck after removing deprecation warnings.
-all: format build test
+all: format vendor build test
 
 style:
 	@echo ">> checking code style"
@@ -59,11 +59,12 @@ style:
 
 deps:
 	@echo ">> getting dependencies"
-ifdef GO111MODULE
-	GO111MODULE=$(GO111MODULE) $(GO) mod download
-else
-	$(GO) get $(GOOPTS) -t ./...
-endif
+	$(GO) mod download
+
+.PHONY: vendor
+vendor:
+	@echo ">> building vendor dir"
+	$(GO) mod vendor
 
 test-short:
 	@echo ">> running short tests"
