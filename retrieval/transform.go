@@ -435,7 +435,7 @@ func monotonicIntegerPoint(labels []*common_pb.StringKeyValue, start, end int64,
 		Labels:            labels,
 		StartTimeUnixNano: getNanos(start),
 		TimeUnixNano:      getNanos(end),
-		Value:             int64(value),
+		Value:             int64(value + 0.5),
 	}
 	return &metric_pb.IntSum{
 		IsMonotonic:            true,
@@ -462,7 +462,7 @@ func intGauge(labels []*common_pb.StringKeyValue, ts int64, value float64) *metr
 	integer := &metric_pb.IntDataPoint{
 		Labels:       labels,
 		TimeUnixNano: getNanos(ts),
-		Value:        int64(value),
+		Value:        int64(value + 0.5),
 	}
 	return &metric_pb.IntGauge{
 		DataPoints: []*metric_pb.IntDataPoint{integer},

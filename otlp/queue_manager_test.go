@@ -46,6 +46,7 @@ type TestStorageClient struct {
 	wg              sync.WaitGroup
 	mtx             sync.Mutex
 	t               *testing.T
+	checkUniq       bool
 }
 
 type TestPoint struct {
@@ -71,11 +72,12 @@ func newTestSample(name string, timestamp int64, v float64) *metric_pb.ResourceM
 	)
 }
 
-func NewTestStorageClient(t *testing.T) *TestStorageClient {
+func NewTestStorageClient(t *testing.T, checkUniq bool) *TestStorageClient {
 	return &TestStorageClient{
 		receivedSamples: map[string][]TestPoint{},
 		expectedSamples: map[string][]TestPoint{},
 		t:               t,
+		checkUniq:       checkUniq,
 	}
 }
 
@@ -105,9 +107,9 @@ func (c *TestStorageClient) expectSamples(samples []*metric_pb.ResourceMetrics) 
 }
 
 func (c *TestStorageClient) waitForExpectedSamples(t *testing.T) {
-	fmt.Println("Pre-Wait", time.Now())
+	//fmt.Println("Pre-Wait", time.Now())
 	c.wg.Wait()
-	fmt.Println("Post-Wait", time.Now())
+	//fmt.Println("Post-Wait", time.Now())
 
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
@@ -128,7 +130,7 @@ func (c *TestStorageClient) resetExpectedSamples() {
 }
 
 func (c *TestStorageClient) Store(req *metricsService.ExportMetricsServiceRequest) error {
-	fmt.Println("TestStoreClient.Store")
+	//fmt.Println("TestStoreClient.Store")
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 	ctx := context.Background()
@@ -157,14 +159,21 @@ func (c *TestStorageClient) Store(req *metricsService.ExportMetricsServiceReques
 			c.t.Fatalf("unexpected number of points %d: %s", vs.PointCount(), string(d))
 		}
 	}
-	fmt.Println("Now DONE this", len(req.ResourceMetrics))
-	for i, ts := range req.ResourceMetrics {
-		ts.InstrumentationLibraryMetrics[0].Metrics[0].Data = nil
-		for _, prev := range req.ResourceMetrics[:i] {
-			if reflect.DeepEqual(prev, ts) {
-				c.t.Fatalf("found duplicate time series in request: %v", ts)
+	// {
+	// 	data, _ := json.MarshalIndent(req.ResourceMetrics, "", "  ")
+	// 	fmt.Println("Now DONE this", string(data))
+	// }
+	if c.checkUniq {
+		for i, ts := range req.ResourceMetrics {
+			ts.InstrumentationLibraryMetrics[0].Metrics[0].Data = nil
+			for j, prev := range req.ResourceMetrics[:i] {
+				if reflect.DeepEqual(prev, ts) {
+					c.t.Fatalf("found duplicate time series in request: %v: %d != %d", ts, i, j)
+				}
 			}
 		}
+	}
+	for _ = range req.ResourceMetrics {
 		c.wg.Done()
 	}
 	return nil
@@ -204,7 +213,7 @@ func TestSampleDeliverySimple(t *testing.T) {
 		))
 	}
 
-	c := NewTestStorageClient(t)
+	c := NewTestStorageClient(t, true)
 	c.expectSamples(samples)
 
 	cfg := config.DefaultQueueConfig
@@ -249,7 +258,7 @@ func TestSampleDeliveryMultiShard(t *testing.T) {
 		))
 	}
 
-	c := NewTestStorageClient(t)
+	c := NewTestStorageClient(t, true)
 
 	cfg := config.DefaultQueueConfig
 	// flush after each sample, to avoid blocking the test
@@ -303,7 +312,7 @@ func TestSampleDeliveryTimeout(t *testing.T) {
 
 	}
 
-	c := NewTestStorageClient(t)
+	c := NewTestStorageClient(t, true)
 	cfg := config.DefaultQueueConfig
 	cfg.MaxShards = 1
 	cfg.BatchSendDeadline = model.Duration(100 * time.Millisecond)
@@ -355,7 +364,7 @@ func TestSampleDeliveryOrder(t *testing.T) {
 		))
 	}
 
-	c := NewTestStorageClient(t)
+	c := NewTestStorageClient(t, false)
 	c.expectSamples(samples)
 
 	tailer, err := tail.Tail(context.Background(), dir)
