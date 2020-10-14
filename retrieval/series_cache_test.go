@@ -237,7 +237,7 @@ func TestSeriesCache_Refresh(t *testing.T) {
 	if entry == nil || !ok || err != nil {
 		t.Errorf("expected metadata but got none, error: %s", err)
 	}
-	if !entry.exported {
+	if entry == nil || !entry.exported {
 		t.Errorf("expected to get exported entry")
 	}
 }

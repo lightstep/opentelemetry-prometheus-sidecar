@@ -72,6 +72,7 @@ test-short:
 test:
 	@echo ">> running all tests"
 	GO111MODULE=$(GO111MODULE) $(GO) test $(GOOPTS) $(pkgs)
+	GO111MODULE=$(GO111MODULE) $(GO) test -race $(GOOPTS) $(pkgs)
 
 cover:
 	@echo ">> running all tests with coverage"

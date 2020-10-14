@@ -173,7 +173,7 @@ func (c *TestStorageClient) Store(req *metricsService.ExportMetricsServiceReques
 			}
 		}
 	}
-	for _ = range req.ResourceMetrics {
+	for range req.ResourceMetrics {
 		c.wg.Done()
 	}
 	return nil

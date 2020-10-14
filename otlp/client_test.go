@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"net"
 	"net/url"
-	"strings"
 	"testing"
 	"time"
 
@@ -30,7 +29,7 @@ import (
 	"google.golang.org/grpc/resolver/manual"
 )
 
-var longErrMessage = strings.Repeat("[error message]", 10)
+// var longErrMessage = strings.Repeat("[error message]", 10)
 
 func newLocalListener() net.Listener {
 	l, err := net.Listen("tcp", "127.0.0.1:0")

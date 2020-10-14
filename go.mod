@@ -28,14 +28,13 @@ require (
 	github.com/prometheus/prometheus v0.0.0-20190710134608-e5b22494857d
 	github.com/prometheus/tsdb v0.10.0
 	go.opencensus.io v0.22.2
-	golang.org/x/net v0.0.0-20190912160710-24e19bdeb0f2 // indirect
-	golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e // indirect
-	golang.org/x/sys v0.0.0-20190912141932-bc967efca4b8 // indirect
 	golang.org/x/time v0.0.0-20191024005414-555d28b269f0
+	golang.org/x/tools v0.0.0-20201014170642-d1624618ad65 // indirect
 	google.golang.org/appengine v1.6.2 // indirect
 	google.golang.org/genproto v0.0.0-20191115221424-83cc0476cb11
 	google.golang.org/grpc v1.25.1
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
+	honnef.co/go/tools v0.0.1-2020.1.6 // indirect
 )
 
 go 1.14

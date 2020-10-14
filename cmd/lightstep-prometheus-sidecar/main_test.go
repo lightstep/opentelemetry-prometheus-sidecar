@@ -16,8 +16,8 @@ package main
 import (
 	"bytes"
 	"errors"
-	"net/http"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"testing"
