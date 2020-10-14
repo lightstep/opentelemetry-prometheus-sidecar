@@ -24,58 +24,93 @@ import (
 	"testing"
 	"time"
 
-	timestamp_pb "github.com/golang/protobuf/ptypes/timestamp"
+	sidecar "github.com/lightstep/lightstep-prometheus-sidecar"
+	metricsService "github.com/lightstep/lightstep-prometheus-sidecar/internal/opentelemetry-proto-gen/collector/metrics/v1"
+	metric_pb "github.com/lightstep/lightstep-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
+	resource_pb "github.com/lightstep/lightstep-prometheus-sidecar/internal/opentelemetry-proto-gen/resource/v1"
+	"github.com/lightstep/lightstep-prometheus-sidecar/internal/otlptest"
+	"github.com/lightstep/lightstep-prometheus-sidecar/metadata"
 	"github.com/lightstep/lightstep-prometheus-sidecar/tail"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/common/version"
 	"github.com/prometheus/prometheus/config"
-	metric_pb "google.golang.org/genproto/googleapis/api/metric"
-	monitoring_pb "google.golang.org/genproto/googleapis/monitoring/v3"
 )
 
 // TestStorageClient simulates a storage that can store samples and compares it
 // with an expected set.
 // All inserted series must be uniquely identified by their metric type string.
 type TestStorageClient struct {
-	receivedSamples map[string][]*monitoring_pb.TimeSeries
-	expectedSamples map[string][]*monitoring_pb.TimeSeries
+	receivedSamples map[string][]TestPoint
+	expectedSamples map[string][]TestPoint
 	wg              sync.WaitGroup
 	mtx             sync.Mutex
 	t               *testing.T
 }
 
-func newTestSample(name string, start, end int64, v float64) *monitoring_pb.TimeSeries {
-	return &monitoring_pb.TimeSeries{
-		Metric: &metric_pb.Metric{
-			Type: name,
-		},
-		MetricKind: metric_pb.MetricDescriptor_GAUGE,
-		ValueType:  metric_pb.MetricDescriptor_DOUBLE,
-		Points: []*monitoring_pb.Point{{
-			Interval: &monitoring_pb.TimeInterval{
-				StartTime: &timestamp_pb.Timestamp{Seconds: start},
-				EndTime:   &timestamp_pb.Timestamp{Seconds: end},
-			},
-			Value: &monitoring_pb.TypedValue{
-				Value: &monitoring_pb.TypedValue_DoubleValue{v},
-			},
-		}},
-	}
+type TestPoint struct {
+	V float64
+	T time.Time
+}
+
+func newTestSample(name string, start, end int64, v float64) *metric_pb.ResourceMetrics {
+	// TODO `start` is not meaningful here, right?
+	_ = start
+	return otlptest.ResourceMetrics(
+		otlptest.Resource(),
+		otlptest.InstrumentationLibraryMetrics(
+			otlptest.InstrumentationLibrary(sidecar.InstrumentationLibrary, version.Version),
+			otlptest.DoubleGauge(
+				name, "", "",
+				otlptest.DoubleDataPoint(
+					otlptest.Labels(),
+					time.Unix(0, 0),
+					time.Unix(end, 0),
+					v,
+				),
+			),
+		),
+	)
+	// return &metric_pb.ResourceMetrics{
+	// 	Metric: &metric_pb.Metric{
+	// 		Type: name,
+	// 	},
+	// 	MetricKind: metric_pb.MetricDescriptor_GAUGE,
+	// 	ValueType:  metric_pb.MetricDescriptor_DOUBLE,
+	// 	Points: []*metricsService.Point{{
+	// 		Interval: &metricsService.TimeInterval{
+	// 			StartTime: &timestamp_pb.Timestamp{Seconds: start},
+	// 			EndTime:   &timestamp_pb.Timestamp{Seconds: end},
+	// 		},
+	// 		Value: &metricsService.TypedValue{
+	// 			Value: &metricsService.TypedValue_DoubleValue{v},
+	// 		},
+	// 	}},
+	// }
 }
 
 func NewTestStorageClient(t *testing.T) *TestStorageClient {
 	return &TestStorageClient{
-		receivedSamples: map[string][]*monitoring_pb.TimeSeries{},
-		expectedSamples: map[string][]*monitoring_pb.TimeSeries{},
+		receivedSamples: map[string][]TestPoint{},
+		expectedSamples: map[string][]TestPoint{},
 		t:               t,
 	}
 }
 
-func (c *TestStorageClient) expectSamples(samples []*monitoring_pb.TimeSeries) {
+func (c *TestStorageClient) expectSamples(samples []*metric_pb.ResourceMetrics) {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
-	for _, s := range samples {
-		c.expectedSamples[s.Metric.Type] = append(c.expectedSamples[s.Metric.Type], s)
-	}
+	// for _, s := range samples {
+	// 	vs := otlptest.VisitorState{}
+	// 	vs.Visit(ctx, func(
+	// 		resource *resource_pb.Resource,
+	// 		metricName string,
+	// 		kind metadata.Kind,
+	// 		monotonic bool,
+	// 		point interface{},
+	// 	) error {
+	// 		c.expectedSamples[metricName] = append(c.expectedSamples[metricName], s)
+	// 	}s)
+	// }
 	c.wg.Add(len(samples))
 }
 
@@ -96,24 +131,50 @@ func (c *TestStorageClient) waitForExpectedSamples(t *testing.T) {
 }
 
 func (c *TestStorageClient) resetExpectedSamples() {
-	c.receivedSamples = map[string][]*monitoring_pb.TimeSeries{}
-	c.expectedSamples = map[string][]*monitoring_pb.TimeSeries{}
+	c.receivedSamples = map[string][]TestPoint{}
+	c.expectedSamples = map[string][]TestPoint{}
 }
 
-func (c *TestStorageClient) Store(req *monitoring_pb.CreateTimeSeriesRequest) error {
+func (c *TestStorageClient) Store(req *metricsService.ExportMetricsServiceRequest) error {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
+	ctx := context.Background()
 
-	for i, ts := range req.TimeSeries {
-		for _, prev := range req.TimeSeries[:i] {
+	for i, ts := range req.ResourceMetrics {
+		for _, prev := range req.ResourceMetrics[:i] {
 			if reflect.DeepEqual(prev, ts) {
 				c.t.Fatalf("found duplicate time series in request: %v", ts)
 			}
 		}
-		if len(ts.Points) != 1 {
-			c.t.Fatalf("unexpected number of points %d", len(ts.Points))
+		vs := otlptest.VisitorState{}
+		vs.Visit(ctx, func(
+			resource *resource_pb.Resource,
+			metricName string,
+			kind metadata.Kind,
+			monotonic bool,
+			point interface{},
+		) error {
+			nanos := point.(*metric_pb.DoubleDataPoint).TimeUnixNano
+			value := point.(*metric_pb.DoubleDataPoint).Value
+
+			c.receivedSamples[metricName] = append(c.receivedSamples[metricName], TestPoint{
+				T: time.Unix(0, int64(nanos)),
+				V: value,
+			})
+			return nil
+		}, ts)
+
+		if vs.PointCount() != 1 {
+			c.t.Fatalf("unexpected number of points %d", vs.PointCount())
 		}
-		c.receivedSamples[ts.Metric.Type] = append(c.receivedSamples[ts.Metric.Type], ts)
+	}
+	for i, ts := range req.ResourceMetrics {
+		ts.InstrumentationLibraryMetrics[0].Metrics[0].Data = nil
+		for _, prev := range req.ResourceMetrics[:i] {
+			if reflect.DeepEqual(prev, ts) {
+				c.t.Fatalf("found duplicate time series in request: %v", ts)
+			}
+		}
 		c.wg.Done()
 	}
 	return nil
@@ -143,7 +204,7 @@ func TestSampleDeliverySimple(t *testing.T) {
 	// batch timeout case.
 	n := 100
 
-	var samples []*monitoring_pb.TimeSeries
+	var samples []*metric_pb.ResourceMetrics
 	for i := 0; i < n; i++ {
 		samples = append(samples, newTestSample(
 			fmt.Sprintf("test_metric_%d", i),
@@ -189,7 +250,7 @@ func TestSampleDeliveryMultiShard(t *testing.T) {
 	numShards := 10
 	n := 5 * numShards
 
-	var samples []*monitoring_pb.TimeSeries
+	var samples []*metric_pb.ResourceMetrics
 	for i := 0; i < n; i++ {
 		samples = append(samples, newTestSample(
 			fmt.Sprintf("test_metric_%d", i),
@@ -238,7 +299,7 @@ func TestSampleDeliveryTimeout(t *testing.T) {
 	// Let's send one less sample than batch size, and wait the timeout duration
 	n := config.DefaultQueueConfig.MaxSamplesPerSend - 1
 
-	var samples1, samples2 []*monitoring_pb.TimeSeries
+	var samples1, samples2 []*metric_pb.ResourceMetrics
 	for i := 0; i < n; i++ {
 		samples1 = append(samples1, newTestSample(
 			fmt.Sprintf("test_metric_%d", i),
@@ -298,7 +359,7 @@ func TestSampleDeliveryOrder(t *testing.T) {
 	ts := 10
 	n := config.DefaultQueueConfig.MaxSamplesPerSend * ts
 
-	var samples []*monitoring_pb.TimeSeries
+	var samples []*metric_pb.ResourceMetrics
 	for i := 0; i < n; i++ {
 		samples = append(samples, newTestSample(
 			fmt.Sprintf("test_metric_%d", i%ts),
@@ -346,7 +407,7 @@ func NewTestBlockedStorageClient() *TestBlockingStorageClient {
 	}
 }
 
-func (c *TestBlockingStorageClient) Store(_ *monitoring_pb.CreateTimeSeriesRequest) error {
+func (c *TestBlockingStorageClient) Store(_ *metricsService.ExportMetricsServiceRequest) error {
 	atomic.AddUint64(&c.numCalls, 1)
 	<-c.block
 	return nil
@@ -395,7 +456,7 @@ func TestSpawnNotMoreThanMaxConcurrentSendsGoroutines(t *testing.T) {
 	// should be left on the queue.
 	n := config.DefaultQueueConfig.MaxSamplesPerSend * 2
 
-	var samples []*monitoring_pb.TimeSeries
+	var samples []*metric_pb.ResourceMetrics
 	for i := 0; i < n; i++ {
 		samples = append(samples, newTestSample(
 			fmt.Sprintf("test_metric_%d", i),

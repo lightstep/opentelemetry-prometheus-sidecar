@@ -22,6 +22,8 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/golang/protobuf/proto"
+	metricsService "github.com/lightstep/lightstep-prometheus-sidecar/internal/opentelemetry-proto-gen/collector/metrics/v1"
+	metric_pb "github.com/lightstep/lightstep-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
 	monitoring "google.golang.org/genproto/googleapis/monitoring/v3"
 )
 
@@ -40,11 +42,11 @@ func (m *myWriterCloser) Close() error {
 
 func TestRequest(t *testing.T) {
 	var m myWriterCloser
-	c := NewCreateTimeSeriesRequestWriterCloser(&m, log.NewNopLogger())
+	c := NewExportMetricsServiceRequestWriterCloser(&m, log.NewNopLogger())
 	defer c.Close()
-	req := &monitoring.CreateTimeSeriesRequest{
-		TimeSeries: []*monitoring.TimeSeries{
-			&monitoring.TimeSeries{},
+	req := &metricsService.ExportMetricsServiceRequest{
+		ResourceMetrics: []*metric_pb.ResourceMetrics{
+			&metric_pb.ResourceMetrics{},
 		},
 	}
 	if err := c.Store(req); err != nil {

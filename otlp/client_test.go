@@ -24,6 +24,8 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/golang/protobuf/proto"
+	metricsService "github.com/lightstep/lightstep-prometheus-sidecar/internal/opentelemetry-proto-gen/collector/metrics/v1"
+	metric_pb "github.com/lightstep/lightstep-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
 	"github.com/lightstep/lightstep-prometheus-sidecar/opencensus"
 	"go.opencensus.io/metric/metricexport"
 	monitoring "google.golang.org/genproto/googleapis/monitoring/v3"
@@ -62,9 +64,9 @@ func TestStoreErrorHandlingOnTimeout(t *testing.T) {
 		URL:     serverURL,
 		Timeout: 0, // Immeditate Timeout.
 	})
-	err = c.Store(&monitoring.CreateTimeSeriesRequest{
-		TimeSeries: []*monitoring.TimeSeries{
-			&monitoring.TimeSeries{},
+	err = c.Store(&metricsService.ExportMetricsServiceRequest{
+		ResourceMetrics: []*metric_pb.ResourceMetrics{
+			&metric_pb.ResourceMetrics{},
 		},
 	})
 	if _, recoverable := err.(recoverableError); !recoverable {
@@ -140,9 +142,9 @@ func TestStoreErrorHandling(t *testing.T) {
 				Logger:  log.NewLogfmtLogger(logBuffer),
 			})
 
-			err = c.Store(&monitoring.CreateTimeSeriesRequest{
-				TimeSeries: []*monitoring.TimeSeries{
-					&monitoring.TimeSeries{},
+			err = c.Store(&metricsService.ExportMetricsServiceRequest{
+				ResourceMetrics: []*metric_pb.ResourceMetrics{
+					&metric_pb.ResourceMetrics{},
 				},
 			})
 			if test.status != nil {
@@ -186,7 +188,7 @@ func TestEmptyRequest(t *testing.T) {
 		URL:     serverURL,
 		Timeout: time.Second,
 	})
-	if err := c.Store(&monitoring.CreateTimeSeriesRequest{}); err != nil {
+	if err := c.Store(&metricsService.ExportMetricsServiceRequest{}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -239,9 +241,9 @@ func TestResolver(t *testing.T) {
 			Logger:   logger,
 		})
 
-		err = c.Store(&monitoring.CreateTimeSeriesRequest{
-			TimeSeries: []*monitoring.TimeSeries{
-				&monitoring.TimeSeries{},
+		err = c.Store(&metricsService.ExportMetricsServiceRequest{
+			ResourceMetrics: []*metric_pb.ResourceMetrics{
+				&metric_pb.ResourceMetrics{},
 			},
 		})
 		if err != nil {
