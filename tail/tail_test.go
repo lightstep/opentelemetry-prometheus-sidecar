@@ -20,6 +20,7 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -39,6 +40,9 @@ func TestTailFuzz(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer rc.Close()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
 
 	w, err := wal.NewSize(nil, nil, dir, 2*1024*1024, false)
 	if err != nil {
@@ -65,6 +69,7 @@ func TestTailFuzz(t *testing.T) {
 			}
 			written = append(written, rec)
 		}
+		wg.Done()
 	}()
 
 	wr := wal.NewReader(rc)
@@ -77,6 +82,7 @@ func TestTailFuzz(t *testing.T) {
 	if wr.Err() != nil {
 		t.Fatal(wr.Err())
 	}
+	wg.Wait()
 	if len(written) != len(read) {
 		t.Fatal("didn't read all records")
 	}
