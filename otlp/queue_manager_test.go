@@ -15,6 +15,7 @@ package otlp
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -52,9 +53,7 @@ type TestPoint struct {
 	T time.Time
 }
 
-func newTestSample(name string, start, end int64, v float64) *metric_pb.ResourceMetrics {
-	// TODO `start` is not meaningful here, right?
-	_ = start
+func newTestSample(name string, timestamp int64, v float64) *metric_pb.ResourceMetrics {
 	return otlptest.ResourceMetrics(
 		otlptest.Resource(),
 		otlptest.InstrumentationLibraryMetrics(
@@ -64,28 +63,12 @@ func newTestSample(name string, start, end int64, v float64) *metric_pb.Resource
 				otlptest.DoubleDataPoint(
 					otlptest.Labels(),
 					time.Unix(0, 0),
-					time.Unix(end, 0),
+					time.Unix(timestamp, 0),
 					v,
 				),
 			),
 		),
 	)
-	// return &metric_pb.ResourceMetrics{
-	// 	Metric: &metric_pb.Metric{
-	// 		Type: name,
-	// 	},
-	// 	MetricKind: metric_pb.MetricDescriptor_GAUGE,
-	// 	ValueType:  metric_pb.MetricDescriptor_DOUBLE,
-	// 	Points: []*metricsService.Point{{
-	// 		Interval: &metricsService.TimeInterval{
-	// 			StartTime: &timestamp_pb.Timestamp{Seconds: start},
-	// 			EndTime:   &timestamp_pb.Timestamp{Seconds: end},
-	// 		},
-	// 		Value: &metricsService.TypedValue{
-	// 			Value: &metricsService.TypedValue_DoubleValue{v},
-	// 		},
-	// 	}},
-	// }
 }
 
 func NewTestStorageClient(t *testing.T) *TestStorageClient {
@@ -99,23 +82,32 @@ func NewTestStorageClient(t *testing.T) *TestStorageClient {
 func (c *TestStorageClient) expectSamples(samples []*metric_pb.ResourceMetrics) {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
-	// for _, s := range samples {
-	// 	vs := otlptest.VisitorState{}
-	// 	vs.Visit(ctx, func(
-	// 		resource *resource_pb.Resource,
-	// 		metricName string,
-	// 		kind metadata.Kind,
-	// 		monotonic bool,
-	// 		point interface{},
-	// 	) error {
-	// 		c.expectedSamples[metricName] = append(c.expectedSamples[metricName], s)
-	// 	}s)
-	// }
+	ctx := context.Background()
+	for _, s := range samples {
+		vs := otlptest.VisitorState{}
+		vs.Visit(ctx, func(
+			resource *resource_pb.Resource,
+			metricName string,
+			kind metadata.Kind,
+			monotonic bool,
+			point interface{},
+		) error {
+			nanos := point.(*metric_pb.DoubleDataPoint).TimeUnixNano
+			value := point.(*metric_pb.DoubleDataPoint).Value
+			c.expectedSamples[metricName] = append(c.expectedSamples[metricName], TestPoint{
+				T: time.Unix(0, int64(nanos)),
+				V: value,
+			})
+			return nil
+		}, s)
+	}
 	c.wg.Add(len(samples))
 }
 
 func (c *TestStorageClient) waitForExpectedSamples(t *testing.T) {
+	fmt.Println("Pre-Wait", time.Now())
 	c.wg.Wait()
+	fmt.Println("Post-Wait", time.Now())
 
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
@@ -136,16 +128,12 @@ func (c *TestStorageClient) resetExpectedSamples() {
 }
 
 func (c *TestStorageClient) Store(req *metricsService.ExportMetricsServiceRequest) error {
+	fmt.Println("TestStoreClient.Store")
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 	ctx := context.Background()
 
-	for i, ts := range req.ResourceMetrics {
-		for _, prev := range req.ResourceMetrics[:i] {
-			if reflect.DeepEqual(prev, ts) {
-				c.t.Fatalf("found duplicate time series in request: %v", ts)
-			}
-		}
+	for _, ts := range req.ResourceMetrics {
 		vs := otlptest.VisitorState{}
 		vs.Visit(ctx, func(
 			resource *resource_pb.Resource,
@@ -165,9 +153,11 @@ func (c *TestStorageClient) Store(req *metricsService.ExportMetricsServiceReques
 		}, ts)
 
 		if vs.PointCount() != 1 {
-			c.t.Fatalf("unexpected number of points %d", vs.PointCount())
+			d, _ := json.Marshal(ts)
+			c.t.Fatalf("unexpected number of points %d: %s", vs.PointCount(), string(d))
 		}
 	}
+	fmt.Println("Now DONE this", len(req.ResourceMetrics))
 	for i, ts := range req.ResourceMetrics {
 		ts.InstrumentationLibraryMetrics[0].Metrics[0].Data = nil
 		for _, prev := range req.ResourceMetrics[:i] {
@@ -189,7 +179,8 @@ func (c *TestStorageClient) Name() string {
 }
 
 func (c *TestStorageClient) Close() error {
-	c.wg.Wait()
+	// TODO: Not sure what adds this:
+	// c.wg.Wait()
 	return nil
 }
 
@@ -208,7 +199,6 @@ func TestSampleDeliverySimple(t *testing.T) {
 	for i := 0; i < n; i++ {
 		samples = append(samples, newTestSample(
 			fmt.Sprintf("test_metric_%d", i),
-			1234567890000,
 			2234567890000,
 			float64(i),
 		))
@@ -254,7 +244,6 @@ func TestSampleDeliveryMultiShard(t *testing.T) {
 	for i := 0; i < n; i++ {
 		samples = append(samples, newTestSample(
 			fmt.Sprintf("test_metric_%d", i),
-			1234567890000,
 			2234567890000,
 			float64(i),
 		))
@@ -303,13 +292,11 @@ func TestSampleDeliveryTimeout(t *testing.T) {
 	for i := 0; i < n; i++ {
 		samples1 = append(samples1, newTestSample(
 			fmt.Sprintf("test_metric_%d", i),
-			1234567890000,
 			2234567890000,
 			float64(i),
 		))
 		samples2 = append(samples2, newTestSample(
 			fmt.Sprintf("test_metric_%d", i),
-			1234567890000,
 			2234567890000+1,
 			float64(i),
 		))
@@ -363,7 +350,6 @@ func TestSampleDeliveryOrder(t *testing.T) {
 	for i := 0; i < n; i++ {
 		samples = append(samples, newTestSample(
 			fmt.Sprintf("test_metric_%d", i%ts),
-			1234567890001,
 			1234567890001+int64(i),
 			float64(i),
 		))
@@ -460,7 +446,6 @@ func TestSpawnNotMoreThanMaxConcurrentSendsGoroutines(t *testing.T) {
 	for i := 0; i < n; i++ {
 		samples = append(samples, newTestSample(
 			fmt.Sprintf("test_metric_%d", i),
-			1234567890001,
 			2234567890001,
 			float64(i),
 		))

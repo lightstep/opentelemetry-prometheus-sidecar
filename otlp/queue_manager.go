@@ -14,6 +14,7 @@
 package otlp
 
 import (
+	"fmt"
 	"math"
 	"sync"
 	"time"
@@ -462,8 +463,10 @@ func (s *shardCollection) runShard(i int) {
 	defer stop()
 
 	for {
+		fmt.Println("Enter queue loop")
 		select {
 		case entry, ok := <-shard.queue:
+			fmt.Println("READ ITEM", entry, ok)
 			fp, sample := entry.hash, entry.sample
 
 			if !ok {
@@ -498,6 +501,7 @@ func (s *shardCollection) runShard(i int) {
 				shard.seen[fp] = struct{}{}
 			}
 		case <-timer.C:
+			fmt.Println("TIMER")
 			if len(pendingSamples) > 0 {
 				s.sendSamples(client, pendingSamples)
 				pendingSamples = pendingSamples[:0]

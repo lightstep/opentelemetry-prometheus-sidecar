@@ -24,7 +24,6 @@ import (
 	"github.com/golang/protobuf/proto"
 	metricsService "github.com/lightstep/lightstep-prometheus-sidecar/internal/opentelemetry-proto-gen/collector/metrics/v1"
 	metric_pb "github.com/lightstep/lightstep-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
-	monitoring "google.golang.org/genproto/googleapis/monitoring/v3"
 )
 
 type myWriterCloser struct {
@@ -53,7 +52,7 @@ func TestRequest(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	storedReq := &monitoring.CreateTimeSeriesRequest{}
+	storedReq := &metricsService.ExportMetricsServiceRequest{}
 	err := proto.Unmarshal(m.Buffer.Bytes(), storedReq)
 	if err != nil {
 		t.Fatal(err)

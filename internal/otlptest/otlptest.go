@@ -253,6 +253,7 @@ func (vs *VisitorState) Visit(
 					if t.IntGauge != nil {
 						kind := metadata.GAUGE
 						for _, p := range t.IntGauge.DataPoints {
+							vs.pointCount++
 							noticeError(m, visitor(res, m.Name, kind, false, p))
 						}
 						continue
@@ -261,6 +262,7 @@ func (vs *VisitorState) Visit(
 					if t.DoubleGauge != nil {
 						kind := metadata.GAUGE
 						for _, p := range t.DoubleGauge.DataPoints {
+							vs.pointCount++
 							noticeError(m, visitor(res, m.Name, kind, false, p))
 						}
 						continue
@@ -269,6 +271,7 @@ func (vs *VisitorState) Visit(
 					if t.IntSum != nil {
 						kind := toModelKind(t.IntSum.AggregationTemporality)
 						for _, p := range t.IntSum.DataPoints {
+							vs.pointCount++
 							noticeError(m, visitor(res, m.Name, kind, t.IntSum.IsMonotonic, p))
 						}
 						continue
@@ -277,6 +280,7 @@ func (vs *VisitorState) Visit(
 					if t.DoubleSum != nil {
 						kind := toModelKind(t.DoubleSum.AggregationTemporality)
 						for _, p := range t.DoubleSum.DataPoints {
+							vs.pointCount++
 							noticeError(m, visitor(res, m.Name, kind, t.DoubleSum.IsMonotonic, p))
 						}
 						continue
@@ -285,6 +289,7 @@ func (vs *VisitorState) Visit(
 					if t.IntHistogram != nil {
 						kind := toModelKind(t.IntHistogram.AggregationTemporality)
 						for _, p := range t.IntHistogram.DataPoints {
+							vs.pointCount++
 							noticeError(m, visitor(res, m.Name, kind, false, p))
 						}
 						continue
@@ -293,6 +298,7 @@ func (vs *VisitorState) Visit(
 					if t.DoubleHistogram != nil {
 						kind := toModelKind(t.DoubleHistogram.AggregationTemporality)
 						for _, p := range t.DoubleHistogram.DataPoints {
+							vs.pointCount++
 							noticeError(m, visitor(res, m.Name, kind, false, p))
 						}
 						continue

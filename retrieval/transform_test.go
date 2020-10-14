@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	sidecar "github.com/lightstep/lightstep-prometheus-sidecar"
 	common_pb "github.com/lightstep/lightstep-prometheus-sidecar/internal/opentelemetry-proto-gen/common/v1"
 	metric_pb "github.com/lightstep/lightstep-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
 	"github.com/lightstep/lightstep-prometheus-sidecar/internal/otlptest"
@@ -85,7 +86,7 @@ func TestSampleBuilder(t *testing.T) {
 			return ResourceMetrics(
 				Resource(reslab...),
 				InstrumentationLibraryMetrics(
-					InstrumentationLibrary(promInstLibrary, version.Version),
+					InstrumentationLibrary(sidecar.InstrumentationLibrary, version.Version),
 					DoubleSumCumulativeMonotonic(
 						name, "", "",
 						DoubleDataPoint(
@@ -108,7 +109,7 @@ func TestSampleBuilder(t *testing.T) {
 			return ResourceMetrics(
 				Resource(reslab...),
 				InstrumentationLibraryMetrics(
-					InstrumentationLibrary(promInstLibrary, version.Version),
+					InstrumentationLibrary(sidecar.InstrumentationLibrary, version.Version),
 					DoubleGauge(
 						name, "", "",
 						DoubleDataPoint(
@@ -132,7 +133,7 @@ func TestSampleBuilder(t *testing.T) {
 			return ResourceMetrics(
 				Resource(reslab...),
 				InstrumentationLibraryMetrics(
-					InstrumentationLibrary(promInstLibrary, version.Version),
+					InstrumentationLibrary(sidecar.InstrumentationLibrary, version.Version),
 					IntSumCumulativeMonotonic(
 						name, "", "",
 						IntDataPoint(
@@ -155,7 +156,7 @@ func TestSampleBuilder(t *testing.T) {
 			return ResourceMetrics(
 				Resource(reslab...),
 				InstrumentationLibraryMetrics(
-					InstrumentationLibrary(promInstLibrary, version.Version),
+					InstrumentationLibrary(sidecar.InstrumentationLibrary, version.Version),
 					IntGauge(
 						name, "", "",
 						IntDataPoint(
