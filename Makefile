@@ -43,14 +43,14 @@ PROMU_URL     := https://github.com/prometheus/promu/releases/download/v$(PROMU_
 PREFIX                  ?= $(shell pwd)
 BIN_DIR                 ?= $(shell pwd)
 # Private repo.
-DOCKER_IMAGE_NAME       ?= gcr.io/stackdriver-prometheus/stackdriver-prometheus-sidecar
+DOCKER_IMAGE_NAME       ?= lightstep-prometheus-sidecar
 DOCKER_IMAGE_TAG        ?= $(subst /,-,$(shell git rev-parse --abbrev-ref HEAD))
 
 ifdef DEBUG
 	bindata_flags = -debug
 endif
 
-# TODO(jkohen): Reenable staticcheck once it no longer crashes.
+# TODO: Reenable staticcheck after removing deprecation warnings.
 all: format build test
 
 style:

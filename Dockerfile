@@ -1,7 +1,7 @@
 FROM  gcr.io/distroless/static:latest
-LABEL maintainer "Stackdriver Engineering <engineering@stackdriver.com>"
+LABEL maintainer "Lightstep Engineering <engineering@lightstep.com>"
 
-COPY stackdriver-prometheus-sidecar         /bin/stackdriver-prometheus-sidecar
+COPY lightstep-prometheus-sidecar         /bin/lightstep-prometheus-sidecar
 
 EXPOSE     9091
-ENTRYPOINT [ "/bin/stackdriver-prometheus-sidecar" ]
+ENTRYPOINT [ "/bin/lightstep-prometheus-sidecar" ]
