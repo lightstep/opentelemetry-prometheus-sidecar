@@ -302,11 +302,6 @@ func main() {
 		level.Error(logger).Log("msg", "Tailing WAL failed", "err", err)
 		os.Exit(1)
 	}
-	// TODO(jkohen): Remove once we have proper translation of all metric
-	// types. Currently Stackdriver fails the entire request if you attempt
-	// to write to the different metric type, which we do fairly often at
-	// this point, so lots of writes fail, and most writes fail.
-	// config.DefaultQueueConfig.MaxSamplesPerSend = 1
 	config.DefaultQueueConfig.MaxSamplesPerSend = otlp.MaxTimeseriesesPerRequest
 	// We want the queues to have enough buffer to ensure consistent flow with full batches
 	// being available for every new request.

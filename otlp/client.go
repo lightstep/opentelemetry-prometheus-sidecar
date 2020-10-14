@@ -53,7 +53,7 @@ var (
 
 	// PointCount is a metric.
 	PointCount = stats.Int64("agent.googleapis.com/agent/monitoring/point_count",
-		"count of metric points written to Stackdriver", stats.UnitDimensionless)
+		"count of metric points written to OpenCensus", stats.UnitDimensionless)
 )
 
 func init() {

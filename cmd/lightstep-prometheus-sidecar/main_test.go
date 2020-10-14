@@ -88,13 +88,13 @@ Loop:
 	t.Logf("stdout: %v\n", bout.String())
 	t.Logf("stderr: %v\n", berr.String())
 	if !startedOk {
-		t.Errorf("prometheus-stackdriver-sidecar didn't start in the specified timeout")
+		t.Errorf("lightstep-prometheus-sidecar didn't start in the specified timeout")
 		return
 	}
 	if err := cmd.Process.Kill(); err == nil {
-		t.Errorf("prometheus-stackdriver-sidecar didn't shutdown gracefully after sending the Interrupt signal")
+		t.Errorf("lightstep-prometheus-sidecar didn't shutdown gracefully after sending the Interrupt signal")
 	} else if stoppedErr != nil && stoppedErr.Error() != "signal: interrupt" { // TODO - find a better way to detect when the process didn't exit as expected!
-		t.Errorf("prometheus-stackdriver-sidecar exited with an unexpected error:%v", stoppedErr)
+		t.Errorf("lightstep-prometheus-sidecar exited with an unexpected error:%v", stoppedErr)
 	}
 }
 
