@@ -37,21 +37,21 @@ else
 	GO_BUILD_PLATFORM ?= $(GOHOSTOS)-$(GOHOSTARCH)
 endif
 
-PROMU_VERSION ?= 0.5.0
+PROMU_VERSION ?= 0.6.1
 PROMU_URL     := https://github.com/prometheus/promu/releases/download/v$(PROMU_VERSION)/promu-$(PROMU_VERSION).$(GO_BUILD_PLATFORM).tar.gz
 
 PREFIX                  ?= $(shell pwd)
 BIN_DIR                 ?= $(shell pwd)
 # Private repo.
-DOCKER_IMAGE_NAME       ?= gcr.io/stackdriver-prometheus/stackdriver-prometheus-sidecar
+DOCKER_IMAGE_NAME       ?= lightstep-prometheus-sidecar
 DOCKER_IMAGE_TAG        ?= $(subst /,-,$(shell git rev-parse --abbrev-ref HEAD))
 
 ifdef DEBUG
 	bindata_flags = -debug
 endif
 
-# TODO(jkohen): Reenable staticcheck once it no longer crashes.
-all: format build test
+# TODO: Reenable staticcheck after removing deprecation warnings.
+all: format vendor build test
 
 style:
 	@echo ">> checking code style"
@@ -59,11 +59,12 @@ style:
 
 deps:
 	@echo ">> getting dependencies"
-ifdef GO111MODULE
-	GO111MODULE=$(GO111MODULE) $(GO) mod download
-else
-	$(GO) get $(GOOPTS) -t ./...
-endif
+	$(GO) mod download
+
+.PHONY: vendor
+vendor:
+	@echo ">> building vendor dir"
+	$(GO) mod vendor
 
 test-short:
 	@echo ">> running short tests"
@@ -72,6 +73,7 @@ test-short:
 test:
 	@echo ">> running all tests"
 	GO111MODULE=$(GO111MODULE) $(GO) test $(GOOPTS) $(pkgs)
+	GO111MODULE=$(GO111MODULE) $(GO) test -race $(GOOPTS) $(pkgs)
 
 cover:
 	@echo ">> running all tests with coverage"

@@ -26,7 +26,6 @@ import (
 	"testing"
 
 	"github.com/prometheus/prometheus/pkg/textparse"
-	metric_pb "google.golang.org/genproto/googleapis/api/metric"
 )
 
 func TestCache_Get(t *testing.T) {
@@ -68,9 +67,9 @@ func TestCache_Get(t *testing.T) {
 	}
 	// Create cache with static metadata.
 	staticMetadata := []*Entry{
-		&Entry{Metric: "static_metric1", MetricType: textparse.MetricTypeCounter, ValueType: metric_pb.MetricDescriptor_INT64, Help: "help_static1"},
-		&Entry{Metric: "static_metric2", MetricType: textparse.MetricTypeCounter, ValueType: metric_pb.MetricDescriptor_DOUBLE, Help: "help_static2"},
-		&Entry{Metric: "metric_with_override", MetricType: textparse.MetricTypeCounter, ValueType: metric_pb.MetricDescriptor_INT64, Help: "help_metric_override"},
+		&Entry{Metric: "static_metric1", MetricType: textparse.MetricTypeCounter, ValueType: INT64, Help: "help_static1"},
+		&Entry{Metric: "static_metric2", MetricType: textparse.MetricTypeCounter, ValueType: DOUBLE, Help: "help_static2"},
+		&Entry{Metric: "metric_with_override", MetricType: textparse.MetricTypeCounter, ValueType: INT64, Help: "help_metric_override"},
 	}
 	c := NewCache(nil, u, staticMetadata)
 

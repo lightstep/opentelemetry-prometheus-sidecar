@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	sidecar "github.com/lightstep/lightstep-prometheus-sidecar"
 	"github.com/lightstep/lightstep-prometheus-sidecar/metadata"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/version"
@@ -36,8 +37,6 @@ import (
 
 const (
 	otlpCUMULATIVE = metric_pb.AggregationTemporality_AGGREGATION_TEMPORALITY_CUMULATIVE
-
-	promInstLibrary = "github.com/lightstep/lightstep-prometheus-sidecar"
 )
 
 // Appender appends a time series with exactly one data point. A hash for the series
@@ -68,7 +67,7 @@ func (b *sampleBuilder) next(ctx context.Context, samples []tsdb.RefSample) (*me
 		return nil, 0, samples, errors.Wrap(err, "get series information")
 	}
 	if !ok {
-		// TODO: counter?
+		// TODO: counter?  simple negative lookup
 		return nil, 0, tailSamples, nil
 	}
 
@@ -228,7 +227,7 @@ func protoTimeseries(desc *tsDesc) (*metric_pb.ResourceMetrics, *metric_pb.Metri
 		InstrumentationLibraryMetrics: []*metric_pb.InstrumentationLibraryMetrics{
 			&metric_pb.InstrumentationLibraryMetrics{
 				InstrumentationLibrary: &common_pb.InstrumentationLibrary{
-					Name:    promInstLibrary,
+					Name:    sidecar.InstrumentationLibrary,
 					Version: version.Version,
 				},
 				Metrics: []*metric_pb.Metric{metric},
@@ -436,7 +435,7 @@ func monotonicIntegerPoint(labels []*common_pb.StringKeyValue, start, end int64,
 		Labels:            labels,
 		StartTimeUnixNano: getNanos(start),
 		TimeUnixNano:      getNanos(end),
-		Value:             int64(value),
+		Value:             int64(value + 0.5),
 	}
 	return &metric_pb.IntSum{
 		IsMonotonic:            true,
@@ -463,7 +462,7 @@ func intGauge(labels []*common_pb.StringKeyValue, ts int64, value float64) *metr
 	integer := &metric_pb.IntDataPoint{
 		Labels:       labels,
 		TimeUnixNano: getNanos(ts),
-		Value:        int64(value),
+		Value:        int64(value + 0.5),
 	}
 	return &metric_pb.IntGauge{
 		DataPoints: []*metric_pb.IntDataPoint{integer},

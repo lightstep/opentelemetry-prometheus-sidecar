@@ -568,7 +568,7 @@ func processFileConfig(fc fileConfig) (map[string]string, []*metadata.Entry, err
 		}
 		var valueType metadata.ValueType
 		switch sm.ValueType {
-		case "double":
+		case "double", "":
 			valueType = metadata.DOUBLE
 		case "int64":
 			valueType = metadata.INT64

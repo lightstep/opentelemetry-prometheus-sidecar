@@ -21,6 +21,9 @@ import (
 	"testing"
 	"time"
 
+	metric_pb "github.com/lightstep/lightstep-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
+	resource_pb "github.com/lightstep/lightstep-prometheus-sidecar/internal/opentelemetry-proto-gen/resource/v1"
+	"github.com/lightstep/lightstep-prometheus-sidecar/internal/otlptest"
 	"github.com/lightstep/lightstep-prometheus-sidecar/metadata"
 	"github.com/lightstep/lightstep-prometheus-sidecar/tail"
 	"github.com/lightstep/lightstep-prometheus-sidecar/targets"
@@ -29,16 +32,16 @@ import (
 	"github.com/prometheus/tsdb"
 	"github.com/prometheus/tsdb/labels"
 	"github.com/prometheus/tsdb/wal"
-	metric_pb "google.golang.org/genproto/googleapis/api/metric"
-	monitoredres_pb "google.golang.org/genproto/googleapis/api/monitoredres"
-	monitoring_pb "google.golang.org/genproto/googleapis/monitoring/v3"
+	// metric_pb "google.golang.org/genproto/googleapis/api/metric"
+	// monitoredres_pb "google.golang.org/genproto/googleapis/api/monitoredres"
+	// monitoring_pb "google.golang.org/genproto/googleapis/monitoring/v3"
 )
 
 type nopAppender struct {
-	samples []*monitoring_pb.TimeSeries
+	samples []*metric_pb.ResourceMetrics
 }
 
-func (a *nopAppender) Append(hash uint64, s *monitoring_pb.TimeSeries) error {
+func (a *nopAppender) Append(hash uint64, s *metric_pb.ResourceMetrics) error {
 	a.samples = append(a.samples, s)
 	return nil
 }
@@ -75,8 +78,8 @@ func TestReader_Progress(t *testing.T) {
 		"job1/inst1": &targets.Target{
 			Labels: promlabels.FromStrings("job", "job1", "instance", "inst1"),
 			DiscoveredLabels: promlabels.FromStrings(
-				ProjectIDLabel, "proj1",
-				GenericNamespaceLabel, "ns1", GenericLocationLabel, "loc1",
+				"project_id", "proj1",
+				"namespace", "ns1", "location", "loc1",
 				"job", "job1", "__address__", "inst1"),
 		},
 	}
@@ -84,7 +87,7 @@ func TestReader_Progress(t *testing.T) {
 		"job1/inst1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, Help: "help"},
 	}
 
-	r := NewPrometheusReader(nil, dir, tailer, nil, nil, targetMap, metadataMap, &nopAppender{}, "", false)
+	r := NewPrometheusReader(nil, dir, tailer, nil, nil, targetMap, metadataMap, &nopAppender{}, "")
 	r.progressSaveInterval = 200 * time.Millisecond
 
 	// Populate sample data
@@ -141,7 +144,7 @@ func TestReader_Progress(t *testing.T) {
 	}
 
 	recorder := &nopAppender{}
-	r = NewPrometheusReader(nil, dir, tailer, nil, nil, targetMap, metadataMap, recorder, "", false, aggr)
+	r = NewPrometheusReader(nil, dir, tailer, nil, nil, targetMap, metadataMap, recorder, "")
 	go r.Run(ctx, progressOffset)
 
 	// Wait for reader to process until the end.
@@ -160,10 +163,26 @@ func TestReader_Progress(t *testing.T) {
 	if len(recorder.samples) == 0 {
 		t.Fatal("expected records but got none")
 	}
+
+	ctx = context.Background()
+
 	for i, s := range recorder.samples {
-		if ts := s.Points[0].Interval.EndTime.Seconds; ts <= int64(progressOffset)-progressBufferMargin {
-			t.Fatalf("unexpected record %d for offset %d", i, ts)
-		}
+		vs := otlptest.VisitorState{}
+		vs.Visit(ctx, func(
+			resource *resource_pb.Resource,
+			metricName string,
+			kind metadata.Kind,
+			monotonic bool,
+			point interface{},
+		) error {
+			nanos := point.(*metric_pb.DoubleDataPoint).TimeUnixNano
+			tseconds := time.Unix(0, int64(nanos)).Unix()
+
+			if tseconds <= int64(progressOffset)-progressBufferMargin {
+				t.Fatalf("unexpected record %d for offset %d", i, tseconds)
+			}
+			return nil
+		}, s)
 	}
 
 }
@@ -211,15 +230,10 @@ func TestTargetsWithDiscoveredLabels(t *testing.T) {
 }
 
 func TestHashSeries(t *testing.T) {
-	a := &monitoring_pb.TimeSeries{
-		Resource: &monitoredres_pb.MonitoredResource{
-			Type:   "rtype1",
-			Labels: map[string]string{"l1": "v1", "l2": "v2"},
-		},
-		Metric: &metric_pb.Metric{
-			Type:   "mtype1",
-			Labels: map[string]string{"l3": "v3", "l4": "v4"},
-		},
+	a := tsDesc{
+		Name:     "mtype1",
+		Labels:   promlabels.Labels{{"l3", "l3"}, {"l4", "l4"}},
+		Resource: promlabels.Labels{{"l1", "l1"}, {"l2", "l2"}},
 	}
 	// Hash a many times and ensure the hash doesn't change. This checks that we don't produce different
 	// hashes by unordered map iteration.
@@ -229,43 +243,21 @@ func TestHashSeries(t *testing.T) {
 			t.Fatalf("hash changed for same series")
 		}
 	}
-	for _, b := range []*monitoring_pb.TimeSeries{
+	for _, b := range []tsDesc{
 		{
-			Resource: &monitoredres_pb.MonitoredResource{
-				Type:   "rtype1",
-				Labels: map[string]string{"l1": "v1", "l2": "v2"},
-			},
-			Metric: &metric_pb.Metric{
-				Type:   "mtype2",
-				Labels: map[string]string{"l3": "v3", "l4": "v4"},
-			},
-		}, {
-			Resource: &monitoredres_pb.MonitoredResource{
-				Type:   "rtype2",
-				Labels: map[string]string{"l1": "v1", "l2": "v2"},
-			},
-			Metric: &metric_pb.Metric{
-				Type:   "mtype1",
-				Labels: map[string]string{"l3": "v3", "l4": "v4"},
-			},
-		}, {
-			Resource: &monitoredres_pb.MonitoredResource{
-				Type:   "rtype1",
-				Labels: map[string]string{"l1": "v1", "l2": "v2"},
-			},
-			Metric: &metric_pb.Metric{
-				Type:   "mtype1",
-				Labels: map[string]string{"l3": "v3", "l4": "v4-"},
-			},
-		}, {
-			Resource: &monitoredres_pb.MonitoredResource{
-				Type:   "rtype1",
-				Labels: map[string]string{"l1": "v1-", "l2": "v2"},
-			},
-			Metric: &metric_pb.Metric{
-				Type:   "mtype1",
-				Labels: map[string]string{"l3": "v3", "l4": "v4"},
-			},
+			Name:     "mtype2",
+			Labels:   promlabels.Labels{{"l3", "l3"}, {"l4", "l4"}},
+			Resource: promlabels.Labels{{"l1", "l1"}, {"l2", "l2"}},
+		},
+		{
+			Name:     "mtype1",
+			Labels:   promlabels.Labels{{"l3", "l3"}, {"l4", "l4"}},
+			Resource: promlabels.Labels{{"l1", "l1"}, {"l2", "l2-"}},
+		},
+		{
+			Name:     "mtype1",
+			Labels:   promlabels.Labels{{"l3", "l3-"}, {"l4", "l4"}},
+			Resource: promlabels.Labels{{"l1", "l1"}, {"l2", "l2"}},
 		},
 	} {
 		if hashSeries(b) == hash {

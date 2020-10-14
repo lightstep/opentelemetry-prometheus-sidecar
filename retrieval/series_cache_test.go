@@ -16,7 +16,6 @@ package retrieval
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -33,7 +32,6 @@ import (
 	"github.com/prometheus/tsdb"
 	"github.com/prometheus/tsdb/labels"
 	"github.com/prometheus/tsdb/wal"
-	metric_pb "google.golang.org/genproto/googleapis/api/metric"
 )
 
 // This test primarily verifies the garbage collection logic of the cache.
@@ -57,11 +55,8 @@ func TestScrapeCache_GarbageCollect(t *testing.T) {
 	logger := log.NewLogfmtLogger(logBuffer)
 	c := newSeriesCache(logger, dir, nil, nil,
 		targetMap{"/": &targets.Target{}},
-		metadataMap{"//": &metadata.Entry{MetricType: textparse.MetricTypeGauge, ValueType: metric_pb.MetricDescriptor_DOUBLE}},
-		[]ResourceMap{
-			{Type: "resource1", LabelMap: map[string]labelTranslation{}},
-		},
-		"", false,
+		metadataMap{"//": &metadata.Entry{MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE}},
+		"",
 	)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -186,12 +181,6 @@ func TestScrapeCache_GarbageCollect(t *testing.T) {
 }
 
 func TestSeriesCache_Refresh(t *testing.T) {
-	resourceMaps := []ResourceMap{
-		{
-			Type:     "resource2",
-			LabelMap: map[string]labelTranslation{"__resource_a": constValue("resource_a")},
-		},
-	}
 	targetMap := targetMap{}
 	metadataMap := metadataMap{}
 	logBuffer := &bytes.Buffer{}
@@ -201,7 +190,7 @@ func TestSeriesCache_Refresh(t *testing.T) {
 		}
 	}()
 	logger := log.NewLogfmtLogger(logBuffer)
-	c := newSeriesCache(logger, "", nil, nil, targetMap, metadataMap, resourceMaps, "", false)
+	c := newSeriesCache(logger, "", nil, nil, targetMap, metadataMap, "")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -237,7 +226,7 @@ func TestSeriesCache_Refresh(t *testing.T) {
 		Labels:           promlabels.FromStrings("job", "job1", "instance", "inst1"),
 		DiscoveredLabels: promlabels.FromStrings("__resource_a", "resource2_a"),
 	}
-	metadataMap["job1/inst1/metric1"] = &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: metric_pb.MetricDescriptor_DOUBLE}
+	metadataMap["job1/inst1/metric1"] = &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE}
 
 	// Hack the timestamp of the last update to be sufficiently in the past that a refresh
 	// will be triggered.
@@ -248,116 +237,12 @@ func TestSeriesCache_Refresh(t *testing.T) {
 	if entry == nil || !ok || err != nil {
 		t.Errorf("expected metadata but got none, error: %s", err)
 	}
-	if !entry.exported {
+	if entry == nil || !entry.exported {
 		t.Errorf("expected to get exported entry")
 	}
 }
 
-func TestSeriesCache_RefreshTooManyLabels(t *testing.T) {
-	resourceMaps := []ResourceMap{
-		{
-			Type:     "resource2",
-			LabelMap: map[string]labelTranslation{"__resource_a": constValue("resource_a")},
-		},
-	}
-	logBuffer := &bytes.Buffer{}
-	defer func() {
-		if logBuffer.Len() > 0 {
-			t.Log(logBuffer.String())
-		}
-	}()
-	logger := log.NewLogfmtLogger(logBuffer)
-	targetMap := targetMap{
-		"job1/inst1": &targets.Target{
-			Labels:           promlabels.FromStrings("job", "job1", "instance", "inst1"),
-			DiscoveredLabels: promlabels.FromStrings("__resource_a", "resource2_a"),
-		},
-	}
-	metadataMap := metadataMap{
-		"job1/inst1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: metric_pb.MetricDescriptor_DOUBLE},
-	}
-	c := newSeriesCache(logger, "", nil, nil, targetMap, metadataMap, resourceMaps, "", false)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	const refID = 1
-	lset := labels.FromStrings("__name__", "metric1", "job", "job1", "instance", "inst1")
-	for i := 0; i <= maxLabelCount; i++ {
-		lset = append(lset, labels.Label{fmt.Sprintf("label%d", i), "x"})
-	}
-	// Set will trigger a refresh.
-	if err := c.set(ctx, refID, lset, 5); err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
-	if !strings.Contains(logBuffer.String(), "too many labels") {
-		t.Errorf("expected error \"too many labels\", got: %v", logBuffer)
-	}
-
-	// Get shouldn't find data because of the previous error.
-	entry, ok, err := c.get(ctx, refID)
-	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
-	if ok || entry != nil {
-		t.Fatalf("unexpected series entry found: %v", entry)
-	}
-}
-
-func TestSeriesCache_RefreshUnknownResource(t *testing.T) {
-	resourceMaps := []ResourceMap{
-		{
-			Type:     "resource2",
-			LabelMap: map[string]labelTranslation{"__resource_a": constValue("resource_a")},
-		},
-	}
-	logBuffer := &bytes.Buffer{}
-	defer func() {
-		if logBuffer.Len() > 0 {
-			t.Log(logBuffer.String())
-		}
-	}()
-	logger := log.NewLogfmtLogger(logBuffer)
-	targetMap := targetMap{
-		"job1/inst1": &targets.Target{
-			Labels:           promlabels.FromStrings("job", "job1", "instance", "inst1"),
-			DiscoveredLabels: promlabels.FromStrings("__unknown_resource", "resource2_a"),
-		},
-	}
-	metadataMap := metadataMap{
-		"job1/inst1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: metric_pb.MetricDescriptor_DOUBLE},
-	}
-	c := newSeriesCache(logger, "", nil, nil, targetMap, metadataMap, resourceMaps, "", false)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	const refID = 1
-	// Set will trigger a refresh.
-	if err := c.set(ctx, refID, labels.FromStrings("__name__", "metric1", "job", "job1", "instance", "inst1"), 5); err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
-	if !strings.Contains(logBuffer.String(), "unknown resource") {
-		t.Errorf("expected error \"unknown resource\", got: %v", logBuffer)
-	}
-
-	// Get shouldn't find data because of the previous error.
-	entry, ok, err := c.get(ctx, refID)
-	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
-	if ok || entry != nil {
-		t.Fatalf("unexpected series entry found: %v", entry)
-	}
-}
-
 func TestSeriesCache_RefreshMetadataNotFound(t *testing.T) {
-	resourceMaps := []ResourceMap{
-		{
-			Type:     "resource2",
-			LabelMap: map[string]labelTranslation{"__resource_a": constValue("resource_a")},
-		},
-	}
 	logBuffer := &bytes.Buffer{}
 	defer func() {
 		if logBuffer.Len() > 0 {
@@ -372,7 +257,7 @@ func TestSeriesCache_RefreshMetadataNotFound(t *testing.T) {
 		},
 	}
 	metadataMap := metadataMap{}
-	c := newSeriesCache(logger, "", nil, nil, targetMap, metadataMap, resourceMaps, "", false)
+	c := newSeriesCache(logger, "", nil, nil, targetMap, metadataMap, "")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -397,12 +282,6 @@ func TestSeriesCache_RefreshMetadataNotFound(t *testing.T) {
 }
 
 func TestSeriesCache_Filter(t *testing.T) {
-	resourceMaps := []ResourceMap{
-		{
-			Type:     "resource2",
-			LabelMap: map[string]labelTranslation{"__resource_a": constValue("resource_a")},
-		},
-	}
 	// Populate the getters with data.
 	targetMap := targetMap{
 		"job1/inst1": &targets.Target{
@@ -411,7 +290,7 @@ func TestSeriesCache_Filter(t *testing.T) {
 		},
 	}
 	metadataMap := metadataMap{
-		"job1/inst1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: metric_pb.MetricDescriptor_DOUBLE},
+		"job1/inst1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
 	}
 	logBuffer := &bytes.Buffer{}
 	defer func() {
@@ -426,7 +305,7 @@ func TestSeriesCache_Filter(t *testing.T) {
 			&promlabels.Matcher{Type: promlabels.MatchEqual, Name: "b", Value: "b1"},
 		},
 		{&promlabels.Matcher{Type: promlabels.MatchEqual, Name: "c", Value: "c1"}},
-	}, nil, targetMap, metadataMap, resourceMaps, "", false)
+	}, nil, targetMap, metadataMap, "")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -458,12 +337,6 @@ func TestSeriesCache_Filter(t *testing.T) {
 }
 
 func TestSeriesCache_RenameMetric(t *testing.T) {
-	resourceMaps := []ResourceMap{
-		{
-			Type:     "resource2",
-			LabelMap: map[string]labelTranslation{"__resource_a": constValue("resource_a")},
-		},
-	}
 	// Populate the getters with data.
 	targetMap := targetMap{
 		"job1/inst1": &targets.Target{
@@ -472,8 +345,8 @@ func TestSeriesCache_RenameMetric(t *testing.T) {
 		},
 	}
 	metadataMap := metadataMap{
-		"job1/inst1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: metric_pb.MetricDescriptor_DOUBLE},
-		"job1/inst1/metric2": &metadata.Entry{Metric: "metric2", MetricType: textparse.MetricTypeGauge, ValueType: metric_pb.MetricDescriptor_DOUBLE},
+		"job1/inst1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
+		"job1/inst1/metric2": &metadata.Entry{Metric: "metric2", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
 	}
 	logBuffer := &bytes.Buffer{}
 	defer func() {
@@ -484,7 +357,7 @@ func TestSeriesCache_RenameMetric(t *testing.T) {
 	logger := log.NewLogfmtLogger(logBuffer)
 	c := newSeriesCache(logger, "", nil,
 		map[string]string{"metric2": "metric3"},
-		targetMap, metadataMap, resourceMaps, "", false)
+		targetMap, metadataMap, "")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -501,8 +374,8 @@ func TestSeriesCache_RenameMetric(t *testing.T) {
 	if !entry.lset.Equals(labels.FromStrings("__name__", "metric1", "job", "job1", "instance", "inst1")) {
 		t.Fatalf("unexpected labels %q", entry.lset)
 	}
-	if want := getMetricName("", "metric1"); entry.proto.Metric.Type != want {
-		t.Fatalf("want proto metric type %q but got %q", want, entry.proto.Metric.Type)
+	if want := getMetricName("", "metric1"); entry.desc.Name != want {
+		t.Fatalf("want proto metric name %q but got %q", want, entry.desc.Name)
 	}
 	err = c.set(ctx, 2, labels.FromStrings("__name__", "metric2", "job", "job1", "instance", "inst1"), 1)
 	if err != nil {
@@ -512,7 +385,7 @@ func TestSeriesCache_RenameMetric(t *testing.T) {
 	if !ok || err != nil {
 		t.Fatalf("metric not found: %s", err)
 	}
-	if want := getMetricName("", "metric3"); entry.proto.Metric.Type != want {
-		t.Fatalf("want proto metric type %q but got %q", want, entry.proto.Metric.Type)
+	if want := getMetricName("", "metric3"); entry.desc.Name != want {
+		t.Fatalf("want proto metric name %q but got %q", want, entry.desc.Name)
 	}
 }

@@ -49,6 +49,7 @@ type (
 const (
 	GAUGE      Kind = 1
 	CUMULATIVE Kind = 2
+	DELTA      Kind = 3
 
 	DOUBLE       ValueType = 1
 	INT64        ValueType = 2
