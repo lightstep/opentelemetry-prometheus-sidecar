@@ -192,8 +192,8 @@ func TestResolver(t *testing.T) {
 		expectedAddress string
 	}{
 		{
-			"stackdriver.invalid",
-			"stackdriver.invalid",
+			"opentelemetry.invalid",
+			"opentelemetry.invalid",
 		},
 		{
 			"[2001:db8::]",

@@ -40,7 +40,7 @@ kubectl -n <your_namesapce> logs <pod_name> sidecar
 ### Does the sidecar process Prometheus's data?
 
 The sidecar follows the write-ahead-log of the Prometheus storage and converts
-Prometheus data into Stackdriver time series.
+Prometheus data into OpenTelemetry metrics time series.
 
 Go to the Prometheus UI and run the following query:
 
@@ -55,9 +55,9 @@ If it is zero, go to the `/targets` page in the UI and verify that Prometheus
 itself is actually ingesting data. If no targets are visible, consult the
 [Prometheus documentation][prom-getting-started] on how to configure Prometheus correctly.
 
-### Are samples being sent to Stackdriver?
+### Are samples being sent to OpenTelemetry?
 
-Run the following query to verify that the sidecar produces Stackdriver data
+Run the following query to verify that the sidecar produces OpenTelemetry data
 from the Prometheus samples:
 
 ```
@@ -66,18 +66,18 @@ rate(prometheus_sidecar_samples_produced[5m])
 
 The number is generally expected to be lower than the number of processed samples
 since multiple Prometheus samples (e.g. histogram buckets) may be consolidated
-into a single complex Stackdriver sample.
+into a single complex OpenTelemetry sample.
 
 If it is zero, check the sidecar's logs for reported errors.
 
-Verify that the produced samples are successfully being sent to Stackdriver:
+Verify that the produced samples are successfully being sent to OpenTelemetry:
 
 ```
 rate(prometheus_remote_storage_succeeded_samples_total[5m])
 ```
 
 The number should generally match the number of produced samples from the previous
-metric. If it is notably lower, check the sidecars logs for hints that Stackdriver
+metric. If it is notably lower, check the sidecars logs for hints that OpenTelemetry
 rejected some samples.
 If no samples were sent successfully at all, the logs might indicate a broader
 error such as invalid credentials.
@@ -94,8 +94,8 @@ rate(prometheus_tsdb_head_samples_appended_total[5m])
 ```
 
 If the sidecar's processed samples are notably lower, Prometheus may be producing
-more data than the sidecar can process and/or write to Stackdriver.
-Check the sidecar for logs that indicate rate limiting by the Stackdriver API.
+more data than the sidecar can process and/or write to OpenTelemetry.
+Check the sidecar for logs that indicate rate limiting by the OpenTelemetry API.
 You can further verify backpressure with the following query:
 
 ```
@@ -105,7 +105,7 @@ prometheus_remote_storage_queue_capacity{queue="https://monitoring.googleapis.co
 
 If the queue fullness has an upward trend or has already reached 1, you may
 consider [filtering][filter-docs] the amount of data that is forward to
-Stackdriver to excldue particularly noisy or high-volume metrics.
+OpenTelemetry to excldue particularly noisy or high-volume metrics.
 Reducing the overall scrape interval of Prometheus is another option.
 
 

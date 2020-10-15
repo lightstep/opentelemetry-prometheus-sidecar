@@ -4,7 +4,7 @@ set -e
 
 pushd "$( dirname "${BASH_SOURCE[0]}" )"
 
-go build github.com/Stackdriver/stackdriver-prometheus-sidecar/cmd/stackdriver-prometheus-sidecar
+go build github.com/lightstep/lightstep-prometheus-sidecar/cmd/lightstep-prometheus-sidecar
 
 trap 'kill 0' SIGTERM
 
@@ -21,13 +21,12 @@ go run main.go --latency=30ms 2>&1 | sed -e "s/^/[server] /" &
 sleep 2
 echo "Starting sidecar"
 
-./stackdriver-prometheus-sidecar \
+./lightstep-prometheus-sidecar \
   --config-file="sidecar.yml" \
-  --stackdriver.project-id=test \
   --web.listen-address="0.0.0.0:9091" \
-  --stackdriver.generic.location="test-cluster" \
-  --stackdriver.generic.namespace="test-namespace" \
-  --stackdriver.api-address="http://127.0.0.1:9092/?auth=false" \
+  --opentelemetry.generic.location="test-cluster" \
+  --opentelemetry.generic.namespace="test-namespace" \
+  --opentelemetry.api-address="http://127.0.0.1:9092/?auth=false" \
   2>&1 | sed -e "s/^/[sidecar] /" &
 
 if [ -n "${SIDECAR_OLD}" ]; then
@@ -35,10 +34,9 @@ if [ -n "${SIDECAR_OLD}" ]; then
   
   ${SIDECAR_OLD} \
     --log.level=debug \
-    --stackdriver.project-id=test \
     --web.listen-address="0.0.0.0:9093" \
-    --stackdriver.debug \
-    --stackdriver.api-address="http://127.0.0.1:9092/?auth=false" \
+    --opentelemetry.debug \
+    --opentelemetry.api-address="http://127.0.0.1:9092/?auth=false" \
     2>&1 | sed -e "s/^/[sidecar-old] /" &
 fi
 

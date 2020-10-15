@@ -53,7 +53,7 @@ var (
 
 	// PointCount is a metric.
 	PointCount = stats.Int64("agent.googleapis.com/agent/monitoring/point_count",
-		"count of metric points written to Stackdriver", stats.UnitDimensionless)
+		"count of metric points written to OpenCensus", stats.UnitDimensionless)
 )
 
 func init() {
@@ -125,12 +125,10 @@ func (c *Client) getConnection(ctx context.Context) (*grpc.ClientConn, error) {
 		useAuth = true // Default to auth enabled.
 	}
 	level.Debug(c.logger).Log(
-		"msg", "is auth enabled",
+		"msg", "new otlp connection",
 		"auth", useAuth,
 		"url", c.url.String())
-	// Google APIs currently return a single IP for the whole service.  gRPC
-	// client-side load-balancing won't spread the load across backends
-	// while that's true, but it also doesn't hurt.
+
 	dopts := []grpc.DialOption{
 		grpc.WithBalancerName(roundrobin.Name),
 		grpc.WithBlock(), // Wait for the connection to be established before using it.
@@ -169,6 +167,13 @@ func (c *Client) getConnection(ctx context.Context) (*grpc.ClientConn, error) {
 	}
 	conn, err := grpc.DialContext(ctx, address, dopts...)
 	c.conn = conn
+	if err != nil {
+		level.Debug(c.logger).Log(
+			"msg", "connection status",
+			"url", c.url.String(),
+			"err", err,
+		)
+	}
 	if err == context.DeadlineExceeded {
 		return conn, recoverableError{err}
 	}
@@ -212,14 +217,17 @@ func (c *Client) Store(req *metricsService.ExportMetricsServiceRequest) error {
 				stats.RecordWithTags(ctx,
 					[]tag.Mutator{tag.Upsert(StatusTag, "0")},
 					PointCount.M(int64(end-begin)))
+				level.Debug(c.logger).Log(
+					"msg", "Write was successful",
+					"records", end-begin)
 			} else {
 				level.Debug(c.logger).Log(
-					"msg", "Partial failure calling CreateTimeSeries",
+					"msg", "Partial failure calling Export",
 					"err", err)
 				status, ok := status.FromError(err)
 				// TODO metrics
 				if !ok {
-					level.Warn(c.logger).Log("msg", "Unexpected error message type from Monitoring API", "err", err)
+					level.Warn(c.logger).Log("msg", "Unexpected error message type from OpenTelemetry service", "err", err)
 					errors <- err
 					return
 				}

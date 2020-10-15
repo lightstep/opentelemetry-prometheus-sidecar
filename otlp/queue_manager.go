@@ -192,7 +192,7 @@ func NewQueueManager(logger log.Logger, cfg config.QueueConfig, clientFactory St
 	return t, nil
 }
 
-// Append queues a sample to be sent to the Stackdriver API.
+// Append queues a sample to be sent to the OpenTelemetry API.
 // Always returns nil.
 func (t *QueueManager) Append(hash uint64, sample *metric_pb.ResourceMetrics) error {
 	queueLength.WithLabelValues(t.queueName).Inc()
@@ -478,9 +478,9 @@ func (s *shardCollection) runShard(i int) {
 
 			// If pendingSamples contains a point for the
 			// incoming time series, send all pending points
-			// to Stackdriver, and start a new list. This
+			// to OpenTelemetry, and start a new list. This
 			// prevents adding two points for the same time
-			// series to a single request, which Stackdriver
+			// series to a single request, which OpenTelemetry
 			// rejects.
 			_, seen := shard.seen[fp]
 			if !seen {

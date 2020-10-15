@@ -16,7 +16,11 @@ fi
 SHOULD_CLEAN_UP=${3:-}
 
 # Override to use a different Docker image name for the sidecar.
-export SIDECAR_IMAGE_NAME=${SIDECAR_IMAGE_NAME:-'gcr.io/stackdriver-prometheus/stackdriver-prometheus-sidecar'}
+export SIDECAR_IMAGE_NAME=${SIDECAR_IMAGE_NAME:-'lightstep-prometheus-sidecar'}
+
+# TODO(jmacd) these were removed, make a new option for generic resources
+#        - \"--stackdriver.kubernetes.location=${GCP_REGION}\"
+#        - \"--stackdriver.kubernetes.cluster-name=${KUBE_CLUSTER}\"
 
 kubectl -n "${KUBE_NAMESPACE}" patch "$1" "$2" --type strategic --patch "
 spec:
@@ -27,12 +31,7 @@ spec:
         image: ${SIDECAR_IMAGE_NAME}:${SIDECAR_IMAGE_TAG}
         imagePullPolicy: Always
         args:
-        - \"--stackdriver.project-id=${GCP_PROJECT}\"
         - \"--prometheus.wal-directory=${DATA_DIR}/wal\"
-        - \"--stackdriver.kubernetes.location=${GCP_REGION}\"
-        - \"--stackdriver.kubernetes.cluster-name=${KUBE_CLUSTER}\"
-        #- \"--stackdriver.generic.location=${GCP_REGION}\"
-        #- \"--stackdriver.generic.namespace=${KUBE_CLUSTER}\"
         ports:
         - name: sidecar
           containerPort: 9091
