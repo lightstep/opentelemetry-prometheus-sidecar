@@ -150,6 +150,10 @@ type grpcConfig struct {
 	Headers []string `json:"headers"`
 }
 
+type resourceConfig struct {
+	Attributes []string `json:"attributes"`
+}
+
 type mainConfig struct {
 	ConfigFilename       string
 	OpenTelemetryAddress *url.URL
@@ -165,6 +169,7 @@ type mainConfig struct {
 	PromlogConfig        promlog.Config
 	Security             securityConfig
 	GRPC                 grpcConfig
+	Resource             resourceConfig
 }
 
 func main() {
@@ -207,8 +212,12 @@ func main() {
 	a.Flag("security.server-certificate", "Public certificate for the server to use for TLS connections (e.g., server.crt, in pem format).").
 		StringVar(&cfg.Security.ServerCertificate)
 
+	// TODO: Cover the two flags below in the end-to-end test.
 	a.Flag("grpc.header", "Headers for gRPC connection (e.g., MyHeader=Value1). May be repeated.").
 		StringsVar(&cfg.GRPC.Headers)
+
+	a.Flag("resource.attribute", "Attributes for exported metrics (e.g., MyResource=Value1). May be repeated.").
+		StringsVar(&cfg.Resource.Attributes)
 
 	promlogflag.AddFlags(a, &cfg.PromlogConfig)
 
@@ -291,6 +300,19 @@ func main() {
 	}
 	targetCache := targets.NewCache(logger, httpClient, targetsURL)
 
+	resAttrMap := map[string]string{}
+
+	for _, attr := range cfg.Resource.Attributes {
+		kvs := strings.SplitN(attr, "=", 2)
+		if len(kvs) != 2 {
+			level.Error(logger).Log("msg", "resource attribute should have key=value syntax", "ex", attr)
+			os.Exit(2)
+		}
+		resAttrMap[kvs[0]] = kvs[1]
+	}
+
+	targetCacheWithLabels := retrieval.TargetsWithDiscoveredLabels(targetCache, labels.FromMap(resAttrMap))
+
 	metadataURL, err := cfg.PrometheusURL.Parse(metadata.DefaultEndpointPath)
 	if err != nil {
 		panic(err)
@@ -335,7 +357,7 @@ func main() {
 		tailer,
 		filtersets,
 		cfg.MetricRenames,
-		targetCache,
+		targetCacheWithLabels,
 		metadataCache,
 		queueManager,
 		cfg.MetricsPrefix,
