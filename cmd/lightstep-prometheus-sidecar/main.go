@@ -212,6 +212,7 @@ func main() {
 	a.Flag("security.server-certificate", "Public certificate for the server to use for TLS connections (e.g., server.crt, in pem format).").
 		StringVar(&cfg.Security.ServerCertificate)
 
+	// TODO: Cover the two flags below in the end-to-end test.
 	a.Flag("grpc.header", "Headers for gRPC connection (e.g., MyHeader=Value1). May be repeated.").
 		StringsVar(&cfg.GRPC.Headers)
 
