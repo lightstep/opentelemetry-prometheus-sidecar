@@ -178,15 +178,26 @@ func (c *Cache) Get(ctx context.Context, lset labels.Labels) (*Target, error) {
 	t, _ := targetMatch(ts, lset)
 
 	if t != nil {
+		// Remove target labels from DiscoveredLabels.
+		t.DiscoveredLabels = DropTargetLabels(t.DiscoveredLabels, t.Labels)
+
+		// Add the now-unique target labels back into
+		// discovered labels.  These will all be exported as
+		// resources.  (TODO: along with those injected on the
+		// command-line, which should just be sorted-in here.)
+		// TODO: Fix the tests after this:
+		t.DiscoveredLabels = append(t.DiscoveredLabels, t.Labels...)
+
+		// TODO: Option to: Remap __meta_
+
 		// Remove __ prefixes from DiscoveredLabels.
-		o := 0
+		tmp := t.DiscoveredLabels[:0]
 		for _, l := range t.DiscoveredLabels {
 			if !strings.HasPrefix(l.Name, "__") {
-				t.DiscoveredLabels[o] = l
-				o++
+				tmp = append(tmp, l)
 			}
 		}
-		t.DiscoveredLabels = t.DiscoveredLabels[:o]
+		t.DiscoveredLabels = tmp
 	}
 	return t, nil
 }

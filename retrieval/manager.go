@@ -47,6 +47,7 @@ type targetsWithDiscoveredLabels struct {
 
 // TargetsWithDiscoveredLabels wraps a TargetGetter and adds a static set of labels to the discovered
 // labels of all targets retrieved from it.
+// TODO: Move this into an option in the constructor of targets.Cache, it's inefficient to sort on read.
 func TargetsWithDiscoveredLabels(tg TargetGetter, lset labels.Labels) TargetGetter {
 	return &targetsWithDiscoveredLabels{TargetGetter: tg, lset: lset}
 }
