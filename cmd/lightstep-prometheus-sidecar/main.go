@@ -151,7 +151,8 @@ type grpcConfig struct {
 }
 
 type resourceConfig struct {
-	Attributes []string `json:"attributes"`
+	Attributes         []string `json:"attributes"`
+	UseDiscoveryLabels bool     `json:"use_discovery_labels"`
 }
 
 type mainConfig struct {
@@ -218,6 +219,9 @@ func main() {
 
 	a.Flag("resource.attribute", "Attributes for exported metrics (e.g., MyResource=Value1). May be repeated.").
 		StringsVar(&cfg.Resource.Attributes)
+
+	a.Flag("resource.use-discovery-labels", "Map Prometheus target labels prefixed with __meta_ into labels.").
+		BoolVar(&cfg.Resource.UseDiscoveryLabels)
 
 	promlogflag.AddFlags(a, &cfg.PromlogConfig)
 
@@ -309,7 +313,13 @@ func main() {
 		resAttrMap[kvs[0]] = kvs[1]
 	}
 
-	targetCache := targets.NewCache(logger, httpClient, targetsURL, labels.FromMap(resAttrMap))
+	targetCache := targets.NewCache(
+		logger,
+		httpClient,
+		targetsURL,
+		labels.FromMap(resAttrMap),
+		cfg.Resource.UseDiscoveryLabels,
+	)
 
 	metadataURL, err := cfg.PrometheusURL.Parse(metadata.DefaultEndpointPath)
 	if err != nil {
