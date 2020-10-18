@@ -42,18 +42,18 @@ func cacheKey(job, instance string) string {
 // by a varying set of labels within a job and instance combination.
 // Implements TargetGetter.
 type Cache struct {
-	logger             log.Logger
-	client             *http.Client
-	url                *url.URL
-	extraLabels        labels.Labels
-	useDiscoveryLabels bool
+	logger        log.Logger
+	client        *http.Client
+	url           *url.URL
+	extraLabels   labels.Labels
+	useMetaLabels bool
 
 	mtx sync.RWMutex
 	// Targets indexed by job/instance combination.
 	targets map[string][]*Target
 }
 
-func NewCache(logger log.Logger, client *http.Client, promURL *url.URL, extraLabels labels.Labels, useDiscoveryLabels bool) *Cache {
+func NewCache(logger log.Logger, client *http.Client, promURL *url.URL, extraLabels labels.Labels, useMetaLabels bool) *Cache {
 	if client == nil {
 		client = http.DefaultClient
 	}
@@ -61,12 +61,12 @@ func NewCache(logger log.Logger, client *http.Client, promURL *url.URL, extraLab
 		logger = log.NewNopLogger()
 	}
 	return &Cache{
-		logger:             logger,
-		client:             client,
-		url:                promURL,
-		extraLabels:        extraLabels,
-		useDiscoveryLabels: useDiscoveryLabels,
-		targets:            map[string][]*Target{},
+		logger:        logger,
+		client:        client,
+		url:           promURL,
+		extraLabels:   extraLabels,
+		useMetaLabels: useMetaLabels,
+		targets:       map[string][]*Target{},
 	}
 }
 
@@ -196,7 +196,7 @@ func (c *Cache) Get(ctx context.Context, lset labels.Labels) (*Target, error) {
 	// Remove __ prefixes from DiscoveredLabels.
 	tmp := t.DiscoveredLabels[:0]
 	for _, l := range t.DiscoveredLabels {
-		if c.useDiscoveryLabels && strings.HasPrefix(l.Name, "__meta_") {
+		if c.useMetaLabels && strings.HasPrefix(l.Name, "__meta_") {
 			tmp = append(tmp, labels.Label{
 				Name:  l.Name[len("__meta_"):],
 				Value: l.Value,

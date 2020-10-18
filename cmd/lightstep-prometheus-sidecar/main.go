@@ -151,8 +151,8 @@ type grpcConfig struct {
 }
 
 type resourceConfig struct {
-	Attributes         []string `json:"attributes"`
-	UseDiscoveryLabels bool     `json:"use_discovery_labels"`
+	Attributes    []string `json:"attributes"`
+	UseMetaLabels bool     `json:"use_meta_labels"`
 }
 
 type mainConfig struct {
@@ -220,8 +220,8 @@ func main() {
 	a.Flag("resource.attribute", "Attributes for exported metrics (e.g., MyResource=Value1). May be repeated.").
 		StringsVar(&cfg.Resource.Attributes)
 
-	a.Flag("resource.use-discovery-labels", "Map Prometheus target labels prefixed with __meta_ into labels.").
-		BoolVar(&cfg.Resource.UseDiscoveryLabels)
+	a.Flag("resource.use-meta-labels", "Prometheus target labels prefixed with __meta_ map into labels.").
+		BoolVar(&cfg.Resource.UseMetaLabels)
 
 	promlogflag.AddFlags(a, &cfg.PromlogConfig)
 
@@ -318,7 +318,7 @@ func main() {
 		httpClient,
 		targetsURL,
 		labels.FromMap(resAttrMap),
-		cfg.Resource.UseDiscoveryLabels,
+		cfg.Resource.UseMetaLabels,
 	)
 
 	metadataURL, err := cfg.PrometheusURL.Parse(metadata.DefaultEndpointPath)
