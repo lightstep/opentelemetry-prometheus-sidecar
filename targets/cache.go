@@ -42,16 +42,17 @@ func cacheKey(job, instance string) string {
 // by a varying set of labels within a job and instance combination.
 // Implements TargetGetter.
 type Cache struct {
-	logger log.Logger
-	client *http.Client
-	url    *url.URL
+	logger      log.Logger
+	client      *http.Client
+	url         *url.URL
+	extraLabels labels.Labels
 
 	mtx sync.RWMutex
 	// Targets indexed by job/instance combination.
 	targets map[string][]*Target
 }
 
-func NewCache(logger log.Logger, client *http.Client, promURL *url.URL) *Cache {
+func NewCache(logger log.Logger, client *http.Client, promURL *url.URL, extraLabels labels.Labels) *Cache {
 	if client == nil {
 		client = http.DefaultClient
 	}
@@ -59,10 +60,11 @@ func NewCache(logger log.Logger, client *http.Client, promURL *url.URL) *Cache {
 		logger = log.NewNopLogger()
 	}
 	return &Cache{
-		logger:  logger,
-		client:  client,
-		url:     promURL,
-		targets: map[string][]*Target{},
+		logger:      logger,
+		client:      client,
+		url:         promURL,
+		extraLabels: extraLabels,
+		targets:     map[string][]*Target{},
 	}
 }
 
@@ -177,28 +179,29 @@ func (c *Cache) Get(ctx context.Context, lset labels.Labels) (*Target, error) {
 	// in DiscoveredLabels.
 	t, _ := targetMatch(ts, lset)
 
-	if t != nil {
-		// Remove target labels from DiscoveredLabels.
-		t.DiscoveredLabels = DropTargetLabels(t.DiscoveredLabels, t.Labels)
-
-		// Add the now-unique target labels back into
-		// discovered labels.  These will all be exported as
-		// resources.  (TODO: along with those injected on the
-		// command-line, which should just be sorted-in here.)
-		// TODO: Fix the tests after this:
-		t.DiscoveredLabels = append(t.DiscoveredLabels, t.Labels...)
-
-		// TODO: Option to: Remap __meta_
-
-		// Remove __ prefixes from DiscoveredLabels.
-		tmp := t.DiscoveredLabels[:0]
-		for _, l := range t.DiscoveredLabels {
-			if !strings.HasPrefix(l.Name, "__") {
-				tmp = append(tmp, l)
-			}
-		}
-		t.DiscoveredLabels = tmp
+	if t == nil {
+		return nil, nil
 	}
+	// Remove target labels from DiscoveredLabels.
+	t.DiscoveredLabels = DropTargetLabels(t.DiscoveredLabels, t.Labels)
+
+	// Add labels from the command-line.
+	t.DiscoveredLabels = append(t.DiscoveredLabels, c.extraLabels...)
+
+	// Add the now-unique target labels back into discovered labels.
+	t.DiscoveredLabels = append(t.DiscoveredLabels, t.Labels...)
+
+	// TODO: Option to: Remap __meta_
+
+	// Remove __ prefixes from DiscoveredLabels.
+	tmp := t.DiscoveredLabels[:0]
+	for _, l := range t.DiscoveredLabels {
+		if !strings.HasPrefix(l.Name, "__") {
+			tmp = append(tmp, l)
+		}
+	}
+	t.DiscoveredLabels = tmp
+	sort.Sort(&t.DiscoveredLabels)
 	return t, nil
 }
 

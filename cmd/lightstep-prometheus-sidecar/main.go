@@ -298,10 +298,8 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	targetCache := targets.NewCache(logger, httpClient, targetsURL)
 
 	resAttrMap := map[string]string{}
-
 	for _, attr := range cfg.Resource.Attributes {
 		kvs := strings.SplitN(attr, "=", 2)
 		if len(kvs) != 2 {
@@ -311,7 +309,7 @@ func main() {
 		resAttrMap[kvs[0]] = kvs[1]
 	}
 
-	targetCacheWithLabels := retrieval.TargetsWithDiscoveredLabels(targetCache, labels.FromMap(resAttrMap))
+	targetCache := targets.NewCache(logger, httpClient, targetsURL, labels.FromMap(resAttrMap))
 
 	metadataURL, err := cfg.PrometheusURL.Parse(metadata.DefaultEndpointPath)
 	if err != nil {
@@ -357,7 +355,7 @@ func main() {
 		tailer,
 		filtersets,
 		cfg.MetricRenames,
-		targetCacheWithLabels,
+		targetCache,
 		metadataCache,
 		queueManager,
 		cfg.MetricsPrefix,

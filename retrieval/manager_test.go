@@ -17,7 +17,6 @@ import (
 	"context"
 	"io/ioutil"
 	"os"
-	"reflect"
 	"testing"
 	"time"
 
@@ -210,22 +209,6 @@ func TestReader_ProgressFile(t *testing.T) {
 	}
 	if offset != 12345 {
 		t.Fatalf("expected progress offset %d but got %d", 12345, offset)
-	}
-}
-
-func TestTargetsWithDiscoveredLabels(t *testing.T) {
-	tm := targetMap{
-		"/": &targets.Target{DiscoveredLabels: promlabels.FromStrings("b", "2")},
-	}
-
-	wrapped := TargetsWithDiscoveredLabels(tm, promlabels.FromStrings("a", "1", "c", "3"))
-
-	target, err := wrapped.Get(context.Background(), promlabels.FromStrings("b", "2"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(target.DiscoveredLabels, promlabels.FromStrings("a", "1", "b", "2", "c", "3")) {
-		t.Fatalf("unexpected discovered labels %s", target.DiscoveredLabels)
 	}
 }
 

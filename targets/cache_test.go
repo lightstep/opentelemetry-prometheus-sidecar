@@ -39,7 +39,7 @@ func TestTargetCache_Error(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := NewCache(nil, nil, u)
+	c := NewCache(nil, nil, u, nil)
 
 	expectedTarget := &Target{
 		Labels: labels.FromStrings("job", "a", "instance", "c"),
@@ -104,7 +104,7 @@ func TestTargetCache_Success(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := NewCache(nil, nil, u)
+	c := NewCache(nil, nil, u, nil)
 
 	handler = func() []*Target {
 		return []*Target{
@@ -125,7 +125,7 @@ func TestTargetCache_Success(t *testing.T) {
 	if !labelsEqual(target1.Labels, labels.FromStrings("job", "job1", "instance", "instance1")) {
 		t.Fatalf("unexpected target labels %s", target1.Labels)
 	}
-	if !labelsEqual(target1.DiscoveredLabels, labels.FromStrings("something", "else")) {
+	if !labelsEqual(target1.DiscoveredLabels, labels.FromStrings("instance", "instance1", "job", "job1", "something", "else")) {
 		t.Fatalf("unexpected discovered target labels %s", target1.DiscoveredLabels)
 	}
 	// Get a non-existant target. The first time it should attempt a refresh.
@@ -225,7 +225,7 @@ func TestTargetCache_EmptyEntry(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	c := NewCache(nil, nil, u)
+	c := NewCache(nil, nil, u, nil)
 	// Initialize cache with negative-cached target.
 	c.targets[cacheKey("job1", "instance-not-exists")] = nil
 
