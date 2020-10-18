@@ -19,7 +19,6 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"sort"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -38,28 +37,6 @@ import (
 
 type TargetGetter interface {
 	Get(ctx context.Context, lset labels.Labels) (*targets.Target, error)
-}
-
-type targetsWithDiscoveredLabels struct {
-	TargetGetter
-	lset labels.Labels
-}
-
-// TargetsWithDiscoveredLabels wraps a TargetGetter and adds a static set of labels to the discovered
-// labels of all targets retrieved from it.
-func TargetsWithDiscoveredLabels(tg TargetGetter, lset labels.Labels) TargetGetter {
-	return &targetsWithDiscoveredLabels{TargetGetter: tg, lset: lset}
-}
-
-func (tg *targetsWithDiscoveredLabels) Get(ctx context.Context, lset labels.Labels) (*targets.Target, error) {
-	t, err := tg.TargetGetter.Get(ctx, lset)
-	if err != nil || t == nil {
-		return t, err
-	}
-	repl := *t
-	repl.DiscoveredLabels = append(append(labels.Labels{}, t.DiscoveredLabels...), tg.lset...)
-	sort.Sort(repl.DiscoveredLabels)
-	return &repl, nil
 }
 
 type MetadataGetter interface {

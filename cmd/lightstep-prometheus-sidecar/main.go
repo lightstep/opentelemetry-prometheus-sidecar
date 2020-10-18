@@ -151,7 +151,8 @@ type grpcConfig struct {
 }
 
 type resourceConfig struct {
-	Attributes []string `json:"attributes"`
+	Attributes    []string `json:"attributes"`
+	UseMetaLabels bool     `json:"use_meta_labels"`
 }
 
 type mainConfig struct {
@@ -218,6 +219,9 @@ func main() {
 
 	a.Flag("resource.attribute", "Attributes for exported metrics (e.g., MyResource=Value1). May be repeated.").
 		StringsVar(&cfg.Resource.Attributes)
+
+	a.Flag("resource.use-meta-labels", "Prometheus target labels prefixed with __meta_ map into labels.").
+		BoolVar(&cfg.Resource.UseMetaLabels)
 
 	promlogflag.AddFlags(a, &cfg.PromlogConfig)
 
@@ -298,10 +302,8 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	targetCache := targets.NewCache(logger, httpClient, targetsURL)
 
 	resAttrMap := map[string]string{}
-
 	for _, attr := range cfg.Resource.Attributes {
 		kvs := strings.SplitN(attr, "=", 2)
 		if len(kvs) != 2 {
@@ -311,7 +313,13 @@ func main() {
 		resAttrMap[kvs[0]] = kvs[1]
 	}
 
-	targetCacheWithLabels := retrieval.TargetsWithDiscoveredLabels(targetCache, labels.FromMap(resAttrMap))
+	targetCache := targets.NewCache(
+		logger,
+		httpClient,
+		targetsURL,
+		labels.FromMap(resAttrMap),
+		cfg.Resource.UseMetaLabels,
+	)
 
 	metadataURL, err := cfg.PrometheusURL.Parse(metadata.DefaultEndpointPath)
 	if err != nil {
@@ -357,7 +365,7 @@ func main() {
 		tailer,
 		filtersets,
 		cfg.MetricRenames,
-		targetCacheWithLabels,
+		targetCache,
 		metadataCache,
 		queueManager,
 		cfg.MetricsPrefix,
