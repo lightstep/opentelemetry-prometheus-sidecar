@@ -190,7 +190,7 @@ func main() {
 	a.Flag("config-file", "A configuration file.").StringVar(&cfg.ConfigFilename)
 
 	a.Flag("opentelemetry.api-address", "Address of the OpenTelemetry Metrics API.").
-		Default("").URLVar(&cfg.OpenTelemetryAddress)
+		Default("ingest.lightstep.com:443").URLVar(&cfg.OpenTelemetryAddress)
 
 	a.Flag("opentelemetry.metrics-prefix", "Customized prefix for exporter metrics. If not set, none will be used").
 		StringVar(&cfg.MetricsPrefix)
