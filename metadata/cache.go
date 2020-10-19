@@ -124,8 +124,7 @@ func (c *Cache) Get(ctx context.Context, job, instance, metric string) (*Entry, 
 			}
 			for _, md := range mds {
 				// Only set if we haven't seen the metric before. Changes to metadata
-				// may need special handling in Stackdriver, which we do not provide
-				// yet anyway.
+				// are discouraged.
 				if _, ok := c.metadata[md.Metric]; !ok {
 					c.metadata[md.Metric] = md
 				}
