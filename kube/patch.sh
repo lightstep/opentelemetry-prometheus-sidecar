@@ -18,10 +18,6 @@ SHOULD_CLEAN_UP=${3:-}
 # Override to use a different Docker image name for the sidecar.
 export SIDECAR_IMAGE_NAME=${SIDECAR_IMAGE_NAME:-'lightstep-prometheus-sidecar'}
 
-# TODO(jmacd) these were removed, make a new option for generic resources
-#        - \"--stackdriver.kubernetes.location=${GCP_REGION}\"
-#        - \"--stackdriver.kubernetes.cluster-name=${KUBE_CLUSTER}\"
-
 kubectl -n "${KUBE_NAMESPACE}" patch "$1" "$2" --type strategic --patch "
 spec:
   template:

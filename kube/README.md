@@ -1,6 +1,6 @@
 # Kubernetes setup
 
-This directory contains patch scripts to configure the Stackdriver Prometheus integration to work with the Prometheus server. See the [user documentation](https://cloud.google.com/monitoring/kubernetes-engine/prometheus) for more details.
+This directory contains patch scripts to configure the Lightstep Prometheus integration to work with the Prometheus server. See the [user documentation](https://cloud.google.com/monitoring/kubernetes-engine/prometheus) for more details.
 
 Required environment variables:
 * `KUBE_NAMESPACE`: namespace to run the script against
@@ -8,10 +8,7 @@ Required environment variables:
 * `GCP_REGION`: GCP region parameter for the sidecar
 * `GCP_PROJECT`: GCP project parameter for the sidecar
 * `SIDECAR_IMAGE_TAG`: Version parameter for the sidecar
-
-Optional environment variables:
-* `SIDECAR_IMAGE_NAME`: Image name parameter for the sidecar (default:
-  gcr.io/stackdriver-prometheus/stackdriver-prometheus-sidecar)
+* `SIDECAR_IMAGE_NAME`: Image name parameter for the sidecar (default: lightstep-prometheus-sidecar)
 
 If your cluster is not the default context:
 

@@ -22,7 +22,7 @@ GOHOSTARCH   ?= $(shell $(GO) env GOHOSTARCH)
 
 # Enforce Go modules support just in case the directory is inside GOPATH (and for Travis CI).
 GO111MODULE := on
-# Always use the local vendor/ directory to satisfy the dependencies.
+# Always use the local vendor/ directory to satisfy the dependencies.  This is required by `promu`.
 GOOPTS := $(GOOPTS) -mod=vendor
 
 PROMU        := $(FIRST_GOPATH)/bin/promu
@@ -50,8 +50,7 @@ ifdef DEBUG
 	bindata_flags = -debug
 endif
 
-# TODO: Reenable staticcheck after removing deprecation warnings.
-all: format vendor build test
+all: vendor build test
 
 style:
 	@echo ">> checking code style"
@@ -90,6 +89,7 @@ vet:
 	@echo ">> vetting code"
 	GO111MODULE=$(GO111MODULE) $(GO) vet $(GOOPTS) $(pkgs)
 
+# TODO: Reenable staticcheck after removing deprecation warnings.
 staticcheck: $(STATICCHECK)
 	@echo ">> running staticcheck"
 	$(STATICCHECK) $(pkgs)
