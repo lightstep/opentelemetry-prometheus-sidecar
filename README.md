@@ -164,6 +164,10 @@ Static metadata allows overriding metadata used for output timeseries.  Note:
   * All `static_metadata` entries must have `type` specified.
   * If `value_type` is specified, it will override the default value type for counters and gauges. All Prometheus metrics have a default type of double.
 
+## Upstream
+
+This repository was copied into a private reposotitory from [this upstream fork](https://github.com/Stackdriver/stackdriver-prometheus-sidecar/tree/1361301230bcfc978864a8f4c718aba98bc07a3d) of `stackdriver-prometheus-sidecar`.
+
 ## Compatibility
 
 The matrix below lists the versions of Prometheus Server and other dependencies that have been qualified to work with releases of `lightstep-prometheus-sidecar`. If the matrix does not list whether they are compatible, please assume they are not verified yet but can be compatible. Feel free to contribute to the matrix if you have run the end-to-end test between a version of `lightstep-prometheus-sidecar` and Prometheus server.
