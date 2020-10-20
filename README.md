@@ -175,7 +175,7 @@ Changes relative to `stackdriver-prometheus-sidecar` include:
 * Remove "Resource Map" code, used for generating "Monitored Resource" concept in Stackdriver; OpenTelemetry is less restrictive, this code is replaced by `--resource.attribute` and `--resource.use-meta-labels` support
 * Remove GCP/GKE-specific automatic resources; these can be applied using `--resource.attribute`
 * Remove "Counter Aggregator" support, which pre-aggregates labels; there are other ways this could be implemented, if the OpenTelemetry-Go SDK were used to generate OTLP instead of the dedicated code in this repository
-* Add `--security.server-certificate` support for supplying the server-side TLS credentials.
+* Add `--security.root-certificate` support for supplying the root certificate used in TLS connection setup.
 
 ## Compatibility
 
