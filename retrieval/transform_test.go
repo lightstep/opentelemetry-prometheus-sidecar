@@ -15,6 +15,7 @@ package retrieval
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -171,6 +172,7 @@ func TestSampleBuilder(t *testing.T) {
 		}
 	)
 	cases := []struct {
+		name         string
 		series       seriesMap
 		targets      TargetGetter
 		metadata     MetadataGetter
@@ -180,6 +182,7 @@ func TestSampleBuilder(t *testing.T) {
 		fail         bool
 	}{
 		{
+			name: "basics",
 			series: seriesMap{
 				1: labels.FromStrings("job", "job1", "instance", "instance1", "a", "1", "__name__", "metric1"),
 				2: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric2"),
@@ -357,10 +360,11 @@ func TestSampleBuilder(t *testing.T) {
 		},
 		// Various cases where we drop series due to absence of additional information.
 		{
+			name: "absense of data",
 			targets: targetMap{
 				"job1/instance1": &targets.Target{
 					Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
-					DiscoveredLabels: promlabels.FromStrings("__resource_a", "resource2_a"),
+					DiscoveredLabels: promlabels.FromStrings("resource_a", "resource2_a"),
 				},
 				"job1/instance_noresource": &targets.Target{
 					Labels: promlabels.FromStrings("job", "job1", "instance", "instance_noresource"),
@@ -381,124 +385,73 @@ func TestSampleBuilder(t *testing.T) {
 			},
 			result: []*metric_pb.ResourceMetrics{nil, nil, nil},
 		},
-		// // Summary metrics.
-		// {
-		// 	targets: targetMap{
-		// 		"job1/instance1": &targets.Target{
-		// 			Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
-		// 			DiscoveredLabels: promlabels.FromStrings("__resource_a", "resource2_a"),
-		// 		},
-		// 	},
-		// 	metadata: metadataMap{
-		// 		"job1/instance1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeSummary, ValueType: metadata.DOUBLE},
-		// 	},
-		// 	series: seriesMap{
-		// 		1: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_sum"),
-		// 		2: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1", "quantile", "0.5"),
-		// 		3: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_count"),
-		// 		4: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1", "quantile", "0.9"),
-		// 	},
-		// 	input: []tsdb.RefSample{
-		// 		{Ref: 1, T: 1000, V: 1},
-		// 		{Ref: 1, T: 1500, V: 1},
-		// 		{Ref: 2, T: 2000, V: 2},
-		// 		{Ref: 3, T: 3000, V: 3},
-		// 		{Ref: 3, T: 3500, V: 4},
-		// 		{Ref: 4, T: 4000, V: 4},
-		// 	},
-		// 	result: []*metric_pb.ResourceMetrics{
-		// 		nil, // 0: dropped by reset handling.
-		// 		{ // 1
-		// 			Resource: &monitoredres_pb.MonitoredResource{
-		// 				Type:   "resource2",
-		// 				Labels: map[string]string{"resource_a": "resource2_a"},
-		// 			},
-		// 			Metric: &metric_pb.Metric{
-		// 				Type:   "external.googleapis.com/prometheus/metric1_sum",
-		// 				Labels: map[string]string{},
-		// 			},
-		// 			MetricKind: metadata.CUMULATIVE,
-		// 			ValueType:  metadata.DOUBLE,
-		// 			Points: []*monitoring_pb.Point{{
-		// 				Interval: &monitoring_pb.TimeInterval{
-		// 					StartTime: &timestamp_pb.Timestamp{Seconds: 1},
-		// 					EndTime:   &timestamp_pb.Timestamp{Seconds: 1, Nanos: 5e8},
-		// 				},
-		// 				Value: &monitoring_pb.TypedValue{
-		// 					Value: &monitoring_pb.TypedValue_DoubleValue{0},
-		// 				},
-		// 			}},
-		// 		},
-		// 		{ // 2
-		// 			Resource: &monitoredres_pb.MonitoredResource{
-		// 				Type:   "resource2",
-		// 				Labels: map[string]string{"resource_a": "resource2_a"},
-		// 			},
-		// 			Metric: &metric_pb.Metric{
-		// 				Type:   "external.googleapis.com/prometheus/metric1",
-		// 				Labels: map[string]string{"quantile": "0.5"},
-		// 			},
-		// 			MetricKind: metadata.GAUGE,
-		// 			ValueType:  metadata.DOUBLE,
-		// 			Points: []*monitoring_pb.Point{{
-		// 				Interval: &monitoring_pb.TimeInterval{
-		// 					EndTime: &timestamp_pb.Timestamp{Seconds: 2},
-		// 				},
-		// 				Value: &monitoring_pb.TypedValue{
-		// 					Value: &monitoring_pb.TypedValue_DoubleValue{2},
-		// 				},
-		// 			}},
-		// 		},
-		// 		nil, // 3: dropped by reset handling.
-		// 		{ // 4
-		// 			Resource: &monitoredres_pb.MonitoredResource{
-		// 				Type:   "resource2",
-		// 				Labels: map[string]string{"resource_a": "resource2_a"},
-		// 			},
-		// 			Metric: &metric_pb.Metric{
-		// 				Type:   "external.googleapis.com/prometheus/metric1_count",
-		// 				Labels: map[string]string{},
-		// 			},
-		// 			MetricKind: metadata.CUMULATIVE,
-		// 			ValueType:  metadata.INT64,
-		// 			Points: []*monitoring_pb.Point{{
-		// 				Interval: &monitoring_pb.TimeInterval{
-		// 					StartTime: &timestamp_pb.Timestamp{Seconds: 3},
-		// 					EndTime:   &timestamp_pb.Timestamp{Seconds: 3, Nanos: 5e8},
-		// 				},
-		// 				Value: &monitoring_pb.TypedValue{
-		// 					Value: &monitoring_pb.TypedValue_Int64Value{1},
-		// 				},
-		// 			}},
-		// 		},
-		// 		{ // 5
-		// 			Resource: &monitoredres_pb.MonitoredResource{
-		// 				Type:   "resource2",
-		// 				Labels: map[string]string{"resource_a": "resource2_a"},
-		// 			},
-		// 			Metric: &metric_pb.Metric{
-		// 				Type:   "external.googleapis.com/prometheus/metric1",
-		// 				Labels: map[string]string{"quantile": "0.9"},
-		// 			},
-		// 			MetricKind: metadata.GAUGE,
-		// 			ValueType:  metadata.DOUBLE,
-		// 			Points: []*monitoring_pb.Point{{
-		// 				Interval: &monitoring_pb.TimeInterval{
-		// 					EndTime: &timestamp_pb.Timestamp{Seconds: 4},
-		// 				},
-		// 				Value: &monitoring_pb.TypedValue{
-		// 					Value: &monitoring_pb.TypedValue_DoubleValue{4},
-		// 				},
-		// 			}},
-		// 		},
-		// 	},
-		// },
+		// Summary metrics.
+		{
+			name: "summary metrics",
+			targets: targetMap{
+				"job1/instance1": &targets.Target{
+					Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
+					DiscoveredLabels: promlabels.FromStrings("resource_a", "resource2_a"),
+				},
+			},
+			metadata: metadataMap{
+				"job1/instance1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeSummary, ValueType: metadata.DOUBLE},
+			},
+			series: seriesMap{
+				1: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_sum"),
+				2: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1", "quantile", "0.5"),
+				3: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_count"),
+				4: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1", "quantile", "0.9"),
+			},
+			input: []tsdb.RefSample{
+				{Ref: 1, T: 1000, V: 1},
+				{Ref: 1, T: 1500, V: 1},
+				{Ref: 2, T: 2000, V: 2},
+				{Ref: 3, T: 3000, V: 3},
+				{Ref: 3, T: 3500, V: 4},
+				{Ref: 4, T: 4000, V: 4},
+			},
+			result: []*metric_pb.ResourceMetrics{
+				nil, // 0: dropped by reset handling.
+				DoubleCounterPoint(
+					resource2A,
+					Labels(),
+					"metric1_sum",
+					time.Unix(1, 0),
+					time.Unix(1, int64(500*time.Millisecond)),
+					0,
+				),
+				DoubleGaugePoint(
+					resource2A,
+					Labels(Label("quantile", "0.5")),
+					"metric1",
+					time.Unix(2, 0),
+					2,
+				),
+				nil, // 3: dropped
+				IntCounterPoint(
+					resource2A,
+					Labels(),
+					"metric1_count",
+					time.Unix(3, 0),
+					time.Unix(3, int64(500*time.Millisecond)),
+					1,
+				),
+				DoubleGaugePoint(
+					resource2A,
+					Labels(Label("quantile", "0.9")),
+					"metric1",
+					time.Unix(4, 0),
+					4,
+				),
+			},
+		},
 		// // Histogram.
 		// {
 		// 	targets: targetMap{
 		// 		"job1/instance1": &targets.Target{
 		// 			Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
-		// 			DiscoveredLabels: promlabels.FromStrings("__resource_a", "resource2_a"),
+		// 			DiscoveredLabels: promlabels.FromStrings("resource_a", "resource2_a"),
 		// 		},
 		// 	},
 		// 	metadata: metadataMap{
@@ -651,11 +604,11 @@ func TestSampleBuilder(t *testing.T) {
 		// 	targets: targetMap{
 		// 		"job1/instance1": &targets.Target{
 		// 			Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
-		// 			DiscoveredLabels: promlabels.FromStrings("__resource_a", "resource2_a"),
+		// 			DiscoveredLabels: promlabels.FromStrings("resource_a", "resource2_a"),
 		// 		},
 		// 		"job1/instance2": &targets.Target{
 		// 			Labels:           promlabels.FromStrings("job", "job1", "instance", "instance2"),
-		// 			DiscoveredLabels: promlabels.FromStrings("__resource_a", "resource2_a"),
+		// 			DiscoveredLabels: promlabels.FromStrings("resource_a", "resource2_a"),
 		// 		},
 		// 	},
 		// 	metadata: metadataMap{
@@ -731,7 +684,7 @@ func TestSampleBuilder(t *testing.T) {
 		// 	targets: targetMap{
 		// 		"job1/instance1": &targets.Target{
 		// 			Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
-		// 			DiscoveredLabels: promlabels.FromStrings("__resource_a", "resource2_a"),
+		// 			DiscoveredLabels: promlabels.FromStrings("resource_a", "resource2_a"),
 		// 		},
 		// 	},
 		// 	metadata: metadataMap{
@@ -773,7 +726,7 @@ func TestSampleBuilder(t *testing.T) {
 		// 	targets: targetMap{
 		// 		"job1/instance1": &targets.Target{
 		// 			Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
-		// 			DiscoveredLabels: promlabels.FromStrings("__resource_a", "resource2_a"),
+		// 			DiscoveredLabels: promlabels.FromStrings("resource_a", "resource2_a"),
 		// 		},
 		// 	},
 		// 	metadata: metadataMap{
@@ -819,7 +772,7 @@ func TestSampleBuilder(t *testing.T) {
 		// 	targets: targetMap{
 		// 		"job1/instance1": &targets.Target{
 		// 			Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
-		// 			DiscoveredLabels: promlabels.FromStrings("__resource_a", "resource2_a"),
+		// 			DiscoveredLabels: promlabels.FromStrings("resource_a", "resource2_a"),
 		// 		},
 		// 	},
 		// 	metadata: metadataMap{
@@ -865,7 +818,7 @@ func TestSampleBuilder(t *testing.T) {
 		// 	targets: targetMap{
 		// 		"job1/instance1": &targets.Target{
 		// 			Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
-		// 			DiscoveredLabels: promlabels.FromStrings("__resource_a", "resource2_a"),
+		// 			DiscoveredLabels: promlabels.FromStrings("resource_a", "resource2_a"),
 		// 		},
 		// 	},
 		// 	metadata: metadataMap{
@@ -903,7 +856,7 @@ func TestSampleBuilder(t *testing.T) {
 		// 	targets: targetMap{
 		// 		"job1/instance1": &targets.Target{
 		// 			Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
-		// 			DiscoveredLabels: promlabels.FromStrings("__resource_a", "resource2_a"),
+		// 			DiscoveredLabels: promlabels.FromStrings("resource_a", "resource2_a"),
 		// 		},
 		// 	},
 		// 	series: seriesMap{
@@ -929,7 +882,7 @@ func TestSampleBuilder(t *testing.T) {
 		// 	targets: targetMap{
 		// 		"job1/instance1": &targets.Target{
 		// 			Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
-		// 			DiscoveredLabels: promlabels.FromStrings("__resource_a", "resource2_a"),
+		// 			DiscoveredLabels: promlabels.FromStrings("resource_a", "resource2_a"),
 		// 		},
 		// 	},
 		// 	series: seriesMap{
@@ -976,38 +929,40 @@ func TestSampleBuilder(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	for i, c := range cases {
-		t.Logf("Test case %d", i)
+	for _, c := range cases {
+		t.Run(fmt.Sprintf("Test case %s", c.name),
+			func(t *testing.T) {
 
-		var s *metric_pb.ResourceMetrics
-		var err error
-		var result []*metric_pb.ResourceMetrics
+				var s *metric_pb.ResourceMetrics
+				var err error
+				var result []*metric_pb.ResourceMetrics
 
-		series := newSeriesCache(nil, "", nil, nil, c.targets, c.metadata, c.metricPrefix)
-		for ref, s := range c.series {
-			series.set(ctx, ref, s, 0)
-		}
+				series := newSeriesCache(nil, "", nil, nil, c.targets, c.metadata, c.metricPrefix)
+				for ref, s := range c.series {
+					series.set(ctx, ref, s, 0)
+				}
 
-		b := &sampleBuilder{series: series}
+				b := &sampleBuilder{series: series}
 
-		for k := 0; len(c.input) > 0; k++ {
-			s, _, c.input, err = b.next(context.Background(), c.input)
-			if err != nil {
-				break
-			}
-			result = append(result, s)
-		}
-		if err == nil && c.fail {
-			t.Error("expected error but got none")
-		}
-		if err != nil && !c.fail {
-			t.Errorf("unexpected error: %s", err)
-		}
-		if diff := cmp.Diff(c.result, result); len(diff) > 0 {
-			t.Errorf("unexpected result:\n%v", diff)
-		}
-		if len(result) != len(c.result) {
-			t.Errorf("mismatching count %d of received samples, want %d", len(result), len(c.result))
-		}
+				for k := 0; len(c.input) > 0; k++ {
+					s, _, c.input, err = b.next(context.Background(), c.input)
+					if err != nil {
+						break
+					}
+					result = append(result, s)
+				}
+				if err == nil && c.fail {
+					t.Error("expected error but got none")
+				}
+				if err != nil && !c.fail {
+					t.Errorf("unexpected error: %s", err)
+				}
+				if diff := cmp.Diff(c.result, result); len(diff) > 0 {
+					t.Errorf("unexpected result:\n%v", diff)
+				}
+				if len(result) != len(c.result) {
+					t.Errorf("mismatching count %d of received samples, want %d", len(result), len(c.result))
+				}
+			})
 	}
 }
