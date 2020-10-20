@@ -23,9 +23,9 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/lightstep/lightstep-prometheus-sidecar/metadata"
-	"github.com/lightstep/lightstep-prometheus-sidecar/tail"
-	"github.com/lightstep/lightstep-prometheus-sidecar/targets"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/targets"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/tsdb"
 	"github.com/prometheus/tsdb/fileutil"

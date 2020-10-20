@@ -73,8 +73,8 @@ and then run the container as described below.  To test and build a
 Docker image for the current operating system, simply:
 
 ```
-git clone https://github.com/lightstep/lightstep-prometheus-sidecar.git
-cd lightstep-prometheus-sidecar
+git clone https://github.com/lightstep/opentelemetry-prometheus-sidecar.git
+cd opentelemetry-prometheus-sidecar
 make
 docker build .
 ```
@@ -82,8 +82,8 @@ docker build .
 To package a linux-amd64 binary:
 
 ```
-git clone https://github.com/lightstep/lightstep-prometheus-sidecar.git
-cd lightstep-prometheus-sidecar
+git clone https://github.com/lightstep/opentelemetry-prometheus-sidecar.git
+cd opentelemetry-prometheus-sidecar
 make build-linux-amd64 
 docker build .
 ```
@@ -94,7 +94,7 @@ The sidecar is deployed next to an already running Prometheus server.
 An example command-line:
 
 ```
-lightstep-prometheus-sidecar \
+opentelemetry-prometheus-sidecar \
   --prometheus.wal-directory=${WAL} \
   --opentelemetry.api-address=${DESTINATION} \
   --grpc.header="Lightstep-Access-Token=${TOKEN}" \
@@ -118,7 +118,7 @@ can be used as a reference for setup.
 The majority of configuration options for the sidecar are set through flags. To see all available flags, run:
 
 ```
-lightstep-prometheus-sidecar --help
+opentelemetry-prometheus-sidecar --help
 ```
 
 #### Resources
@@ -132,7 +132,7 @@ Use the `--resource.use-meta-labels` flag to add discovery meta-labels to all ex
 The `--include` flag allows to provide filters which all series have to pass before being sent to the destination. Filters use the same syntax as [Prometheus instant vector selectors](https://prometheus.io/docs/prometheus/latest/querying/basics/#instant-vector-selectors), e.g.:
 
 ```
-lightstep-prometheus-sidecar --include='{__name__!~"cadvisor_.+",job="k8s"}' ...
+opentelemetry-prometheus-sidecar --include='{__name__!~"cadvisor_.+",job="k8s"}' ...
 ```
 
 This drops all series which do not have a `job` label `k8s` and all metrics that have a name starting with `cadvisor_`.
@@ -170,7 +170,7 @@ This repository was copied into a private reposotitory from [this upstream fork]
 
 ## Compatibility
 
-The matrix below lists the versions of Prometheus Server and other dependencies that have been qualified to work with releases of `lightstep-prometheus-sidecar`. If the matrix does not list whether they are compatible, please assume they are not verified yet but can be compatible. Feel free to contribute to the matrix if you have run the end-to-end test between a version of `lightstep-prometheus-sidecar` and Prometheus server.
+The matrix below lists the versions of Prometheus Server and other dependencies that have been qualified to work with releases of `opentelemetry-prometheus-sidecar`. If the matrix does not list whether they are compatible, please assume they are not verified yet but can be compatible. Feel free to contribute to the matrix if you have run the end-to-end test between a version of `opentelemetry-prometheus-sidecar` and Prometheus server.
 
 | Sidecar Version | Compatible Prometheus Server Version(s)   | Incompatible Prometheus Server Version(s) |
 | **0.1.x**       | 2.10, 2.11, 2.13, 2.15, 2.16, 2.18, 2.19  | 2.5                                       |

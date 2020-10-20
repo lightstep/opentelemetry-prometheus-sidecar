@@ -1,5 +1,5 @@
 package sidecar
 
 const (
-	InstrumentationLibrary = "github.com/lightstep/lightstep-prometheus-sidecar"
+	InstrumentationLibrary = "github.com/lightstep/opentelemetry-prometheus-sidecar"
 )

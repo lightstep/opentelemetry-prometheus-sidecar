@@ -5,7 +5,7 @@ versioned_release_branch="release-${version}"
 
 if [[ -z "${version}" ]]; then
     echo "Please provide a version: ./release.sh {VERSION}"
-    echo "Look up latest version on https://github.com/lightstep/lightstep-prometheus-sidecar/tags."
+    echo "Look up latest version on https://github.com/lightstep/opentelemetry-prometheus-sidecar/tags."
     exit 1
 fi
 
@@ -31,7 +31,7 @@ git add VERSION
 git commit -m "Update version to ${version}."
 
 # 4. Run `DOCKER_IMAGE_NAME={public_docker_image} make push`.
-DOCKER_IMAGE_NAME="lightstep-prometheus-sidecar" make push
+DOCKER_IMAGE_NAME="opentelemetry-prometheus-sidecar" make push
 
 ################################
 # Push branch and tag to GitHub
@@ -40,8 +40,8 @@ DOCKER_IMAGE_NAME="lightstep-prometheus-sidecar" make push
 git tag "${version}"
 
 # 2. Push release branch to GitHub.
-git push https://github.com/lightstep/lightstep-prometheus-sidecar.git "${versioned_release_branch}"
+git push https://github.com/lightstep/opentelemetry-prometheus-sidecar.git "${versioned_release_branch}"
 
 # 3. Push tag to GitHub.
-git push https://github.com/lightstep/lightstep-prometheus-sidecar.git "${version}"
+git push https://github.com/lightstep/opentelemetry-prometheus-sidecar.git "${version}"
 

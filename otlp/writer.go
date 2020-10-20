@@ -22,7 +22,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/golang/protobuf/proto"
-	metricsService "github.com/lightstep/lightstep-prometheus-sidecar/internal/opentelemetry-proto-gen/collector/metrics/v1"
+	metricsService "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/collector/metrics/v1"
 )
 
 // ExportMetricsRequestWriterCloser allows writing protobuf message

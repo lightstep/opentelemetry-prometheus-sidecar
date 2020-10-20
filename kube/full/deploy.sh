@@ -7,7 +7,7 @@ set -u
 pushd "$(dirname "$0")"
 
 # Override to use a different Docker image version for the sidecar.
-export SIDECAR_IMAGE_NAME=${SIDECAR_IMAGE_NAME:-'lightstep-prometheus-sidecar'}
+export SIDECAR_IMAGE_NAME=${SIDECAR_IMAGE_NAME:-'opentelemetry-prometheus-sidecar'}
 export SIDECAR_IMAGE_TAG=${SIDECAR_IMAGE_TAG:-'latest'}
 export KUBE_NAMESPACE=${KUBE_NAMESPACE:-'default'}
 

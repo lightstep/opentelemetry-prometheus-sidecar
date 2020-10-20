@@ -21,8 +21,8 @@ import (
 	"strings"
 	"time"
 
-	sidecar "github.com/lightstep/lightstep-prometheus-sidecar"
-	"github.com/lightstep/lightstep-prometheus-sidecar/metadata"
+	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/version"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -30,9 +30,9 @@ import (
 	"github.com/prometheus/tsdb"
 	tsdbLabels "github.com/prometheus/tsdb/labels"
 
-	common_pb "github.com/lightstep/lightstep-prometheus-sidecar/internal/opentelemetry-proto-gen/common/v1"
-	metric_pb "github.com/lightstep/lightstep-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
-	resource_pb "github.com/lightstep/lightstep-prometheus-sidecar/internal/opentelemetry-proto-gen/resource/v1"
+	common_pb "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/common/v1"
+	metric_pb "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
+	resource_pb "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/resource/v1"
 )
 
 const (

@@ -25,7 +25,7 @@ import (
 	"sync"
 	"time"
 
-	metricsService "github.com/lightstep/lightstep-prometheus-sidecar/internal/opentelemetry-proto-gen/collector/metrics/v1"
+	metricsService "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/collector/metrics/v1"
 	"go.opencensus.io/plugin/ocgrpc"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"

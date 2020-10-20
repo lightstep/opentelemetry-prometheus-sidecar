@@ -1,0 +1,23 @@
+version: 2
+
+jobs:
+  test:
+    working_directory: ~/go/src/github.com/lightstep/opentelemetry-prometheus-sidecar
+    docker:
+      - image: circleci/golang:1.14
+    steps:
+      - run:
+          name: "configure environment"
+          command: |
+            echo 'export GOPATH="$HOME/go"' >> $BASH_ENV
+            source $BASH_ENV
+      - checkout
+      - run: go test ./...
+      - run: go test -race ./...
+      - run: make
+
+workflows:
+  version: 2
+  test:
+    jobs:
+      - test

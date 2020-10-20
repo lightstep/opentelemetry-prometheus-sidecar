@@ -25,7 +25,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/google/go-cmp/cmp"
-	"github.com/lightstep/lightstep-prometheus-sidecar/metadata"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
 	"github.com/prometheus/prometheus/pkg/textparse"
 )
 
@@ -88,13 +88,13 @@ Loop:
 	t.Logf("stdout: %v\n", bout.String())
 	t.Logf("stderr: %v\n", berr.String())
 	if !startedOk {
-		t.Errorf("lightstep-prometheus-sidecar didn't start in the specified timeout")
+		t.Errorf("opentelemetry-prometheus-sidecar didn't start in the specified timeout")
 		return
 	}
 	if err := cmd.Process.Kill(); err == nil {
-		t.Errorf("lightstep-prometheus-sidecar didn't shutdown gracefully after sending the Interrupt signal")
+		t.Errorf("opentelemetry-prometheus-sidecar didn't shutdown gracefully after sending the Interrupt signal")
 	} else if stoppedErr != nil && stoppedErr.Error() != "signal: interrupt" { // TODO - find a better way to detect when the process didn't exit as expected!
-		t.Errorf("lightstep-prometheus-sidecar exited with an unexpected error:%v", stoppedErr)
+		t.Errorf("opentelemetry-prometheus-sidecar exited with an unexpected error:%v", stoppedErr)
 	}
 }
 

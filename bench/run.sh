@@ -4,7 +4,7 @@ set -e
 
 pushd "$( dirname "${BASH_SOURCE[0]}" )"
 
-go build github.com/lightstep/lightstep-prometheus-sidecar/cmd/lightstep-prometheus-sidecar
+go build github.com/lightstep/opentelemetry-prometheus-sidecar/cmd/opentelemetry-prometheus-sidecar
 
 trap 'kill 0' SIGTERM
 
@@ -21,7 +21,7 @@ go run main.go --latency=30ms 2>&1 | sed -e "s/^/[server] /" &
 sleep 2
 echo "Starting sidecar"
 
-./lightstep-prometheus-sidecar \
+./opentelemetry-prometheus-sidecar \
   --config-file="sidecar.yml" \
   --web.listen-address="0.0.0.0:9091" \
   --opentelemetry.generic.location="test-cluster" \

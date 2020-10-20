@@ -1,4 +1,4 @@
-module github.com/lightstep/lightstep-prometheus-sidecar
+module github.com/lightstep/opentelemetry-prometheus-sidecar
 
 // Note: we have trouble upgrading the prometheus dependencies here
 // because v2.  The last version without a go.mod is 2.0.5, but the

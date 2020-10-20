@@ -6,7 +6,7 @@ package v1
 import (
 	fmt "fmt"
 	proto "github.com/gogo/protobuf/proto"
-	v1 "github.com/lightstep/lightstep-prometheus-sidecar/internal/opentelemetry-proto-gen/common/v1"
+	v1 "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/common/v1"
 	io "io"
 	math "math"
 	math_bits "math/bits"

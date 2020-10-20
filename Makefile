@@ -43,7 +43,7 @@ PROMU_URL     := https://github.com/prometheus/promu/releases/download/v$(PROMU_
 PREFIX                  ?= $(shell pwd)
 BIN_DIR                 ?= $(shell pwd)
 # Private repo.
-DOCKER_IMAGE_NAME       ?= lightstep-prometheus-sidecar
+DOCKER_IMAGE_NAME       ?= opentelemetry-prometheus-sidecar
 DOCKER_IMAGE_TAG        ?= $(subst /,-,$(shell git rev-parse --abbrev-ref HEAD))
 
 ifdef DEBUG
@@ -130,6 +130,7 @@ assets:
 promu:
 	@echo ">> fetching promu"
 	$(eval PROMU_TMP := $(shell mktemp -d))
+	# TODO this download is expensive, can we use a docker image of promu?
 	curl -s -L $(PROMU_URL) | tar -xvzf - -C $(PROMU_TMP)
 	mkdir -p $(FIRST_GOPATH)/bin
 	cp $(PROMU_TMP)/promu-$(PROMU_VERSION).$(GO_BUILD_PLATFORM)/promu $(FIRST_GOPATH)/bin/promu
