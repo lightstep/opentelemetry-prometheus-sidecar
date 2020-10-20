@@ -6,6 +6,8 @@ an [OpenTelemetry](https://opentelemetry.io) Protocol endpoint.  This
 software is derived from the [Stackdriver Prometheus
 Sidecar](https://github.com/Stackdriver/stackdriver-prometheus-sidecar).
 
+![OpenTelemetry Prometheus Sidecar Diagram](docs/img/opentelemetry-prometheus-sidecar.png)
+
 ## OpenTelemetry Design
 
 In OpenTelemetry, the basic process or instrumented unit of
@@ -37,12 +39,12 @@ The sidecar includes:
 2. Target cache that tracks active targets by their identifying labels
 3. Metadata cache that tracks active instruments, by target
 4. Configured settings:
-  - Extra resource labels to apply to all metric timeseries
-  - Renaming and prefixing to change the name of metric timeseries
-  - Filters to avoid reporting specific metric timeseries
-  - Specify whether to use use int64 (optional) vs. double (default) protocol encoding
-  - Whether to include all meta-labels as resource labels.
-  
+* Extra resource labels to apply to all metric timeseries
+* Renaming and prefixing to change the name of metric timeseries
+* Filters to avoid reporting specific metric timeseries
+* Specify whether to use use int64 (optional) vs. double (default) protocol encoding
+* Whether to include all meta-labels as resource labels.
+
 The sidecar operates by continually (and concurrently) reading the
 log, refreshing its view of targets and instrument metadata,
 transforming the data into OpenTelemetry Protocol metrics, and sending
@@ -84,7 +86,7 @@ To package a linux-amd64 binary:
 ```
 git clone https://github.com/lightstep/opentelemetry-prometheus-sidecar.git
 cd opentelemetry-prometheus-sidecar
-make build-linux-amd64 
+make build-linux-amd64
 docker build .
 ```
 
@@ -103,10 +105,10 @@ opentelemetry-prometheus-sidecar \
 
 where:
 
-* `API_ADDRESS`: Prometheus' API address, typically `127.0.0.1:9090`
-* `DESTINATION`: Destination address, typically `ingest.lightstep.com:443`
-* `WAL`: Prometheus' WAL directory, typically `data/wal`
-* `TOKEN`: A Lightstep access token.
+* `WAL`: Prometheus' WAL directory, defaults to `data/wal`
+* `DESTINATION`: Destination address host:port, set this to `ingest.lightstep.com:443`
+* `TOKEN`: A Lightstep access token (example header value)
+* `API_ADDRESS`: Prometheus' API address, defaults to `127.0.0.1:9090`
 
 The sidecar requires write access to the directory to store its progress between restarts.
 
@@ -115,10 +117,46 @@ can be used as a reference for setup.
 
 ### Configuration
 
-The majority of configuration options for the sidecar are set through flags. To see all available flags, run:
+The majority of configuration options for the sidecar are set through flags. To see all available flags, run `opentelemetry-prometheus-sidecar --help`.  The printed usage is shown below:
 
 ```
-opentelemetry-prometheus-sidecar --help
+$ ./opentelemetry-prometheus-sidecar --help
+usage: opentelemetry-prometheus-sidecar [<flags>]
+
+OpenTelemetry Prometheus sidecar
+
+Flags:
+  -h, --help                     Show context-sensitive help (also try --help-long and --help-man).
+      --version                  Show application version.
+      --config-file=CONFIG-FILE  A configuration file.
+      --opentelemetry.api-address=
+                                 Address of the OpenTelemetry Metrics API.
+      --opentelemetry.metrics-prefix=OPENTELEMETRY.METRICS-PREFIX
+                                 Customized prefix for exporter metrics. If not set, none will be used
+      --prometheus.wal-directory="data/wal"
+                                 Directory from where to read the Prometheus TSDB WAL.
+      --prometheus.api-address=http://127.0.0.1:9090/
+                                 Address to listen on for UI, API, and telemetry. Use ?auth=false for an
+                                 insecure connection.
+      --monitoring.backend=prometheus ...
+                                 Monitoring backend(s) for internal metrics
+      --web.listen-address="0.0.0.0:9091"
+                                 Address to listen on for UI, API, and telemetry.
+      --include=INCLUDE ...      PromQL metric and label matcher which must pass for a series to be forwarded
+                                 to OpenTelemetry. If repeated, the series must pass any of the filter sets to
+                                 be forwarded.
+      --security.root-certificate=SECURITY.ROOT-CERTIFICATE
+                                 Root CA certificate to use for TLS connections, in PEM format (e.g.,
+                                 root.crt).
+      --grpc.header=GRPC.HEADER ...
+                                 Headers for gRPC connection (e.g., MyHeader=Value1). May be repeated.
+      --resource.attribute=RESOURCE.ATTRIBUTE ...
+                                 Attributes for exported metrics (e.g., MyResource=Value1). May be repeated.
+      --resource.use-meta-labels
+                                 Prometheus target labels prefixed with __meta_ map into labels.
+      --log.level=info           Only log messages with the given severity or above. One of: [debug, info,
+                                 warn, error]
+      --log.format=logfmt        Output format of log messages. One of: [logfmt, json]
 ```
 
 #### Resources
@@ -161,16 +199,26 @@ static_metadata:
 
 Static metadata allows overriding metadata used for output timeseries.  Note:
 
-  * All `static_metadata` entries must have `type` specified.
-  * If `value_type` is specified, it will override the default value type for counters and gauges. All Prometheus metrics have a default type of double.
+* All `static_metadata` entries must have `type` specified.
+* If `value_type` is specified, it will override the default value type for counters and gauges. All Prometheus metrics have a default type of double.
 
 ## Upstream
 
-This repository was copied into a private reposotitory from [this upstream fork](https://github.com/Stackdriver/stackdriver-prometheus-sidecar/tree/1361301230bcfc978864a8f4c718aba98bc07a3d) of `stackdriver-prometheus-sidecar`.
+This repository was copied into a private reposotitory from [this upstream fork](https://github.com/Stackdriver/stackdriver-prometheus-sidecar/tree/1361301230bcfc978864a8f4c718aba98bc07a3d) of `stackdriver-prometheus-sidecar`, dated July 31, 2020.
+
+Changes relative to `stackdriver-prometheus-sidecar` include:
+
+* Replace Stackdriver monitoring protocol with OTLP v0.5; this was straightforward since these are similar protocols
+* Add `--grpc.header` support for adding gRPC metadata
+* Remove "Resource Map" code, used for generating "Monitored Resource" concept in Stackdriver; OpenTelemetry is less restrictive, this code is replaced by `--resource.attribute` and `--resource.use-meta-labels` support
+* Remove GCP/GKE-specific automatic resources; these can be applied using `--resource.attribute`
+* Remove "Counter Aggregator" support, which pre-aggregates labels; there are other ways this could be implemented, if the OpenTelemetry-Go SDK were used to generate OTLP instead of the dedicated code in this repository
+* Add `--security.root-certificate` support for supplying the root certificate used in TLS connection setup.
 
 ## Compatibility
 
 The matrix below lists the versions of Prometheus Server and other dependencies that have been qualified to work with releases of `opentelemetry-prometheus-sidecar`. If the matrix does not list whether they are compatible, please assume they are not verified yet but can be compatible. Feel free to contribute to the matrix if you have run the end-to-end test between a version of `opentelemetry-prometheus-sidecar` and Prometheus server.
 
 | Sidecar Version | Compatible Prometheus Server Version(s)   | Incompatible Prometheus Server Version(s) |
-| **0.1.x**       | 2.10, 2.11, 2.13, 2.15, 2.16, 2.18, 2.19  | 2.5                                       |
+| -- | -- | -- |
+| **0.1.x**       | 2.10, 2.11, 2.13, 2.15, 2.16, 2.18, 2.19, 2.21 | 2.5                                       |

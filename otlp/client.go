@@ -72,24 +72,24 @@ func init() {
 // implementation may hit a single backend, so the application should create a
 // number of these clients.
 type Client struct {
-	logger   log.Logger
-	url      *url.URL
-	timeout  time.Duration
-	resolver *manual.Resolver
-	certFile string
-	headers  grpcMetadata.MD
+	logger          log.Logger
+	url             *url.URL
+	timeout         time.Duration
+	resolver        *manual.Resolver
+	rootCertificate string
+	headers         grpcMetadata.MD
 
 	conn *grpc.ClientConn
 }
 
 // ClientConfig configures a Client.
 type ClientConfig struct {
-	Logger   log.Logger
-	URL      *url.URL
-	Timeout  time.Duration
-	Resolver *manual.Resolver
-	CertFile string
-	Headers  grpcMetadata.MD
+	Logger          log.Logger
+	URL             *url.URL
+	Timeout         time.Duration
+	Resolver        *manual.Resolver
+	RootCertificate string
+	Headers         grpcMetadata.MD
 }
 
 // NewClient creates a new Client.
@@ -99,12 +99,12 @@ func NewClient(conf *ClientConfig) *Client {
 		logger = log.NewNopLogger()
 	}
 	return &Client{
-		logger:   logger,
-		url:      conf.URL,
-		timeout:  conf.Timeout,
-		resolver: conf.Resolver,
-		certFile: conf.CertFile,
-		headers:  conf.Headers,
+		logger:          logger,
+		url:             conf.URL,
+		timeout:         conf.Timeout,
+		resolver:        conf.Resolver,
+		rootCertificate: conf.RootCertificate,
+		headers:         conf.Headers,
 	}
 }
 
@@ -137,16 +137,16 @@ func (c *Client) getConnection(ctx context.Context) (*grpc.ClientConn, error) {
 	}
 	if useAuth {
 		var tcfg tls.Config
-		if c.certFile != "" {
+		if c.rootCertificate != "" {
 			certPool := x509.NewCertPool()
-			bs, err := ioutil.ReadFile(c.certFile)
+			bs, err := ioutil.ReadFile(c.rootCertificate)
 			if err != nil {
-				return nil, fmt.Errorf("could not read certificate authority certificate: %s: %w", c.certFile, err)
+				return nil, fmt.Errorf("could not read certificate authority certificate: %s: %w", c.rootCertificate, err)
 			}
 
 			ok := certPool.AppendCertsFromPEM(bs)
 			if !ok {
-				return nil, fmt.Errorf("could not parse certificate authority certificate: %s: %w", c.certFile, err)
+				return nil, fmt.Errorf("could not parse certificate authority certificate: %s: %w", c.rootCertificate, err)
 			}
 
 			tcfg = tls.Config{

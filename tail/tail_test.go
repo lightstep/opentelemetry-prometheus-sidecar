@@ -21,6 +21,7 @@ import (
 	"math/rand"
 	"os"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -55,6 +56,7 @@ func TestTailFuzz(t *testing.T) {
 
 	// Start background writer.
 	const count = 50000
+	var asyncErr atomic.Value
 	go func() {
 		for i := 0; i < count; i++ {
 			if i%100 == 0 {
@@ -62,10 +64,12 @@ func TestTailFuzz(t *testing.T) {
 			}
 			rec := make([]byte, rand.Intn(5337))
 			if _, err := rand.Read(rec); err != nil {
-				panic(err)
+				asyncErr.Store(err)
+				break
 			}
 			if err := w.Log(rec); err != nil {
-				panic(err)
+				asyncErr.Store(err)
+				break
 			}
 			written = append(written, rec)
 		}
@@ -76,15 +80,18 @@ func TestTailFuzz(t *testing.T) {
 
 	// Expect `count` records; read them all, if possible. The test will
 	// time out if fewer records show up.
-	for len(read) < count && wr.Next() {
+	for len(read) < count && asyncErr.Load() == nil && wr.Next() {
 		read = append(read, append([]byte(nil), wr.Record()...))
 	}
 	if wr.Err() != nil {
 		t.Fatal(wr.Err())
 	}
 	wg.Wait()
+	if err := asyncErr.Load(); err != nil {
+		t.Fatal("async error: ", err)
+	}
 	if len(written) != len(read) {
-		t.Fatal("didn't read all records")
+		t.Fatal("didn't read all records: ", len(written), "!=", len(read))
 	}
 	for i, r := range read {
 		if !bytes.Equal(r, written[i]) {
