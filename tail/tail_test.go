@@ -55,6 +55,7 @@ func TestTailFuzz(t *testing.T) {
 
 	// Start background writer.
 	const count = 50000
+	var asyncErr error
 	go func() {
 		for i := 0; i < count; i++ {
 			if i%100 == 0 {
@@ -62,10 +63,12 @@ func TestTailFuzz(t *testing.T) {
 			}
 			rec := make([]byte, rand.Intn(5337))
 			if _, err := rand.Read(rec); err != nil {
-				panic(err)
+				asyncErr = err
+				break
 			}
 			if err := w.Log(rec); err != nil {
-				panic(err)
+				asyncErr = err
+				break
 			}
 			written = append(written, rec)
 		}
@@ -83,6 +86,9 @@ func TestTailFuzz(t *testing.T) {
 		t.Fatal(wr.Err())
 	}
 	wg.Wait()
+	if asyncErr != nil {
+		t.Fatal("async error: ", asyncErr)
+	}
 	if len(written) != len(read) {
 		t.Fatal("didn't read all records")
 	}

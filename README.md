@@ -6,6 +6,8 @@ an [OpenTelemetry](https://opentelemetry.io) Protocol endpoint.  This
 software is derived from the [Stackdriver Prometheus
 Sidecar](https://github.com/Stackdriver/stackdriver-prometheus-sidecar).
 
+![OpenTelemetry Prometheus Sidecar Diagram](docs/img/opentelemetry-prometheus-sidecar.png)
+
 ## OpenTelemetry Design
 
 In OpenTelemetry, the basic process or instrumented unit of
@@ -42,7 +44,7 @@ The sidecar includes:
 * Filters to avoid reporting specific metric timeseries
 * Specify whether to use use int64 (optional) vs. double (default) protocol encoding
 * Whether to include all meta-labels as resource labels.
-  
+
 The sidecar operates by continually (and concurrently) reading the
 log, refreshing its view of targets and instrument metadata,
 transforming the data into OpenTelemetry Protocol metrics, and sending
@@ -84,7 +86,7 @@ To package a linux-amd64 binary:
 ```
 git clone https://github.com/lightstep/opentelemetry-prometheus-sidecar.git
 cd opentelemetry-prometheus-sidecar
-make build-linux-amd64 
+make build-linux-amd64
 docker build .
 ```
 
@@ -115,10 +117,46 @@ can be used as a reference for setup.
 
 ### Configuration
 
-The majority of configuration options for the sidecar are set through flags. To see all available flags, run:
+The majority of configuration options for the sidecar are set through flags. To see all available flags, run `opentelemetry-prometheus-sidecar --help`.  The printed usage is shown below:
 
 ```
-opentelemetry-prometheus-sidecar --help
+$ ./opentelemetry-prometheus-sidecar --help
+usage: opentelemetry-prometheus-sidecar [<flags>]
+
+OpenTelemetry Prometheus sidecar
+
+Flags:
+  -h, --help                     Show context-sensitive help (also try --help-long and --help-man).
+      --version                  Show application version.
+      --config-file=CONFIG-FILE  A configuration file.
+      --opentelemetry.api-address=
+                                 Address of the OpenTelemetry Metrics API.
+      --opentelemetry.metrics-prefix=OPENTELEMETRY.METRICS-PREFIX
+                                 Customized prefix for exporter metrics. If not set, none will be used
+      --prometheus.wal-directory="data/wal"
+                                 Directory from where to read the Prometheus TSDB WAL.
+      --prometheus.api-address=http://127.0.0.1:9090/
+                                 Address to listen on for UI, API, and telemetry. Use ?auth=false for an
+                                 insecure connection.
+      --monitoring.backend=prometheus ...
+                                 Monitoring backend(s) for internal metrics
+      --web.listen-address="0.0.0.0:9091"
+                                 Address to listen on for UI, API, and telemetry.
+      --include=INCLUDE ...      PromQL metric and label matcher which must pass for a series to be forwarded
+                                 to OpenTelemetry. If repeated, the series must pass any of the filter sets to
+                                 be forwarded.
+      --security.root-certificate=SECURITY.ROOT-CERTIFICATE
+                                 Root CA certificate to use for TLS connections, in PEM format (e.g.,
+                                 root.crt).
+      --grpc.header=GRPC.HEADER ...
+                                 Headers for gRPC connection (e.g., MyHeader=Value1). May be repeated.
+      --resource.attribute=RESOURCE.ATTRIBUTE ...
+                                 Attributes for exported metrics (e.g., MyResource=Value1). May be repeated.
+      --resource.use-meta-labels
+                                 Prometheus target labels prefixed with __meta_ map into labels.
+      --log.level=info           Only log messages with the given severity or above. One of: [debug, info,
+                                 warn, error]
+      --log.format=logfmt        Output format of log messages. One of: [logfmt, json]
 ```
 
 #### Resources

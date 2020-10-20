@@ -181,9 +181,9 @@ func main() {
 
 	var cfg mainConfig
 
-	a := kingpin.New(filepath.Base(os.Args[0]), "The Prometheus monitoring server")
+	a := kingpin.New(filepath.Base(os.Args[0]), "OpenTelemetry Prometheus sidecar")
 
-	a.Version(version.Print("prometheus"))
+	a.Version(version.Print("opentelemetry-prometheus-sidecar"))
 
 	a.HelpFlag.Short('h')
 
