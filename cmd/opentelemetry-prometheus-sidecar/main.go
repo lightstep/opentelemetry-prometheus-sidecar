@@ -143,7 +143,7 @@ type fileConfig struct {
 }
 
 type securityConfig struct {
-	ServerCertificate string `json:"server_certificate"`
+	RootCertificate string `json:"root_certificate"`
 }
 
 type grpcConfig struct {
@@ -210,8 +210,8 @@ func main() {
 	a.Flag("include", "PromQL metric and label matcher which must pass for a series to be forwarded to OpenTelemetry. If repeated, the series must pass any of the filter sets to be forwarded.").
 		StringsVar(&cfg.Filtersets)
 
-	a.Flag("security.server-certificate", "Public certificate for the server to use for TLS connections (e.g., server.crt, in pem format).").
-		StringVar(&cfg.Security.ServerCertificate)
+	a.Flag("security.root-certificate", "Root CA certificate to use for TLS connections, in PEM format (e.g., root.crt).").
+		StringVar(&cfg.Security.RootCertificate)
 
 	// TODO: Cover the two flags below in the end-to-end test.
 	a.Flag("grpc.header", "Headers for gRPC connection (e.g., MyHeader=Value1). May be repeated.").
@@ -511,12 +511,12 @@ type otlpClientFactory struct {
 
 func (s *otlpClientFactory) New() otlp.StorageClient {
 	return otlp.NewClient(&otlp.ClientConfig{
-		Logger:   s.logger,
-		URL:      s.url,
-		Timeout:  s.timeout,
-		Resolver: s.manualResolver,
-		CertFile: s.security.ServerCertificate,
-		Headers:  s.headers,
+		Logger:          s.logger,
+		URL:             s.url,
+		Timeout:         s.timeout,
+		Resolver:        s.manualResolver,
+		RootCertificate: s.security.RootCertificate,
+		Headers:         s.headers,
 	})
 }
 
