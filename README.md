@@ -37,11 +37,11 @@ The sidecar includes:
 2. Target cache that tracks active targets by their identifying labels
 3. Metadata cache that tracks active instruments, by target
 4. Configured settings:
-  - Extra resource labels to apply to all metric timeseries
-  - Renaming and prefixing to change the name of metric timeseries
-  - Filters to avoid reporting specific metric timeseries
-  - Specify whether to use use int64 (optional) vs. double (default) protocol encoding
-  - Whether to include all meta-labels as resource labels.
+- Extra resource labels to apply to all metric timeseries
+- Renaming and prefixing to change the name of metric timeseries
+- Filters to avoid reporting specific metric timeseries
+- Specify whether to use use int64 (optional) vs. double (default) protocol encoding
+- Whether to include all meta-labels as resource labels.
   
 The sidecar operates by continually (and concurrently) reading the
 log, refreshing its view of targets and instrument metadata,
@@ -101,12 +101,12 @@ opentelemetry-prometheus-sidecar \
   --prometheus.api-address=${API_ADDRESS} \
 ```
 
-where:
+Where:
 
-* `API_ADDRESS`: Prometheus' API address, typically `127.0.0.1:9090`
-* `DESTINATION`: Destination address, typically `ingest.lightstep.com:443`
-* `WAL`: Prometheus' WAL directory, typically `data/wal`
-* `TOKEN`: A Lightstep access token.
+- `API_ADDRESS`: Prometheus' API address, typically `127.0.0.1:9090`
+- `DESTINATION`: Destination address, typically `ingest.lightstep.com:443`
+- `WAL`: Prometheus' WAL directory, typically `data/wal`
+- `TOKEN`: A Lightstep access token.
 
 The sidecar requires write access to the directory to store its progress between restarts.
 
@@ -161,16 +161,17 @@ static_metadata:
 
 Static metadata allows overriding metadata used for output timeseries.  Note:
 
-  * All `static_metadata` entries must have `type` specified.
-  * If `value_type` is specified, it will override the default value type for counters and gauges. All Prometheus metrics have a default type of double.
+- All `static_metadata` entries must have `type` specified.
+- If `value_type` is specified, it will override the default value type for counters and gauges. All Prometheus metrics have a default type of double.
 
 ## Upstream
 
-This repository was copied into a private reposotitory from [this upstream fork](https://github.com/Stackdriver/stackdriver-prometheus-sidecar/tree/1361301230bcfc978864a8f4c718aba98bc07a3d) of `stackdriver-prometheus-sidecar`.
+This repository was copied into a private reposotitory from [this upstream fork](https://github.com/Stackdriver/stackdriver-prometheus-sidecar/tree/1361301230bcfc978864a8f4c718aba98bc07a3d) of `stackdriver-prometheus-sidecar`, dated July 31, 2020.
 
 ## Compatibility
 
 The matrix below lists the versions of Prometheus Server and other dependencies that have been qualified to work with releases of `opentelemetry-prometheus-sidecar`. If the matrix does not list whether they are compatible, please assume they are not verified yet but can be compatible. Feel free to contribute to the matrix if you have run the end-to-end test between a version of `opentelemetry-prometheus-sidecar` and Prometheus server.
 
 | Sidecar Version | Compatible Prometheus Server Version(s)   | Incompatible Prometheus Server Version(s) |
-| **0.1.x**       | 2.10, 2.11, 2.13, 2.15, 2.16, 2.18, 2.19  | 2.5                                       |
+| -- | -- | -- |
+| **0.1.x**       | 2.10, 2.11, 2.13, 2.15, 2.16, 2.18, 2.19, 2.21 | 2.5                                       |
