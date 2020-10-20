@@ -170,7 +170,7 @@ This repository was copied into a private reposotitory from [this upstream fork]
 
 Changes relative to `stackdriver-prometheus-sidecar` include:
 
-* Replace Stackdriver monitoring protocol with OTLP v0.5; this is easy since these are similar protocols
+* Replace Stackdriver monitoring protocol with OTLP v0.5; this was straightforward since these are similar protocols
 * Add `--grpc.header` support for adding gRPC metadata
 * Remove "Resource Map" code, used for generating "Monitored Resource" concept in Stackdriver; OpenTelemetry is less restrictive, this code is replaced by `--resource.attribute` and `--resource.use-meta-labels` support
 * Remove GCP/GKE-specific automatic resources; these can be applied using `--resource.attribute`
