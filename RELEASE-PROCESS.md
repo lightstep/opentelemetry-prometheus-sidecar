@@ -1,7 +1,7 @@
 # Release Process
 
 TODO(jmacd): The following repository does not exist, and this test does not run; run this test in CI.
-Make sure the [end-to-end test](https://github.com/lightstep/lightstep-prometheus-e2e) passes:
+Make sure the [end-to-end test](https://github.com/lightstep/opentelemetry-prometheus-e2e) passes:
 ```sh
 export KUBE_CLUSTER=integration-cluster
 # Random namespace name in the form e2e-xxxxxxxx.

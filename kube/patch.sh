@@ -16,7 +16,7 @@ fi
 SHOULD_CLEAN_UP=${3:-}
 
 # Override to use a different Docker image name for the sidecar.
-export SIDECAR_IMAGE_NAME=${SIDECAR_IMAGE_NAME:-'lightstep-prometheus-sidecar'}
+export SIDECAR_IMAGE_NAME=${SIDECAR_IMAGE_NAME:-'opentelemetry-prometheus-sidecar'}
 
 kubectl -n "${KUBE_NAMESPACE}" patch "$1" "$2" --type strategic --patch "
 spec:

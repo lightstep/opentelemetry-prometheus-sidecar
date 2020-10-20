@@ -1,8 +1,8 @@
 FROM  gcr.io/distroless/static:latest
 LABEL maintainer "Lightstep Engineering <engineering@lightstep.com>"
 
-COPY lightstep-prometheus-sidecar /bin/lightstep-prometheus-sidecar
+COPY opentelemetry-prometheus-sidecar /bin/opentelemetry-prometheus-sidecar
 
 EXPOSE 9091
 
-ENTRYPOINT [ "/bin/lightstep-prometheus-sidecar" ]
+ENTRYPOINT [ "/bin/opentelemetry-prometheus-sidecar" ]

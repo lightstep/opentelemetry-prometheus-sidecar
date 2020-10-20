@@ -22,8 +22,8 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
-	metricsService "github.com/lightstep/lightstep-prometheus-sidecar/internal/opentelemetry-proto-gen/collector/metrics/v1"
-	metric_pb "github.com/lightstep/lightstep-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
+	metricsService "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/collector/metrics/v1"
+	metric_pb "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/resolver"
 	"google.golang.org/grpc/resolver/manual"

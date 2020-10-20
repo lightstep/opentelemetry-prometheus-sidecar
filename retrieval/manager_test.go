@@ -20,29 +20,37 @@ import (
 	"testing"
 	"time"
 
-	metric_pb "github.com/lightstep/lightstep-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
-	resource_pb "github.com/lightstep/lightstep-prometheus-sidecar/internal/opentelemetry-proto-gen/resource/v1"
-	"github.com/lightstep/lightstep-prometheus-sidecar/internal/otlptest"
-	"github.com/lightstep/lightstep-prometheus-sidecar/metadata"
-	"github.com/lightstep/lightstep-prometheus-sidecar/tail"
-	"github.com/lightstep/lightstep-prometheus-sidecar/targets"
+	metric_pb "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
+	resource_pb "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/resource/v1"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/internal/otlptest"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/targets"
 	promlabels "github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/textparse"
 	"github.com/prometheus/tsdb"
 	"github.com/prometheus/tsdb/labels"
 	"github.com/prometheus/tsdb/wal"
-	// metric_pb "google.golang.org/genproto/googleapis/api/metric"
-	// monitoredres_pb "google.golang.org/genproto/googleapis/api/monitoredres"
-	// monitoring_pb "google.golang.org/genproto/googleapis/monitoring/v3"
 )
 
 type nopAppender struct {
+	lock sync.Mutex
 	samples []*metric_pb.ResourceMetrics
 }
 
 func (a *nopAppender) Append(hash uint64, s *metric_pb.ResourceMetrics) error {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+
 	a.samples = append(a.samples, s)
 	return nil
+}
+
+func (a *nopAppender) getSamples() []*metric_pb.ResourceMetrics {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+
+	return a.samples
 }
 
 func TestReader_Progress(t *testing.T) {
@@ -159,13 +167,14 @@ func TestReader_Progress(t *testing.T) {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	if len(recorder.samples) == 0 {
+	samples := recorder.getSamples()
+	if len(samples) == 0 {
 		t.Fatal("expected records but got none")
 	}
 
 	ctx = context.Background()
 
-	for i, s := range recorder.samples {
+	for i, s := range samples {
 		vs := otlptest.VisitorState{}
 		vs.Visit(ctx, func(
 			resource *resource_pb.Resource,

@@ -3,11 +3,11 @@ go:
     version: 1.14
     cgo: false
 repository:
-    path: github.com/lightstep/lightstep-prometheus-sidecar
+    path: github.com/lightstep/opentelemetry-prometheus-sidecar
 build:
     binaries:
-        - name: lightstep-prometheus-sidecar
-          path: ./cmd/lightstep-prometheus-sidecar
+        - name: opentelemetry-prometheus-sidecar
+          path: ./cmd/opentelemetry-prometheus-sidecar
     flags: -mod=vendor -a -tags netgo
     ldflags: |
         -X github.com/prometheus/common/version.Version={{.Version}}

@@ -25,8 +25,8 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
-	"github.com/lightstep/lightstep-prometheus-sidecar/metadata"
-	"github.com/lightstep/lightstep-prometheus-sidecar/targets"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/targets"
 	promlabels "github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/textparse"
 	"github.com/prometheus/tsdb"

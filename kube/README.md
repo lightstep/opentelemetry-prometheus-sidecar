@@ -8,7 +8,7 @@ Required environment variables:
 * `GCP_REGION`: GCP region parameter for the sidecar
 * `GCP_PROJECT`: GCP project parameter for the sidecar
 * `SIDECAR_IMAGE_TAG`: Version parameter for the sidecar
-* `SIDECAR_IMAGE_NAME`: Image name parameter for the sidecar (default: lightstep-prometheus-sidecar)
+* `SIDECAR_IMAGE_NAME`: Image name parameter for the sidecar (default: opentelemetry-prometheus-sidecar)
 
 If your cluster is not the default context:
 
