@@ -103,10 +103,10 @@ opentelemetry-prometheus-sidecar \
 
 where:
 
-* `API_ADDRESS`: Prometheus' API address, typically `127.0.0.1:9090`
-* `DESTINATION`: Destination address, typically `ingest.lightstep.com:443`
-* `WAL`: Prometheus' WAL directory, typically `data/wal`
-* `TOKEN`: A Lightstep access token.
+* `WAL`: Prometheus' WAL directory, defaults to `data/wal`
+* `DESTINATION`: Destination address host:port, set this to `ingest.lightstep.com:443`
+* `TOKEN`: A Lightstep access token (example header value)
+* `API_ADDRESS`: Prometheus' API address, defaults to `127.0.0.1:9090`
 
 The sidecar requires write access to the directory to store its progress between restarts.
 
@@ -167,6 +167,15 @@ Static metadata allows overriding metadata used for output timeseries.  Note:
 ## Upstream
 
 This repository was copied into a private reposotitory from [this upstream fork](https://github.com/Stackdriver/stackdriver-prometheus-sidecar/tree/1361301230bcfc978864a8f4c718aba98bc07a3d) of `stackdriver-prometheus-sidecar`, dated July 31, 2020.
+
+Changes relative to `stackdriver-prometheus-sidecar` include:
+
+* Replace Stackdriver monitoring protocol with OTLP v0.5; this is easy since these are similar protocols
+* Add `--grpc.header` support for adding gRPC metadata
+* Remove "Resource Map" code, used for generating "Monitored Resource" concept in Stackdriver; OpenTelemetry is less restrictive, this code is replaced by `--resource.attribute` and `--resource.use-meta-labels` support
+* Remove GCP/GKE-specific automatic resources; these can be applied using `--resource.attribute`
+* Remove "Counter Aggregator" support, which pre-aggregates labels; there are other ways this could be implemented, if the OpenTelemetry-Go SDK were used to generate OTLP instead of the dedicated code in this repository
+* Add `--security.server-certificate` support for supplying the server-side TLS credentials.
 
 ## Compatibility
 
