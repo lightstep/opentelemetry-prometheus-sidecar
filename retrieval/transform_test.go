@@ -221,20 +221,20 @@ func TestSampleBuilder(t *testing.T) {
 				"job2/instance1/resource_from_metric": &metadata.Entry{Metric: "resource_from_metric", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
 			},
 			input: []tsdb.RefSample{
-				{Ref: 2, T: 2000, V: 5.5},
+				{Ref: 2, T: 2000, V: 5.5}, // 0
 				{Ref: 2, T: 3000, V: 8},
 				{Ref: 2, T: 4000, V: 9},
 				{Ref: 2, T: 5000, V: 3},
 				{Ref: 1, T: 1000, V: 200},
-				{Ref: 3, T: 3000, V: 1},
+				{Ref: 3, T: 3000, V: 1}, // 5
 				{Ref: 4, T: 4000, V: 2},
 				{Ref: 5, T: 1000, V: 200},
 				{Ref: 6, T: 8000, V: 12.5},
 				{Ref: 7, T: 6000, V: 1},
-				{Ref: 7, T: 7000, V: 3.5},
-				// {Ref: 8, T: 8000, V: 22.5},
-				// {Ref: 9, T: 8000, V: 3},
-				// {Ref: 9, T: 9000, V: 4},
+				{Ref: 7, T: 7000, V: 3.5}, // 10
+				{Ref: 8, T: 8000, V: 22.5},
+				{Ref: 9, T: 8000, V: 3},
+				{Ref: 9, T: 9000, V: 4},
 			},
 			result: []*metric_pb.ResourceMetrics{
 				nil, // Skipped by reset timestamp handling.
@@ -337,34 +337,50 @@ func TestSampleBuilder(t *testing.T) {
 					time.Unix(7, 0),
 					3,
 				),
+				DoubleGaugePoint( // 11
+					// A double gauge.
+					resource2A,
+					Labels(),
+					"metric5",
+					time.Unix(8, 0),
+					22.5),
+				nil, // 12; Skipped by reset timestamp handling.
+				DoubleCounterPoint( // 13
+					resource2A,
+					Labels(),
+					"metric6",
+					time.Unix(8, 0),
+					time.Unix(9, 0),
+					1,
+				),
 			},
 		},
 		// Various cases where we drop series due to absence of additional information.
-		// {
-		// 	targets: targetMap{
-		// 		"job1/instance1": &targets.Target{
-		// 			Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
-		// 			DiscoveredLabels: promlabels.FromStrings("__resource_a", "resource2_a"),
-		// 		},
-		// 		"job1/instance_noresource": &targets.Target{
-		// 			Labels: promlabels.FromStrings("job", "job1", "instance", "instance_noresource"),
-		// 		},
-		// 	},
-		// 	metadata: metadataMap{
-		// 		"job1/instance1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
-		// 	},
-		// 	series: seriesMap{
-		// 		1: labels.FromStrings("job", "job1", "instance", "instance_notfound", "__name__", "metric1"),
-		// 		2: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric_notfound"),
-		// 		3: labels.FromStrings("job", "job1", "instance", "instance_noresource", "__name__", "metric1"),
-		// 	},
-		// 	input: []tsdb.RefSample{
-		// 		{Ref: 1, T: 1000, V: 1},
-		// 		{Ref: 2, T: 2000, V: 2},
-		// 		{Ref: 3, T: 3000, V: 3},
-		// 	},
-		// 	result: []*metric_pb.ResourceMetrics{nil, nil, nil},
-		// },
+		{
+			targets: targetMap{
+				"job1/instance1": &targets.Target{
+					Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
+					DiscoveredLabels: promlabels.FromStrings("__resource_a", "resource2_a"),
+				},
+				"job1/instance_noresource": &targets.Target{
+					Labels: promlabels.FromStrings("job", "job1", "instance", "instance_noresource"),
+				},
+			},
+			metadata: metadataMap{
+				"job1/instance1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
+			},
+			series: seriesMap{
+				1: labels.FromStrings("job", "job1", "instance", "instance_notfound", "__name__", "metric1"),
+				2: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric_notfound"),
+				3: labels.FromStrings("job", "job1", "instance", "instance_noresource", "__name__", "metric1"),
+			},
+			input: []tsdb.RefSample{
+				{Ref: 1, T: 1000, V: 1},
+				{Ref: 2, T: 2000, V: 2},
+				{Ref: 3, T: 3000, V: 3},
+			},
+			result: []*metric_pb.ResourceMetrics{nil, nil, nil},
+		},
 		// // Summary metrics.
 		// {
 		// 	targets: targetMap{
