@@ -188,6 +188,60 @@ func DoubleGauge(name, desc, unit string, ddps ...*otlpmetrics.DoubleDataPoint) 
 	}
 }
 
+type DoubleHistogramBucketStruct struct {
+	Boundary float64
+	Count    uint64
+}
+
+func DoubleHistogramBucket(boundary float64, count uint64) DoubleHistogramBucketStruct {
+	return DoubleHistogramBucketStruct{
+		Boundary: boundary,
+		Count:    count,
+	}
+}
+
+func DoubleHistogramDataPoint(labels []*otlpcommon.StringKeyValue, start, end time.Time, sum float64, total uint64, buckets ...DoubleHistogramBucketStruct) *otlpmetrics.DoubleHistogramDataPoint {
+	blen := 0
+	if len(buckets) > 0 {
+		blen = len(buckets) - 1
+	}
+	counts := make([]uint64, len(buckets))
+	bounds := make([]float64, blen)
+	for i, b := range buckets[:len(bounds)] {
+		counts[i] = b.Count
+		bounds[i] = b.Boundary
+	}
+	if len(buckets) > 0 {
+		counts[len(buckets)-1] = buckets[len(buckets)-1].Count
+	}
+	return &otlpmetrics.DoubleHistogramDataPoint{
+		Labels:            labels,
+		StartTimeUnixNano: uint64(start.UnixNano()),
+		TimeUnixNano:      uint64(end.UnixNano()),
+		Sum:               sum,
+		Count:             total,
+		BucketCounts:      counts,
+		ExplicitBounds:    bounds,
+	}
+}
+
+func DoubleHistogramCumulative(name, desc, unit string, idps ...*otlpmetrics.DoubleHistogramDataPoint) *otlpmetrics.Metric {
+	if len(idps) == 0 {
+		idps = []*otlpmetrics.DoubleHistogramDataPoint{}
+	}
+	return &otlpmetrics.Metric{
+		Name:        name,
+		Description: desc,
+		Unit:        unit,
+		Data: &otlpmetrics.Metric_DoubleHistogram{
+			DoubleHistogram: &otlpmetrics.DoubleHistogram{
+				AggregationTemporality: otlpmetrics.AggregationTemporality_AGGREGATION_TEMPORALITY_CUMULATIVE,
+				DataPoints:             idps,
+			},
+		},
+	}
+}
+
 // Visitor is used because it takes around 50 lines of code to
 // traverse an OTLP request, with looping over Resource,
 // Instrumentation Library, the list of Metrics, and six distinct

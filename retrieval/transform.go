@@ -368,6 +368,9 @@ Loop:
 	// Don't emit a sample if we explicitly skip it or no reset timestamp was set because the
 	// count series was missing.
 	if skip || resetTimestamp == 0 {
+		// TODO add a counter for this event. Note there is
+		// more validation we could do: the sum should agree
+		// with the buckets.
 		return nil, 0, samples[consumed:], nil
 	}
 	// We do not assume that the buckets in the sample batch are in order, so we sort them again here.
@@ -376,18 +379,24 @@ Loop:
 	// Reuse slices we already populated to build final bounds and values.
 	var (
 		values  = dist.values[:0]
+		bounds  = dist.bounds[:0]
 		prevVal uint64
 	)
+	// Note: dist.bounds and dist.values have the same size.
 	for i := range dist.bounds {
 		val := dist.values[i] - prevVal
 		prevVal = dist.values[i]
 		values = append(values, val)
 	}
+
+	if len(dist.bounds) > 0 {
+		bounds = dist.bounds[:len(dist.bounds)-1]
+	}
 	histogram := &metric_pb.DoubleHistogramDataPoint{
 		Count:          uint64(count),
 		Sum:            sum,
 		BucketCounts:   values,
-		ExplicitBounds: dist.bounds[:len(dist.bounds)-1],
+		ExplicitBounds: bounds,
 	}
 	return histogram, resetTimestamp, samples[consumed:], nil
 }
