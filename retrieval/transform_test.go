@@ -628,6 +628,7 @@ func TestSampleBuilder(t *testing.T) {
 		},
 		// Customized metric prefix.
 		{
+			name: "custom prefix",
 			series: seriesMap{
 				1: labels.FromStrings("job", "job1", "instance", "instance1", "a", "1", "__name__", "metric1"),
 			},
@@ -654,97 +655,71 @@ func TestSampleBuilder(t *testing.T) {
 				),
 			},
 		},
-		// // Any counter metric with the _total suffix should be treated as normal if metadata
-		// // can be found for the original metric name.
-		// {
-		// 	series: seriesMap{
-		// 		1: labels.FromStrings("job", "job1", "instance", "instance1", "a", "1", "__name__", "metric1_total"),
-		// 	},
-		// 	targets: targetMap{
-		// 		"job1/instance1": &targets.Target{
-		// 			Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
-		// 			DiscoveredLabels: promlabels.FromStrings("resource_a", "resource2_a"),
-		// 		},
-		// 	},
-		// 	metadata: metadataMap{
-		// 		"job1/instance1/metric1_total": &metadata.Entry{Metric: "metric1_total", MetricType: textparse.MetricTypeCounter, ValueType: metadata.DOUBLE},
-		// 	},
-		// 	metricPrefix: "test.googleapis.com",
-		// 	input: []tsdb.RefSample{
-		// 		{Ref: 1, T: 2000, V: 5.5},
-		// 		{Ref: 1, T: 3000, V: 8},
-		// 	},
-		// 	result: []*metric_pb.ResourceMetrics{
-		// 		nil, // Skipped by reset timestamp handling.
-		// 		{
-		// 			Resource: &monitoredres_pb.MonitoredResource{
-		// 				Type:   "resource2",
-		// 				Labels: map[string]string{"resource_a": "resource2_a"},
-		// 			},
-		// 			Metric: &metric_pb.Metric{
-		// 				Type:   "test.googleapis.com/metric1_total",
-		// 				Labels: map[string]string{"a": "1"},
-		// 			},
-		// 			MetricKind: metadata.CUMULATIVE,
-		// 			ValueType:  metadata.DOUBLE,
-		// 			Points: []*monitoring_pb.Point{{
-		// 				Interval: &monitoring_pb.TimeInterval{
-		// 					StartTime: &timestamp_pb.Timestamp{Seconds: 2},
-		// 					EndTime:   &timestamp_pb.Timestamp{Seconds: 3},
-		// 				},
-		// 				Value: &monitoring_pb.TypedValue{
-		// 					Value: &monitoring_pb.TypedValue_DoubleValue{2.5},
-		// 				},
-		// 			}},
-		// 		},
-		// 	},
-		// },
-		// // Any counter metric with the _total suffix should fail over to the metadata for
-		// // the metric with the _total suffix removed while reporting the metric with the
-		// // _total suffix removed in the metric name as well.
-		// {
-		// 	series: seriesMap{
-		// 		1: labels.FromStrings("job", "job1", "instance", "instance1", "a", "1", "__name__", "metric1_total"),
-		// 	},
-		// 	targets: targetMap{
-		// 		"job1/instance1": &targets.Target{
-		// 			Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
-		// 			DiscoveredLabels: promlabels.FromStrings("resource_a", "resource2_a"),
-		// 		},
-		// 	},
-		// 	metadata: metadataMap{
-		// 		"job1/instance1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeCounter, ValueType: metadata.DOUBLE},
-		// 	},
-		// 	metricPrefix: "test.googleapis.com",
-		// 	input: []tsdb.RefSample{
-		// 		{Ref: 1, T: 2000, V: 5.5},
-		// 		{Ref: 1, T: 3000, V: 8},
-		// 	},
-		// 	result: []*metric_pb.ResourceMetrics{
-		// 		nil, // Skipped by reset timestamp handling.
-		// 		{
-		// 			Resource: &monitoredres_pb.MonitoredResource{
-		// 				Type:   "resource2",
-		// 				Labels: map[string]string{"resource_a": "resource2_a"},
-		// 			},
-		// 			Metric: &metric_pb.Metric{
-		// 				Type:   "test.googleapis.com/metric1",
-		// 				Labels: map[string]string{"a": "1"},
-		// 			},
-		// 			MetricKind: metadata.CUMULATIVE,
-		// 			ValueType:  metadata.DOUBLE,
-		// 			Points: []*monitoring_pb.Point{{
-		// 				Interval: &monitoring_pb.TimeInterval{
-		// 					StartTime: &timestamp_pb.Timestamp{Seconds: 2},
-		// 					EndTime:   &timestamp_pb.Timestamp{Seconds: 3},
-		// 				},
-		// 				Value: &monitoring_pb.TypedValue{
-		// 					Value: &monitoring_pb.TypedValue_DoubleValue{2.5},
-		// 				},
-		// 			}},
-		// 		},
-		// 	},
-		// },
+		// Any counter metric with the _total suffix should be treated as normal if metadata
+		// can be found for the original metric name.
+		{
+			name: "total not distribution",
+			series: seriesMap{
+				1: labels.FromStrings("job", "job1", "instance", "instance1", "a", "1", "__name__", "metric1_total"),
+			},
+			targets: targetMap{
+				"job1/instance1": &targets.Target{
+					Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
+					DiscoveredLabels: promlabels.FromStrings("resource_a", "resource2_a"),
+				},
+			},
+			metadata: metadataMap{
+				"job1/instance1/metric1_total": &metadata.Entry{Metric: "metric1_total", MetricType: textparse.MetricTypeCounter, ValueType: metadata.DOUBLE},
+			},
+			input: []tsdb.RefSample{
+				{Ref: 1, T: 2000, V: 5.5},
+				{Ref: 1, T: 3000, V: 8},
+			},
+			result: []*metric_pb.ResourceMetrics{
+				nil, // Skipped by reset timestamp handling.
+				DoubleCounterPoint(
+					resource2A,
+					Labels(Label("a", "1")),
+					"metric1_total",
+					time.Unix(2, 0),
+					time.Unix(3, 0),
+					2.5,
+				),
+			},
+		},
+		// Any counter metric with the _total suffix should fail over to the metadata for
+		// the metric with the _total suffix removed while reporting the metric with the
+		// _total suffix removed in the metric name as well.
+		{
+			name: "only total distribution",
+			series: seriesMap{
+				1: labels.FromStrings("job", "job1", "instance", "instance1", "a", "1", "__name__", "metric1_total"),
+			},
+			targets: targetMap{
+				"job1/instance1": &targets.Target{
+					Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
+					DiscoveredLabels: promlabels.FromStrings("resource_a", "resource2_a"),
+				},
+			},
+			metadata: metadataMap{
+				"job1/instance1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeCounter, ValueType: metadata.DOUBLE},
+			},
+			input: []tsdb.RefSample{
+				{Ref: 1, T: 2000, V: 5.5},
+				{Ref: 1, T: 3000, V: 8},
+			},
+			result: []*metric_pb.ResourceMetrics{
+				nil, // Skipped by reset timestamp handling.
+				DoubleCounterPoint(
+					resource2A,
+					Labels(Label("a", "1")),
+					"metric1",
+					time.Unix(2, 0),
+					time.Unix(3, 0),
+					2.5,
+				),
+			},
+		},
 		// // Any non-counter metric with the _total suffix should fail over to the metadata
 		// // for the metric with the _total suffix removed while reporting the metric with
 		// // the original name.
