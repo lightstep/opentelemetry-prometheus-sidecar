@@ -536,7 +536,6 @@ func TestSampleBuilder(t *testing.T) {
 			},
 			result: []*metric_pb.ResourceMetrics{
 				nil, // 0: skipped by reset handling.
-
 				DoubleHistogramPoint( // 1:
 					resource2A,
 					Labels(),
@@ -551,9 +550,7 @@ func TestSampleBuilder(t *testing.T) {
 					DoubleHistogramBucket(2.5, 2),
 					DoubleHistogramBucket(math.Inf(+1), 4),
 				),
-
 				nil, // 2: skipped
-
 				DoubleHistogramPoint( // 3: histogram w/ no buckets
 					resource2A,
 					Labels(Label("a", "b")),
@@ -563,7 +560,6 @@ func TestSampleBuilder(t *testing.T) {
 					15,
 					3,
 				),
-
 				DoubleGaugePoint( // 4: not a histogram
 					resource2A,
 					Labels(Label("a", "b")),
