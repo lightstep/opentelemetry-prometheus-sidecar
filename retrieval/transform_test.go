@@ -626,47 +626,34 @@ func TestSampleBuilder(t *testing.T) {
 				nil, // Rejected because of overlap.
 			},
 		},
-		// // Customized metric prefix.
-		// {
-		// 	series: seriesMap{
-		// 		1: labels.FromStrings("job", "job1", "instance", "instance1", "a", "1", "__name__", "metric1"),
-		// 	},
-		// 	targets: targetMap{
-		// 		"job1/instance1": &targets.Target{
-		// 			Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
-		// 			DiscoveredLabels: promlabels.FromStrings("resource_a", "resource2_a"),
-		// 		},
-		// 	},
-		// 	metadata: metadataMap{
-		// 		"job1/instance1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
-		// 	},
-		// 	metricPrefix: "test.googleapis.com",
-		// 	input: []tsdb.RefSample{
-		// 		{Ref: 1, T: 1000, V: 200},
-		// 	},
-		// 	result: []*metric_pb.ResourceMetrics{
-		// 		{
-		// 			Resource: &monitoredres_pb.MonitoredResource{
-		// 				Type:   "resource2",
-		// 				Labels: map[string]string{"resource_a": "resource2_a"},
-		// 			},
-		// 			Metric: &metric_pb.Metric{
-		// 				Type:   "test.googleapis.com/metric1",
-		// 				Labels: map[string]string{"a": "1"},
-		// 			},
-		// 			MetricKind: metadata.GAUGE,
-		// 			ValueType:  metadata.DOUBLE,
-		// 			Points: []*monitoring_pb.Point{{
-		// 				Interval: &monitoring_pb.TimeInterval{
-		// 					EndTime: &timestamp_pb.Timestamp{Seconds: 1},
-		// 				},
-		// 				Value: &monitoring_pb.TypedValue{
-		// 					Value: &monitoring_pb.TypedValue_DoubleValue{200},
-		// 				},
-		// 			}},
-		// 		},
-		// 	},
-		// },
+		// Customized metric prefix.
+		{
+			series: seriesMap{
+				1: labels.FromStrings("job", "job1", "instance", "instance1", "a", "1", "__name__", "metric1"),
+			},
+			targets: targetMap{
+				"job1/instance1": &targets.Target{
+					Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
+					DiscoveredLabels: promlabels.FromStrings("resource_a", "resource2_a"),
+				},
+			},
+			metadata: metadataMap{
+				"job1/instance1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
+			},
+			metricPrefix: "test.otel.io",
+			input: []tsdb.RefSample{
+				{Ref: 1, T: 1000, V: 200},
+			},
+			result: []*metric_pb.ResourceMetrics{
+				DoubleGaugePoint(
+					resource2A,
+					Labels(Label("a", "1")),
+					"test.otel.io/metric1",
+					time.Unix(1, 0),
+					200,
+				),
+			},
+		},
 		// // Any counter metric with the _total suffix should be treated as normal if metadata
 		// // can be found for the original metric name.
 		// {
