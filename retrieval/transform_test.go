@@ -691,7 +691,7 @@ func TestSampleBuilder(t *testing.T) {
 		// the metric with the _total suffix removed while reporting the metric with the
 		// _total suffix removed in the metric name as well.
 		{
-			name: "only total distribution",
+			name: "only total distribution counter",
 			series: seriesMap{
 				1: labels.FromStrings("job", "job1", "instance", "instance1", "a", "1", "__name__", "metric1_total"),
 			},
@@ -720,123 +720,95 @@ func TestSampleBuilder(t *testing.T) {
 				),
 			},
 		},
-		// // Any non-counter metric with the _total suffix should fail over to the metadata
-		// // for the metric with the _total suffix removed while reporting the metric with
-		// // the original name.
-		// {
-		// 	series: seriesMap{
-		// 		1: labels.FromStrings("job", "job1", "instance", "instance1", "a", "1", "__name__", "metric1_total"),
-		// 	},
-		// 	targets: targetMap{
-		// 		"job1/instance1": &targets.Target{
-		// 			Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
-		// 			DiscoveredLabels: promlabels.FromStrings("resource_a", "resource2_a"),
-		// 		},
-		// 	},
-		// 	metadata: metadataMap{
-		// 		"job1/instance1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
-		// 	},
-		// 	metricPrefix: "test.googleapis.com",
-		// 	input: []tsdb.RefSample{
-		// 		{Ref: 1, T: 3000, V: 8},
-		// 	},
-		// 	result: []*metric_pb.ResourceMetrics{
-		// 		{
-		// 			Resource: &monitoredres_pb.MonitoredResource{
-		// 				Type:   "resource2",
-		// 				Labels: map[string]string{"resource_a": "resource2_a"},
-		// 			},
-		// 			Metric: &metric_pb.Metric{
-		// 				Type:   "test.googleapis.com/metric1_total",
-		// 				Labels: map[string]string{"a": "1"},
-		// 			},
-		// 			MetricKind: metadata.GAUGE,
-		// 			ValueType:  metadata.DOUBLE,
-		// 			Points: []*monitoring_pb.Point{{
-		// 				Interval: &monitoring_pb.TimeInterval{
-		// 					EndTime: &timestamp_pb.Timestamp{Seconds: 3},
-		// 				},
-		// 				Value: &monitoring_pb.TypedValue{
-		// 					Value: &monitoring_pb.TypedValue_DoubleValue{8},
-		// 				},
-		// 			}},
-		// 		},
-		// 	},
-		// },
-		// // Samples with a NaN value should be dropped.
-		// {
-		// 	targets: targetMap{
-		// 		"job1/instance1": &targets.Target{
-		// 			Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
-		// 			DiscoveredLabels: promlabels.FromStrings("resource_a", "resource2_a"),
-		// 		},
-		// 	},
-		// 	series: seriesMap{
-		// 		1: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_count"),
-		// 	},
-		// 	metadata: metadataMap{
-		// 		"job1/instance1/metric1": &metadata.Entry{Metric: "metric1_count", MetricType: textparse.MetricTypeSummary, ValueType: metadata.DOUBLE},
-		// 	},
-		// 	metricPrefix: "test.googleapis.com",
-		// 	input: []tsdb.RefSample{
-		// 		// A first non-NaN sample is necessary to avoid false-positives, since the
-		// 		// first result will always be nil due to reset timestamp handling.
-		// 		{Ref: 1, T: 2000, V: 5},
-		// 		{Ref: 1, T: 4000, V: math.NaN()},
-		// 	},
-		// 	result: []*metric_pb.ResourceMetrics{
-		// 		nil, // due to reset timestamp handling
-		// 		nil, // due to NaN
-		// 	},
-		// },
-		// // Samples with a NaN value should be dropped.
-		// {
-		// 	targets: targetMap{
-		// 		"job1/instance1": &targets.Target{
-		// 			Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
-		// 			DiscoveredLabels: promlabels.FromStrings("resource_a", "resource2_a"),
-		// 		},
-		// 	},
-		// 	series: seriesMap{
-		// 		1: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_count"),
-		// 	},
-		// 	metadata: metadataMap{
-		// 		"job1/instance1/metric1": &metadata.Entry{Metric: "metric1_count", MetricType: textparse.MetricTypeSummary, ValueType: metadata.DOUBLE},
-		// 	},
-		// 	metricPrefix: "test.googleapis.com",
-		// 	input: []tsdb.RefSample{
-		// 		// A first non-NaN sample is necessary to avoid false-positives, since the
-		// 		// first result will always be nil due to reset timestamp handling.
-		// 		{Ref: 1, T: 2000, V: 5},
-		// 		{Ref: 1, T: 4000, V: math.NaN()},
-		// 		{Ref: 1, T: 5000, V: 9},
-		// 	},
-		// 	result: []*metric_pb.ResourceMetrics{
-		// 		nil, // due to reset timestamp handling
-		// 		nil, // due to NaN
-		// 		{
-		// 			Resource: &monitoredres_pb.MonitoredResource{
-		// 				Type:   "resource2",
-		// 				Labels: map[string]string{"resource_a": "resource2_a"},
-		// 			},
-		// 			Metric: &metric_pb.Metric{
-		// 				Type:   "test.googleapis.com/metric1_count",
-		// 				Labels: map[string]string{},
-		// 			},
-		// 			MetricKind: metadata.CUMULATIVE,
-		// 			ValueType:  metadata.INT64,
-		// 			Points: []*monitoring_pb.Point{{
-		// 				Interval: &monitoring_pb.TimeInterval{
-		// 					StartTime: &timestamp_pb.Timestamp{Seconds: 2},
-		// 					EndTime:   &timestamp_pb.Timestamp{Seconds: 5},
-		// 				},
-		// 				Value: &monitoring_pb.TypedValue{
-		// 					Value: &monitoring_pb.TypedValue_Int64Value{4},
-		// 				},
-		// 			}},
-		// 		},
-		// 	},
-		// },
+		// Any non-counter metric with the _total suffix should fail over to the metadata
+		// for the metric with the _total suffix removed while reporting the metric with
+		// the original name.
+		{
+			name: "only total distribution gauge",
+			series: seriesMap{
+				1: labels.FromStrings("job", "job1", "instance", "instance1", "a", "1", "__name__", "metric1_total"),
+			},
+			targets: targetMap{
+				"job1/instance1": &targets.Target{
+					Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
+					DiscoveredLabels: promlabels.FromStrings("resource_a", "resource2_a"),
+				},
+			},
+			metadata: metadataMap{
+				"job1/instance1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
+			},
+			input: []tsdb.RefSample{
+				{Ref: 1, T: 3000, V: 8},
+			},
+			result: []*metric_pb.ResourceMetrics{
+				DoubleGaugePoint(
+					resource2A,
+					Labels(Label("a", "1")),
+					"metric1_total",
+					time.Unix(3, 0),
+					8,
+				),
+			},
+		},
+		// Samples with a NaN value should be dropped.
+		{
+			targets: targetMap{
+				"job1/instance1": &targets.Target{
+					Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
+					DiscoveredLabels: promlabels.FromStrings("resource_a", "resource2_a"),
+				},
+			},
+			series: seriesMap{
+				1: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_count"),
+			},
+			metadata: metadataMap{
+				"job1/instance1/metric1": &metadata.Entry{Metric: "metric1_count", MetricType: textparse.MetricTypeSummary, ValueType: metadata.DOUBLE},
+			},
+			input: []tsdb.RefSample{
+				// A first non-NaN sample is necessary to avoid false-positives, since the
+				// first result will always be nil due to reset timestamp handling.
+				{Ref: 1, T: 2000, V: 5},
+				{Ref: 1, T: 4000, V: math.NaN()},
+			},
+			result: []*metric_pb.ResourceMetrics{
+				nil, // due to reset timestamp handling
+				nil, // due to NaN
+			},
+		},
+		// Samples with a NaN value should be dropped.
+		{
+			targets: targetMap{
+				"job1/instance1": &targets.Target{
+					Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
+					DiscoveredLabels: promlabels.FromStrings("resource_a", "resource2_a"),
+				},
+			},
+			series: seriesMap{
+				1: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_count"),
+			},
+			metadata: metadataMap{
+				"job1/instance1/metric1": &metadata.Entry{Metric: "metric1_count", MetricType: textparse.MetricTypeSummary, ValueType: metadata.DOUBLE},
+			},
+			input: []tsdb.RefSample{
+				// A first non-NaN sample is necessary to avoid false-positives, since the
+				// first result will always be nil due to reset timestamp handling.
+				{Ref: 1, T: 2000, V: 5},
+				{Ref: 1, T: 4000, V: math.NaN()},
+				{Ref: 1, T: 5000, V: 9},
+			},
+			result: []*metric_pb.ResourceMetrics{
+				nil, // due to reset timestamp handling
+				nil, // due to NaN
+				IntCounterPoint(
+					resource2A,
+					Labels(),
+					"metric1_count",
+					time.Unix(2, 0),
+					time.Unix(5, 0),
+					4,
+				),
+			},
+		},
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
