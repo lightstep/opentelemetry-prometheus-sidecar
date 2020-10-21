@@ -13,6 +13,7 @@ require (
 	cloud.google.com/go v0.49.0 // indirect
 	contrib.go.opencensus.io/exporter/prometheus v0.1.0
 	github.com/aws/aws-sdk-go v1.23.20 // indirect
+	github.com/davecgh/go-spew v1.1.1
 	github.com/ghodss/yaml v1.0.0
 	github.com/go-kit/kit v0.9.0
 	github.com/gogo/protobuf v1.3.1
@@ -27,6 +28,7 @@ require (
 	github.com/prometheus/common v0.4.1
 	github.com/prometheus/prometheus v0.0.0-20190710134608-e5b22494857d
 	github.com/prometheus/tsdb v0.10.0
+	github.com/stretchr/testify v1.4.0
 	go.opencensus.io v0.22.2
 	golang.org/x/time v0.0.0-20191024005414-555d28b269f0
 	golang.org/x/tools v0.0.0-20201014170642-d1624618ad65 // indirect
@@ -34,6 +36,7 @@ require (
 	google.golang.org/genproto v0.0.0-20191115221424-83cc0476cb11
 	google.golang.org/grpc v1.25.1
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
+	gopkg.in/d4l3k/messagediff.v1 v1.2.1
 	honnef.co/go/tools v0.0.1-2020.1.6 // indirect
 )
 

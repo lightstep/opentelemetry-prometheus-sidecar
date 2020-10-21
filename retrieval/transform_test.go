@@ -16,10 +16,10 @@ package retrieval
 import (
 	"context"
 	"fmt"
+	"math"
 	"testing"
 	"time"
 
-	"github.com/google/go-cmp/cmp"
 	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
 	common_pb "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/common/v1"
 	metric_pb "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
@@ -31,6 +31,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/textparse"
 	"github.com/prometheus/tsdb"
 	"github.com/prometheus/tsdb/labels"
+	"gopkg.in/d4l3k/messagediff.v1"
 )
 
 // seriesMap implements seriesGetter.
@@ -53,6 +54,9 @@ func (m metadataMap) Get(ctx context.Context, job, instance, metric string) (*me
 }
 
 func TestSampleBuilder(t *testing.T) {
+	type (
+		DoubleHistogramBucketStruct = otlptest.DoubleHistogramBucketStruct
+	)
 	var (
 		ResourceMetrics               = otlptest.ResourceMetrics
 		Resource                      = otlptest.Resource
@@ -66,6 +70,9 @@ func TestSampleBuilder(t *testing.T) {
 		DoubleSumCumulativeMonotonic  = otlptest.DoubleSumCumulativeMonotonic
 		DoubleGauge                   = otlptest.DoubleGauge
 		DoubleDataPoint               = otlptest.DoubleDataPoint
+		DoubleHistogramDataPoint      = otlptest.DoubleHistogramDataPoint
+		DoubleHistogramCumulative     = otlptest.DoubleHistogramCumulative
+		DoubleHistogramBucket         = otlptest.DoubleHistogramBucket
 		Labels                        = otlptest.Labels
 		Label                         = otlptest.Label
 
@@ -165,6 +172,33 @@ func TestSampleBuilder(t *testing.T) {
 							time.Unix(0, 0),
 							end,
 							value,
+						),
+					),
+				),
+			)
+		}
+
+		DoubleHistogramPoint = func(
+			reslab []*common_pb.KeyValue,
+			labels []*common_pb.StringKeyValue,
+			name string,
+			start, end time.Time,
+			sum float64, count uint64,
+			buckets ...DoubleHistogramBucketStruct,
+		) *metric_pb.ResourceMetrics {
+			return ResourceMetrics(
+				Resource(reslab...),
+				InstrumentationLibraryMetrics(
+					InstrumentationLibrary(sidecar.InstrumentationLibrary, version.Version),
+					DoubleHistogramCumulative(
+						name, "", "",
+						DoubleHistogramDataPoint(
+							labels,
+							start,
+							end,
+							sum,
+							count,
+							buckets...,
 						),
 					),
 				),
@@ -387,7 +421,7 @@ func TestSampleBuilder(t *testing.T) {
 		},
 		// Summary metrics.
 		{
-			name: "summary metrics",
+			name: "summary",
 			targets: targetMap{
 				"job1/instance1": &targets.Target{
 					Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
@@ -446,154 +480,99 @@ func TestSampleBuilder(t *testing.T) {
 				),
 			},
 		},
-		// // Histogram.
-		// {
-		// 	targets: targetMap{
-		// 		"job1/instance1": &targets.Target{
-		// 			Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
-		// 			DiscoveredLabels: promlabels.FromStrings("resource_a", "resource2_a"),
-		// 		},
-		// 	},
-		// 	metadata: metadataMap{
-		// 		"job1/instance1/metric1":         &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeHistogram, ValueType: metadata.DOUBLE},
-		// 		"job1/instance1/metric1_a_count": &metadata.Entry{Metric: "metric1_a_count", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
-		// 	},
-		// 	series: seriesMap{
-		// 		1: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_sum"),
-		// 		2: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_count"),
-		// 		3: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_bucket", "le", "0.1"),
-		// 		4: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_bucket", "le", "0.5"),
-		// 		5: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_bucket", "le", "1"),
-		// 		6: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_bucket", "le", "2.5"),
-		// 		7: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_bucket", "le", "+Inf"),
-		// 		// Add another series that only deviates by having an extra label. We must properly detect a new histogram.
-		// 		// This is an discouraged but possible case of metric labeling.
-		// 		8: labels.FromStrings("job", "job1", "instance", "instance1", "a", "b", "__name__", "metric1_sum"),
-		// 		9: labels.FromStrings("job", "job1", "instance", "instance1", "a", "b", "__name__", "metric1_count"),
-		// 		// Series that triggers more edge cases.
-		// 		10: labels.FromStrings("job", "job1", "instance", "instance1", "a", "b", "__name__", "metric1_a_count"),
-		// 	},
-		// 	input: []tsdb.RefSample{
-		// 		// Mix up order of the series to test bucket sorting.
-		// 		// First sample set, should be skipped by reset handling.
-		// 		{Ref: 3, T: 1000, V: 2},    // 0.1
-		// 		{Ref: 5, T: 1000, V: 6},    // 1
-		// 		{Ref: 6, T: 1000, V: 8},    // 2.5
-		// 		{Ref: 7, T: 1000, V: 10},   // inf
-		// 		{Ref: 1, T: 1000, V: 55.1}, // sum
-		// 		{Ref: 4, T: 1000, V: 5},    // 0.5
-		// 		{Ref: 2, T: 1000, V: 10},   // count
-		// 		// Second sample set should actually be emitted.
-		// 		{Ref: 2, T: 2000, V: 21},    // count
-		// 		{Ref: 3, T: 2000, V: 4},     // 0.1
-		// 		{Ref: 6, T: 2000, V: 15},    // 2.5
-		// 		{Ref: 5, T: 2000, V: 11},    // 1
-		// 		{Ref: 1, T: 2000, V: 123.4}, // sum
-		// 		{Ref: 7, T: 2000, V: 21},    // inf
-		// 		{Ref: 4, T: 2000, V: 9},     // 0.5
-		// 		// New histogram without actual buckets – should still work.
-		// 		{Ref: 8, T: 1000, V: 100},
-		// 		{Ref: 9, T: 1000, V: 10},
-		// 		{Ref: 8, T: 2000, V: 115},
-		// 		{Ref: 9, T: 2000, V: 13},
-		// 		// New metric that actually matches the base name but the suffix is more more than a valid histogram suffix.
-		// 		{Ref: 10, T: 1000, V: 3},
-		// 	},
-		// 	result: []*metric_pb.ResourceMetrics{
-		// 		nil, // 0: skipped by reset handling.
-		// 		{ // 1
-		// 			Resource: &monitoredres_pb.MonitoredResource{
-		// 				Type:   "resource2",
-		// 				Labels: map[string]string{"resource_a": "resource2_a"},
-		// 			},
-		// 			Metric: &metric_pb.Metric{
-		// 				Type:   "external.googleapis.com/prometheus/metric1",
-		// 				Labels: map[string]string{},
-		// 			},
-		// 			MetricKind: metadata.CUMULATIVE,
-		// 			ValueType:  metadata.DISTRIBUTION,
-		// 			Points: []*monitoring_pb.Point{{
-		// 				Interval: &monitoring_pb.TimeInterval{
-		// 					StartTime: &timestamp_pb.Timestamp{Seconds: 1},
-		// 					EndTime:   &timestamp_pb.Timestamp{Seconds: 2},
-		// 				},
-		// 				Value: &monitoring_pb.TypedValue{
-		// 					Value: &monitoring_pb.TypedValue_DistributionValue{
-		// 						&distribution_pb.Distribution{
-		// 							Count:                 11,
-		// 							Mean:                  6.20909090909091,
-		// 							SumOfSquaredDeviation: 270.301590909091,
-		// 							BucketOptions: &distribution_pb.Distribution_BucketOptions{
-		// 								Options: &distribution_pb.Distribution_BucketOptions_ExplicitBuckets{
-		// 									ExplicitBuckets: &distribution_pb.Distribution_BucketOptions_Explicit{
-		// 										Bounds: []float64{0.1, 0.5, 1, 2.5},
-		// 									},
-		// 								},
-		// 							},
-		// 							BucketCounts: []int64{2, 2, 1, 2, 4},
-		// 						},
-		// 					},
-		// 				},
-		// 			}},
-		// 		},
-		// 		nil, // 2: skipped by reset handling
-		// 		{ // 3
-		// 			Resource: &monitoredres_pb.MonitoredResource{
-		// 				Type:   "resource2",
-		// 				Labels: map[string]string{"resource_a": "resource2_a"},
-		// 			},
-		// 			Metric: &metric_pb.Metric{
-		// 				Type:   "external.googleapis.com/prometheus/metric1",
-		// 				Labels: map[string]string{"a": "b"},
-		// 			},
-		// 			MetricKind: metadata.CUMULATIVE,
-		// 			ValueType:  metadata.DISTRIBUTION,
-		// 			Points: []*monitoring_pb.Point{{
-		// 				Interval: &monitoring_pb.TimeInterval{
-		// 					StartTime: &timestamp_pb.Timestamp{Seconds: 1},
-		// 					EndTime:   &timestamp_pb.Timestamp{Seconds: 2},
-		// 				},
-		// 				Value: &monitoring_pb.TypedValue{
-		// 					Value: &monitoring_pb.TypedValue_DistributionValue{
-		// 						&distribution_pb.Distribution{
-		// 							Count:                 3,
-		// 							Mean:                  5,
-		// 							SumOfSquaredDeviation: 0,
-		// 							BucketOptions: &distribution_pb.Distribution_BucketOptions{
-		// 								Options: &distribution_pb.Distribution_BucketOptions_ExplicitBuckets{
-		// 									ExplicitBuckets: &distribution_pb.Distribution_BucketOptions_Explicit{
-		// 										Bounds: []float64{},
-		// 									},
-		// 								},
-		// 							},
-		// 							BucketCounts: []int64{},
-		// 						},
-		// 					},
-		// 				},
-		// 			}},
-		// 		},
-		// 		{ // 4
-		// 			Resource: &monitoredres_pb.MonitoredResource{
-		// 				Type:   "resource2",
-		// 				Labels: map[string]string{"resource_a": "resource2_a"},
-		// 			},
-		// 			Metric: &metric_pb.Metric{
-		// 				Type:   "external.googleapis.com/prometheus/metric1_a_count",
-		// 				Labels: map[string]string{"a": "b"},
-		// 			},
-		// 			MetricKind: metadata.GAUGE,
-		// 			ValueType:  metadata.DOUBLE,
-		// 			Points: []*monitoring_pb.Point{{
-		// 				Interval: &monitoring_pb.TimeInterval{
-		// 					EndTime: &timestamp_pb.Timestamp{Seconds: 1},
-		// 				},
-		// 				Value: &monitoring_pb.TypedValue{
-		// 					Value: &monitoring_pb.TypedValue_DoubleValue{3},
-		// 				},
-		// 			}},
-		// 		},
-		// 	},
-		// },
+		// Histogram.
+		{
+			name: "histogram",
+			targets: targetMap{
+				"job1/instance1": &targets.Target{
+					Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
+					DiscoveredLabels: promlabels.FromStrings("resource_a", "resource2_a"),
+				},
+			},
+			metadata: metadataMap{
+				"job1/instance1/metric1":         &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeHistogram, ValueType: metadata.DOUBLE},
+				"job1/instance1/metric1_a_count": &metadata.Entry{Metric: "metric1_a_count", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
+			},
+			series: seriesMap{
+				1: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_sum"),
+				2: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_count"),
+				3: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_bucket", "le", "0.1"),
+				4: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_bucket", "le", "0.5"),
+				5: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_bucket", "le", "1"),
+				6: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_bucket", "le", "2.5"),
+				7: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_bucket", "le", "+Inf"),
+				// Add another series that only deviates by having an extra label. We must properly detect a new histogram.
+				// This is an discouraged but possible case of metric labeling.
+				8: labels.FromStrings("job", "job1", "instance", "instance1", "a", "b", "__name__", "metric1_sum"),
+				9: labels.FromStrings("job", "job1", "instance", "instance1", "a", "b", "__name__", "metric1_count"),
+				// Series that triggers more edge cases.
+				10: labels.FromStrings("job", "job1", "instance", "instance1", "a", "b", "__name__", "metric1_a_count"),
+			},
+			input: []tsdb.RefSample{
+				// Mix up order of the series to test bucket sorting.
+				// First sample set, should be skipped by reset handling.
+				{Ref: 3, T: 1000, V: 2},    // 0.1
+				{Ref: 5, T: 1000, V: 6},    // 1
+				{Ref: 6, T: 1000, V: 8},    // 2.5
+				{Ref: 7, T: 1000, V: 10},   // inf
+				{Ref: 1, T: 1000, V: 55.1}, // sum
+				{Ref: 4, T: 1000, V: 5},    // 0.5
+				{Ref: 2, T: 1000, V: 10},   // count
+				// Second sample set should actually be emitted.
+				{Ref: 2, T: 2000, V: 21},    // count
+				{Ref: 3, T: 2000, V: 4},     // 0.1
+				{Ref: 6, T: 2000, V: 15},    // 2.5
+				{Ref: 5, T: 2000, V: 11},    // 1
+				{Ref: 1, T: 2000, V: 123.4}, // sum
+				{Ref: 7, T: 2000, V: 21},    // inf
+				{Ref: 4, T: 2000, V: 9},     // 0.5
+				// New histogram without actual buckets – should still work.
+				{Ref: 8, T: 1000, V: 100},
+				{Ref: 9, T: 1000, V: 10},
+				{Ref: 8, T: 2000, V: 115},
+				{Ref: 9, T: 2000, V: 13},
+				// New metric that actually matches the base name but the suffix is more more than a valid histogram suffix.
+				{Ref: 10, T: 1000, V: 3},
+			},
+			result: []*metric_pb.ResourceMetrics{
+				nil, // 0: skipped by reset handling.
+
+				DoubleHistogramPoint( // 1:
+					resource2A,
+					Labels(),
+					"metric1",
+					time.Unix(1, 0),
+					time.Unix(2, 0),
+					float64(123.4)-float64(55.1),
+					21-10,
+					DoubleHistogramBucket(0.1, 2),
+					DoubleHistogramBucket(0.5, 2),
+					DoubleHistogramBucket(1, 1),
+					DoubleHistogramBucket(2.5, 2),
+					DoubleHistogramBucket(math.Inf(+1), 4),
+				),
+
+				nil, // 2: skipped
+
+				DoubleHistogramPoint( // 3: histogram w/ no buckets
+					resource2A,
+					Labels(Label("a", "b")),
+					"metric1",
+					time.Unix(1, 0),
+					time.Unix(2, 0),
+					15,
+					3,
+				),
+
+				DoubleGaugePoint( // 4: not a histogram
+					resource2A,
+					Labels(Label("a", "b")),
+					"metric1_a_count",
+					time.Unix(1, 0),
+					3,
+				),
+			},
+		},
 		// // Interval overlap handling.
 		// {
 		// 	series: seriesMap{
@@ -957,9 +936,10 @@ func TestSampleBuilder(t *testing.T) {
 				if err != nil && !c.fail {
 					t.Errorf("unexpected error: %s", err)
 				}
-				if diff := cmp.Diff(c.result, result); len(diff) > 0 {
+				if diff, equal := messagediff.PrettyDiff(c.result, result); !equal {
 					t.Errorf("unexpected result:\n%v", diff)
 				}
+
 				if len(result) != len(c.result) {
 					t.Errorf("mismatching count %d of received samples, want %d", len(result), len(c.result))
 				}
