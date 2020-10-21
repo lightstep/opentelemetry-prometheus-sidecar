@@ -76,11 +76,11 @@ func TestSampleBuilder(t *testing.T) {
 		Labels                        = otlptest.Labels
 		Label                         = otlptest.Label
 
-		resource2A = ResourceLabels(
-			KeyValue("resource_a", "resource2_a"),
+		testResource = ResourceLabels(
+			KeyValue("resource_a", "abc"),
 		)
-		resource3A = ResourceLabels(
-			KeyValue("resource_a", "resource3_a"),
+		otherTestResource = ResourceLabels(
+			KeyValue("resource_a", "def"),
 			KeyValue("unused", "xxx"),
 		)
 
@@ -233,11 +233,11 @@ func TestSampleBuilder(t *testing.T) {
 			targets: targetMap{
 				"job1/instance1": &targets.Target{
 					Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
-					DiscoveredLabels: promlabels.FromStrings("resource_a", "resource2_a"),
+					DiscoveredLabels: promlabels.FromStrings("resource_a", "abc"),
 				},
 				"job2/instance1": &targets.Target{
 					Labels:           promlabels.FromStrings("job", "job2", "instance", "instance1"),
-					DiscoveredLabels: promlabels.FromStrings("unused", "xxx", "resource_a", "resource3_a"),
+					DiscoveredLabels: promlabels.FromStrings("unused", "xxx", "resource_a", "def"),
 				},
 			},
 			metadata: metadataMap{
@@ -276,7 +276,7 @@ func TestSampleBuilder(t *testing.T) {
 			result: []*metric_pb.ResourceMetrics{
 				nil, // Skipped by reset timestamp handling.
 				DoubleCounterPoint( // 1: second point in series, first reported.
-					resource2A,
+					testResource,
 					Labels(),
 					"metric2",
 					time.Unix(2, 0),
@@ -284,7 +284,7 @@ func TestSampleBuilder(t *testing.T) {
 					2.5,
 				),
 				DoubleCounterPoint( // 2: third point in series, secnod reported.
-					resource2A,
+					testResource,
 					Labels(),
 					"metric2",
 					time.Unix(2, 0),
@@ -294,7 +294,7 @@ func TestSampleBuilder(t *testing.T) {
 				DoubleCounterPoint( // 3: A reset
 					// Timestamp set to 1ms before the end time to avoid
 					// conflict, see (*seriesCache).getResetAdjusted().
-					resource2A,
+					testResource,
 					Labels(),
 					"metric2",
 					time.Unix(5, int64(-time.Millisecond)),
@@ -302,14 +302,14 @@ func TestSampleBuilder(t *testing.T) {
 					3,
 				),
 				DoubleGaugePoint( // 4: A double Gauge
-					resource2A,
+					testResource,
 					Labels(Label("a", "1")),
 					"metric1",
 					time.Unix(1, 0),
 					200,
 				),
 				DoubleGaugePoint( // 5: A double gauge w/ 10 keys
-					resource2A,
+					testResource,
 					Labels(
 						Label("a", "1"),
 						Label("b", "2"),
@@ -327,7 +327,7 @@ func TestSampleBuilder(t *testing.T) {
 					1,
 				),
 				DoubleGaugePoint( // 6: A double gauge w/ 11 keys
-					resource2A,
+					testResource,
 					Labels(
 						Label("a", "1"),
 						Label("b", "2"),
@@ -347,7 +347,7 @@ func TestSampleBuilder(t *testing.T) {
 				),
 				DoubleGaugePoint( // 7
 					// A double gauge w/ 2 resource keys and 2 labels
-					resource3A,
+					otherTestResource,
 					Labels(
 						Label("a", "1"),
 						Label("metric_label", "aaa"),
@@ -358,7 +358,7 @@ func TestSampleBuilder(t *testing.T) {
 				),
 				IntGaugePoint( // 8
 					// An integer gauge: rounding from 12.5 to 13
-					resource2A,
+					testResource,
 					Labels(),
 					"metric3",
 					time.Unix(8, 0),
@@ -367,7 +367,7 @@ func TestSampleBuilder(t *testing.T) {
 				nil, // 9; Skipped by reset timestamp handling.
 				IntCounterPoint( // 10
 					// An integer counter.
-					resource2A,
+					testResource,
 					Labels(),
 					"metric4",
 					time.Unix(6, 0),
@@ -376,14 +376,14 @@ func TestSampleBuilder(t *testing.T) {
 				),
 				DoubleGaugePoint( // 11
 					// A double gauge.
-					resource2A,
+					testResource,
 					Labels(),
 					"metric5",
 					time.Unix(8, 0),
 					22.5),
 				nil, // 12; Skipped by reset timestamp handling.
 				DoubleCounterPoint( // 13
-					resource2A,
+					testResource,
 					Labels(),
 					"metric6",
 					time.Unix(8, 0),
@@ -398,7 +398,7 @@ func TestSampleBuilder(t *testing.T) {
 			targets: targetMap{
 				"job1/instance1": &targets.Target{
 					Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
-					DiscoveredLabels: promlabels.FromStrings("resource_a", "resource2_a"),
+					DiscoveredLabels: promlabels.FromStrings("resource_a", "abc"),
 				},
 				"job1/instance_noresource": &targets.Target{
 					Labels: promlabels.FromStrings("job", "job1", "instance", "instance_noresource"),
@@ -425,7 +425,7 @@ func TestSampleBuilder(t *testing.T) {
 			targets: targetMap{
 				"job1/instance1": &targets.Target{
 					Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
-					DiscoveredLabels: promlabels.FromStrings("resource_a", "resource2_a"),
+					DiscoveredLabels: promlabels.FromStrings("resource_a", "abc"),
 				},
 			},
 			metadata: metadataMap{
@@ -448,7 +448,7 @@ func TestSampleBuilder(t *testing.T) {
 			result: []*metric_pb.ResourceMetrics{
 				nil, // 0: dropped by reset handling.
 				DoubleCounterPoint(
-					resource2A,
+					testResource,
 					Labels(),
 					"metric1_sum",
 					time.Unix(1, 0),
@@ -456,7 +456,7 @@ func TestSampleBuilder(t *testing.T) {
 					0,
 				),
 				DoubleGaugePoint(
-					resource2A,
+					testResource,
 					Labels(Label("quantile", "0.5")),
 					"metric1",
 					time.Unix(2, 0),
@@ -464,7 +464,7 @@ func TestSampleBuilder(t *testing.T) {
 				),
 				nil, // 3: dropped
 				IntCounterPoint(
-					resource2A,
+					testResource,
 					Labels(),
 					"metric1_count",
 					time.Unix(3, 0),
@@ -472,7 +472,7 @@ func TestSampleBuilder(t *testing.T) {
 					1,
 				),
 				DoubleGaugePoint(
-					resource2A,
+					testResource,
 					Labels(Label("quantile", "0.9")),
 					"metric1",
 					time.Unix(4, 0),
@@ -486,7 +486,7 @@ func TestSampleBuilder(t *testing.T) {
 			targets: targetMap{
 				"job1/instance1": &targets.Target{
 					Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
-					DiscoveredLabels: promlabels.FromStrings("resource_a", "resource2_a"),
+					DiscoveredLabels: promlabels.FromStrings("resource_a", "abc"),
 				},
 			},
 			metadata: metadataMap{
@@ -537,7 +537,7 @@ func TestSampleBuilder(t *testing.T) {
 			result: []*metric_pb.ResourceMetrics{
 				nil, // 0: skipped by reset handling.
 				DoubleHistogramPoint( // 1:
-					resource2A,
+					testResource,
 					Labels(),
 					"metric1",
 					time.Unix(1, 0),
@@ -552,7 +552,7 @@ func TestSampleBuilder(t *testing.T) {
 				),
 				nil, // 2: skipped
 				DoubleHistogramPoint( // 3: histogram w/ no buckets
-					resource2A,
+					testResource,
 					Labels(Label("a", "b")),
 					"metric1",
 					time.Unix(1, 0),
@@ -561,7 +561,7 @@ func TestSampleBuilder(t *testing.T) {
 					3,
 				),
 				DoubleGaugePoint( // 4: not a histogram
-					resource2A,
+					testResource,
 					Labels(Label("a", "b")),
 					"metric1_a_count",
 					time.Unix(1, 0),
@@ -580,11 +580,11 @@ func TestSampleBuilder(t *testing.T) {
 			targets: targetMap{
 				"job1/instance1": &targets.Target{
 					Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
-					DiscoveredLabels: promlabels.FromStrings("resource_a", "resource2_a"),
+					DiscoveredLabels: promlabels.FromStrings("resource_a", "abc"),
 				},
 				"job1/instance2": &targets.Target{
 					Labels:           promlabels.FromStrings("job", "job1", "instance", "instance2"),
-					DiscoveredLabels: promlabels.FromStrings("resource_a", "resource2_a"),
+					DiscoveredLabels: promlabels.FromStrings("resource_a", "abc"),
 				},
 			},
 			metadata: metadataMap{
@@ -607,7 +607,7 @@ func TestSampleBuilder(t *testing.T) {
 				nil, // Skipped by reset timestamp handling.
 				nil, // Skipped by reset timestamp handling.
 				DoubleCounterPoint(
-					resource2A,
+					testResource,
 					Labels(),
 					"metric1",
 					time.Unix(1, 0),
@@ -616,7 +616,7 @@ func TestSampleBuilder(t *testing.T) {
 				),
 				nil, // Rejected because of overlap.
 				DoubleCounterPoint(
-					resource2A,
+					testResource,
 					Labels(),
 					"metric1",
 					time.Unix(3, 5e8-1e6),
@@ -635,7 +635,7 @@ func TestSampleBuilder(t *testing.T) {
 			targets: targetMap{
 				"job1/instance1": &targets.Target{
 					Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
-					DiscoveredLabels: promlabels.FromStrings("resource_a", "resource2_a"),
+					DiscoveredLabels: promlabels.FromStrings("resource_a", "abc"),
 				},
 			},
 			metadata: metadataMap{
@@ -647,7 +647,7 @@ func TestSampleBuilder(t *testing.T) {
 			},
 			result: []*metric_pb.ResourceMetrics{
 				DoubleGaugePoint(
-					resource2A,
+					testResource,
 					Labels(Label("a", "1")),
 					"test.otel.io/metric1",
 					time.Unix(1, 0),
@@ -665,7 +665,7 @@ func TestSampleBuilder(t *testing.T) {
 			targets: targetMap{
 				"job1/instance1": &targets.Target{
 					Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
-					DiscoveredLabels: promlabels.FromStrings("resource_a", "resource2_a"),
+					DiscoveredLabels: promlabels.FromStrings("resource_a", "abc"),
 				},
 			},
 			metadata: metadataMap{
@@ -678,7 +678,7 @@ func TestSampleBuilder(t *testing.T) {
 			result: []*metric_pb.ResourceMetrics{
 				nil, // Skipped by reset timestamp handling.
 				DoubleCounterPoint(
-					resource2A,
+					testResource,
 					Labels(Label("a", "1")),
 					"metric1_total",
 					time.Unix(2, 0),
@@ -698,7 +698,7 @@ func TestSampleBuilder(t *testing.T) {
 			targets: targetMap{
 				"job1/instance1": &targets.Target{
 					Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
-					DiscoveredLabels: promlabels.FromStrings("resource_a", "resource2_a"),
+					DiscoveredLabels: promlabels.FromStrings("resource_a", "abc"),
 				},
 			},
 			metadata: metadataMap{
@@ -711,7 +711,7 @@ func TestSampleBuilder(t *testing.T) {
 			result: []*metric_pb.ResourceMetrics{
 				nil, // Skipped by reset timestamp handling.
 				DoubleCounterPoint(
-					resource2A,
+					testResource,
 					Labels(Label("a", "1")),
 					"metric1",
 					time.Unix(2, 0),
@@ -731,7 +731,7 @@ func TestSampleBuilder(t *testing.T) {
 			targets: targetMap{
 				"job1/instance1": &targets.Target{
 					Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
-					DiscoveredLabels: promlabels.FromStrings("resource_a", "resource2_a"),
+					DiscoveredLabels: promlabels.FromStrings("resource_a", "abc"),
 				},
 			},
 			metadata: metadataMap{
@@ -742,7 +742,7 @@ func TestSampleBuilder(t *testing.T) {
 			},
 			result: []*metric_pb.ResourceMetrics{
 				DoubleGaugePoint(
-					resource2A,
+					testResource,
 					Labels(Label("a", "1")),
 					"metric1_total",
 					time.Unix(3, 0),
@@ -755,7 +755,7 @@ func TestSampleBuilder(t *testing.T) {
 			targets: targetMap{
 				"job1/instance1": &targets.Target{
 					Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
-					DiscoveredLabels: promlabels.FromStrings("resource_a", "resource2_a"),
+					DiscoveredLabels: promlabels.FromStrings("resource_a", "abc"),
 				},
 			},
 			series: seriesMap{
@@ -780,7 +780,7 @@ func TestSampleBuilder(t *testing.T) {
 			targets: targetMap{
 				"job1/instance1": &targets.Target{
 					Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
-					DiscoveredLabels: promlabels.FromStrings("resource_a", "resource2_a"),
+					DiscoveredLabels: promlabels.FromStrings("resource_a", "abc"),
 				},
 			},
 			series: seriesMap{
@@ -800,7 +800,7 @@ func TestSampleBuilder(t *testing.T) {
 				nil, // due to reset timestamp handling
 				nil, // due to NaN
 				IntCounterPoint(
-					resource2A,
+					testResource,
 					Labels(),
 					"metric1_count",
 					time.Unix(2, 0),
