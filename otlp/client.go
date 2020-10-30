@@ -26,10 +26,10 @@ import (
 	"time"
 
 	metricsService "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/collector/metrics/v1"
-	"go.opencensus.io/plugin/ocgrpc"
-	"go.opencensus.io/stats"
-	"go.opencensus.io/stats/view"
-	"go.opencensus.io/tag"
+	// "go.opencensus.io/plugin/ocgrpc"
+	// "go.opencensus.io/stats"
+	// "go.opencensus.io/stats/view"
+	// "go.opencensus.io/tag"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/balancer/roundrobin"
 	"google.golang.org/grpc/codes"
@@ -47,26 +47,26 @@ const (
 	MaxTimeseriesesPerRequest = 200
 )
 
-var (
-	// StatusTag is the google3 canonical status code: google3/google/rpc/code.proto
-	StatusTag = tag.MustNewKey("status")
+// var (
+// 	// StatusTag is the google3 canonical status code: google3/google/rpc/code.proto
+// 	StatusTag = tag.MustNewKey("status")
 
-	// PointCount is a metric.
-	PointCount = stats.Int64("agent.googleapis.com/agent/monitoring/point_count",
-		"count of metric points written to OpenCensus", stats.UnitDimensionless)
-)
+// 	// PointCount is a metric.
+// 	PointCount = stats.Int64("agent.googleapis.com/agent/monitoring/point_count",
+// 		"count of metric points written to OpenCensus", stats.UnitDimensionless)
+// )
 
-func init() {
-	if err := view.Register(
-		&view.View{
-			Measure:     PointCount,
-			TagKeys:     []tag.Key{StatusTag},
-			Aggregation: view.Sum(),
-		},
-	); err != nil {
-		panic(err)
-	}
-}
+// func init() {
+// 	if err := view.Register(
+// 		&view.View{
+// 			Measure:     PointCount,
+// 			TagKeys:     []tag.Key{StatusTag},
+// 			Aggregation: view.Sum(),
+// 		},
+// 	); err != nil {
+// 		panic(err)
+// 	}
+// }
 
 // Client allows reading and writing from/to a remote gRPC endpoint. The
 // implementation may hit a single backend, so the application should create a
@@ -133,7 +133,7 @@ func (c *Client) getConnection(ctx context.Context) (*grpc.ClientConn, error) {
 		grpc.WithBalancerName(roundrobin.Name),
 		grpc.WithBlock(), // Wait for the connection to be established before using it.
 		grpc.WithUserAgent(userAgent),
-		grpc.WithStatsHandler(&ocgrpc.ClientHandler{}),
+		//grpc.WithStatsHandler(&ocgrpc.ClientHandler{}),
 	}
 	if useAuth {
 		var tcfg tls.Config
@@ -214,9 +214,9 @@ func (c *Client) Store(req *metricsService.ExportMetricsServiceRequest) error {
 			_, err := service.Export(grpcMetadata.NewOutgoingContext(ctx, c.headers), req_copy)
 			if err == nil {
 				// The response is empty if all points were successfully written.
-				stats.RecordWithTags(ctx,
-					[]tag.Mutator{tag.Upsert(StatusTag, "0")},
-					PointCount.M(int64(end-begin)))
+				// stats.RecordWithTags(ctx,
+				// 	[]tag.Mutator{tag.Upsert(StatusTag, "0")},
+				// 	PointCount.M(int64(end-begin)))
 				level.Debug(c.logger).Log(
 					"msg", "Write was successful",
 					"records", end-begin)

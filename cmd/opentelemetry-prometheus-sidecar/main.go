@@ -30,7 +30,7 @@ import (
 	"syscall"
 	"time"
 
-	oc_prometheus "contrib.go.opencensus.io/exporter/prometheus"
+	// oc_prometheus "contrib.go.opencensus.io/exporter/prometheus"
 	"github.com/ghodss/yaml"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -42,8 +42,6 @@ import (
 	conntrack "github.com/mwitkow/go-conntrack"
 	"github.com/oklog/oklog/pkg/group"
 	"github.com/pkg/errors"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/promlog"
 	promlogflag "github.com/prometheus/common/promlog/flag"
 	"github.com/prometheus/common/version"
@@ -51,79 +49,79 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/textparse"
 	"github.com/prometheus/prometheus/promql"
-	"go.opencensus.io/plugin/ocgrpc"
-	"go.opencensus.io/plugin/ochttp"
-	"go.opencensus.io/stats"
-	"go.opencensus.io/stats/view"
-	"go.opencensus.io/tag"
+	// "go.opencensus.io/plugin/ocgrpc"
+	// "go.opencensus.io/plugin/ochttp"
+	// "go.opencensus.io/stats"
+	// "go.opencensus.io/stats/view"
+	// "go.opencensus.io/tag"
 	grpcMetadata "google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/resolver/manual"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
 
-var (
-	sizeDistribution    = view.Distribution(0, 1024, 2048, 4096, 16384, 65536, 262144, 1048576, 4194304, 33554432)
-	latencyDistribution = view.Distribution(0, 1, 2, 5, 10, 15, 25, 50, 100, 200, 400, 800, 1500, 3000, 6000)
+// var (
+// 	sizeDistribution    = view.Distribution(0, 1024, 2048, 4096, 16384, 65536, 262144, 1048576, 4194304, 33554432)
+// 	latencyDistribution = view.Distribution(0, 1, 2, 5, 10, 15, 25, 50, 100, 200, 400, 800, 1500, 3000, 6000)
 
-	// VersionTag identifies the version of this binary.
-	VersionTag = tag.MustNewKey("version")
-	// UptimeMeasure is a cumulative metric.
-	UptimeMeasure = stats.Int64(
-		"agent.googleapis.com/agent/uptime",
-		"uptime of the OpenTelemetry Prometheus collector",
-		stats.UnitSeconds)
-)
+// 	// VersionTag identifies the version of this binary.
+// 	VersionTag = tag.MustNewKey("version")
+// 	// UptimeMeasure is a cumulative metric.
+// 	UptimeMeasure = stats.Int64(
+// 		"agent.googleapis.com/agent/uptime",
+// 		"uptime of the OpenTelemetry Prometheus collector",
+// 		stats.UnitSeconds)
+// )
 
-func init() {
-	prometheus.MustRegister(version.NewCollector("prometheus"))
+// func init() {
+// 	prometheus.MustRegister(version.NewCollector("prometheus"))
 
-	if err := view.Register(
-		&view.View{
-			Name:        "opencensus.io/http/client/request_count",
-			Description: "Count of HTTP requests started",
-			Measure:     ochttp.ClientRequestCount,
-			TagKeys:     []tag.Key{ochttp.Method, ochttp.Path},
-			Aggregation: view.Count(),
-		},
-		&view.View{
-			Name:        "opencensus.io/http/client/request_bytes",
-			Description: "Size distribution of HTTP request body",
-			Measure:     ochttp.ClientRequestBytes,
-			TagKeys:     []tag.Key{ochttp.Method, ochttp.StatusCode, ochttp.Path},
-			Aggregation: sizeDistribution,
-		},
-		&view.View{
-			Name:        "opencensus.io/http/client/response_bytes",
-			Description: "Size distribution of HTTP response body",
-			Measure:     ochttp.ClientResponseBytes,
-			TagKeys:     []tag.Key{ochttp.Method, ochttp.StatusCode, ochttp.Path},
-			Aggregation: sizeDistribution,
-		},
-		&view.View{
-			Name:        "opencensus.io/http/client/latency",
-			Description: "Latency distribution of HTTP requests",
-			TagKeys:     []tag.Key{ochttp.Method, ochttp.StatusCode, ochttp.Path},
-			Measure:     ochttp.ClientLatency,
-			Aggregation: latencyDistribution,
-		},
-	); err != nil {
-		panic(err)
-	}
-	if err := view.Register(
-		ocgrpc.DefaultClientViews...,
-	); err != nil {
-		panic(err)
-	}
-	if err := view.Register(
-		&view.View{
-			Measure:     UptimeMeasure,
-			TagKeys:     []tag.Key{VersionTag},
-			Aggregation: view.Sum(),
-		},
-	); err != nil {
-		panic(err)
-	}
-}
+// 	if err := view.Register(
+// 		&view.View{
+// 			Name:        "opencensus.io/http/client/request_count",
+// 			Description: "Count of HTTP requests started",
+// 			Measure:     ochttp.ClientRequestCount,
+// 			TagKeys:     []tag.Key{ochttp.Method, ochttp.Path},
+// 			Aggregation: view.Count(),
+// 		},
+// 		&view.View{
+// 			Name:        "opencensus.io/http/client/request_bytes",
+// 			Description: "Size distribution of HTTP request body",
+// 			Measure:     ochttp.ClientRequestBytes,
+// 			TagKeys:     []tag.Key{ochttp.Method, ochttp.StatusCode, ochttp.Path},
+// 			Aggregation: sizeDistribution,
+// 		},
+// 		&view.View{
+// 			Name:        "opencensus.io/http/client/response_bytes",
+// 			Description: "Size distribution of HTTP response body",
+// 			Measure:     ochttp.ClientResponseBytes,
+// 			TagKeys:     []tag.Key{ochttp.Method, ochttp.StatusCode, ochttp.Path},
+// 			Aggregation: sizeDistribution,
+// 		},
+// 		&view.View{
+// 			Name:        "opencensus.io/http/client/latency",
+// 			Description: "Latency distribution of HTTP requests",
+// 			TagKeys:     []tag.Key{ochttp.Method, ochttp.StatusCode, ochttp.Path},
+// 			Measure:     ochttp.ClientLatency,
+// 			Aggregation: latencyDistribution,
+// 		},
+// 	); err != nil {
+// 		panic(err)
+// 	}
+// 	if err := view.Register(
+// 		ocgrpc.DefaultClientViews...,
+// 	); err != nil {
+// 		panic(err)
+// 	}
+// 	if err := view.Register(
+// 		&view.View{
+// 			Measure:     UptimeMeasure,
+// 			TagKeys:     []tag.Key{VersionTag},
+// 			Aggregation: view.Sum(),
+// 		},
+// 	); err != nil {
+// 		panic(err)
+// 	}
+// }
 
 type metricRenamesConfig struct {
 	From string `json:"from"`
@@ -201,8 +199,8 @@ func main() {
 	a.Flag("prometheus.api-address", "Address to listen on for UI, API, and telemetry.  Use ?auth=false for an insecure connection.").
 		Default("http://127.0.0.1:9090/").URLVar(&cfg.PrometheusURL)
 
-	a.Flag("monitoring.backend", "Monitoring backend(s) for internal metrics").Default("prometheus").
-		EnumsVar(&cfg.MonitoringBackends, "prometheus")
+	// a.Flag("monitoring.backend", "Monitoring backend(s) for internal metrics").Default("prometheus").
+	// 	EnumsVar(&cfg.MonitoringBackends, "prometheus")
 
 	a.Flag("web.listen-address", "Address to listen on for UI, API, and telemetry.").
 		Default("0.0.0.0:9091").StringVar(&cfg.ListenAddress)
@@ -262,35 +260,37 @@ func main() {
 	// The context will be used in the lifecycle of prometheusReader further down.
 	ctx, cancel := context.WithCancel(context.Background())
 
-	go func() {
-		uptimeUpdateTime := time.Now()
-		c := time.Tick(60 * time.Second)
-		for now := range c {
-			stats.RecordWithTags(ctx,
-				[]tag.Mutator{tag.Upsert(VersionTag, fmt.Sprintf("opentelemetry-prometheus-sidecar/%s", version.Version))},
-				UptimeMeasure.M(int64(now.Sub(uptimeUpdateTime).Seconds())))
-			uptimeUpdateTime = now
-		}
-	}()
+	// go func() {
+	// 	uptimeUpdateTime := time.Now()
+	// 	c := time.Tick(60 * time.Second)
+	// 	for now := range c {
+	// 		stats.RecordWithTags(ctx,
+	// 			[]tag.Mutator{tag.Upsert(VersionTag, fmt.Sprintf("opentelemetry-prometheus-sidecar/%s", version.Version))},
+	// 			UptimeMeasure.M(int64(now.Sub(uptimeUpdateTime).Seconds())))
+	// 		uptimeUpdateTime = now
+	// 	}
+	// }()
 
-	httpClient := &http.Client{Transport: &ochttp.Transport{}}
-
-	for _, backend := range cfg.MonitoringBackends {
-		switch backend {
-		case "prometheus":
-			promExporter, err := oc_prometheus.NewExporter(oc_prometheus.Options{
-				Registry: prometheus.DefaultRegisterer.(*prometheus.Registry),
-			})
-			if err != nil {
-				level.Error(logger).Log("msg", "Creating Prometheus exporter failed", "err", err)
-				os.Exit(1)
-			}
-			view.RegisterExporter(promExporter)
-		default:
-			level.Error(logger).Log("msg", "Unknown monitoring backend", "backend", backend)
-			os.Exit(1)
-		}
+	httpClient := &http.Client{
+		//Transport: &ochttp.Transport{}
 	}
+
+	// for _, backend := range cfg.MonitoringBackends {
+	// 	switch backend {
+	// 	case "prometheus":
+	// 		promExporter, err := oc_prometheus.NewExporter(oc_prometheus.Options{
+	// 			Registry: prometheus.DefaultRegisterer.(*prometheus.Registry),
+	// 		})
+	// 		if err != nil {
+	// 			level.Error(logger).Log("msg", "Creating Prometheus exporter failed", "err", err)
+	// 			os.Exit(1)
+	// 		}
+	// 		view.RegisterExporter(promExporter)
+	// 	default:
+	// 		level.Error(logger).Log("msg", "Unknown monitoring backend", "backend", backend)
+	// 		os.Exit(1)
+	// 	}
+	// }
 
 	filtersets, err := parseFiltersets(logger, cfg.Filtersets)
 	if err != nil {
@@ -385,8 +385,8 @@ func main() {
 		conntrack.DialWithTracing(),
 	)
 
-	// TODO: this should be _if_ the prom monitoring is selected
-	http.Handle("/metrics", promhttp.Handler())
+	// // TODO: this should be _if_ the prom monitoring is selected
+	// http.Handle("/metrics", promhttp.Handler())
 
 	var g group.Group
 	{
