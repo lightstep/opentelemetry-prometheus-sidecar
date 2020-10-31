@@ -98,7 +98,7 @@ An example command-line:
 ```
 opentelemetry-prometheus-sidecar \
   --prometheus.wal-directory=${WAL} \
-  --opentelemetry.api-address=${DESTINATION} \
+  --opentelemetry.endpoint=${DESTINATION} \
   --grpc.header="Lightstep-Access-Token=${TOKEN}" \
   --prometheus.api-address=${API_ADDRESS} \
 ```
@@ -129,8 +129,8 @@ Flags:
   -h, --help                     Show context-sensitive help (also try --help-long and --help-man).
       --version                  Show application version.
       --config-file=CONFIG-FILE  A configuration file.
-      --opentelemetry.api-address=
-                                 Address of the OpenTelemetry Metrics API.
+      --opentelemetry.endpoint=
+                                 Address of the OpenTelemetry Metrics endpoint.
       --opentelemetry.metrics-prefix=OPENTELEMETRY.METRICS-PREFIX
                                  Customized prefix for exporter metrics. If not set, none will be used
       --prometheus.wal-directory="data/wal"

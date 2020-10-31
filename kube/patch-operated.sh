@@ -16,7 +16,7 @@ spec:
     imagePullPolicy: Always
     args:
     - \"--prometheus.wal-directory=/data/wal\"
-    - \"--opentelemetry.api-address=https:${OTLP_DESTINATION}\"
+    - \"--opentelemetry.endpoint=https:${OTLP_DESTINATION}\"
     - \"--grpc.header=Lightstep-Access-Token=${TOKEN}\"
     - \"--resource.attribute=region=${GCP_REGION}\"
     - \"--resource.attribute=cluster=${KUBE_CLUSTER}\"
