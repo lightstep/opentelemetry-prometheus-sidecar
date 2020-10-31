@@ -30,10 +30,10 @@ import (
 	"syscall"
 	"time"
 
-	// oc_prometheus "contrib.go.opencensus.io/exporter/prometheus"
 	"github.com/ghodss/yaml"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/cmd/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/otlp"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/retrieval"
@@ -49,11 +49,6 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/textparse"
 	"github.com/prometheus/prometheus/promql"
-	// "go.opencensus.io/plugin/ocgrpc"
-	// "go.opencensus.io/plugin/ochttp"
-	// "go.opencensus.io/stats"
-	// "go.opencensus.io/stats/view"
-	// "go.opencensus.io/tag"
 	grpcMetadata "google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/resolver/manual"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
@@ -154,21 +149,21 @@ type resourceConfig struct {
 }
 
 type mainConfig struct {
-	ConfigFilename       string
-	OpenTelemetryAddress *url.URL
-	MetricsPrefix        string
-	WALDirectory         string
-	PrometheusURL        *url.URL
-	ListenAddress        string
-	Filtersets           []string
-	MetricRenames        map[string]string
-	StaticMetadata       []*metadata.Entry
-	manualResolver       *manual.Resolver
-	MonitoringBackends   []string
-	PromlogConfig        promlog.Config
-	Security             securityConfig
-	GRPC                 grpcConfig
-	Resource             resourceConfig
+	ConfigFilename                 string
+	OpenTelemetryAddress           *url.URL
+	DiagnosticOpenTelemetryAddress *url.URL
+	MetricsPrefix                  string
+	WALDirectory                   string
+	PrometheusURL                  *url.URL
+	ListenAddress                  string
+	Filtersets                     []string
+	MetricRenames                  map[string]string
+	StaticMetadata                 []*metadata.Entry
+	manualResolver                 *manual.Resolver
+	PromlogConfig                  promlog.Config
+	Security                       securityConfig
+	GRPC                           grpcConfig
+	Resource                       resourceConfig
 }
 
 func main() {
@@ -199,8 +194,8 @@ func main() {
 	a.Flag("prometheus.api-address", "Address to listen on for UI, API, and telemetry.  Use ?auth=false for an insecure connection.").
 		Default("http://127.0.0.1:9090/").URLVar(&cfg.PrometheusURL)
 
-	// a.Flag("monitoring.backend", "Monitoring backend(s) for internal metrics").Default("prometheus").
-	// 	EnumsVar(&cfg.MonitoringBackends, "prometheus")
+	a.Flag("opentelemetry.diagnostic-endpoint", "Address of an OpenTelemetry Metrics API endpoint used for monitoring this process").Default("").
+		URLVar(&cfg.DiagnosticOpenTelemetryAddress)
 
 	a.Flag("web.listen-address", "Address to listen on for UI, API, and telemetry.").
 		Default("0.0.0.0:9091").StringVar(&cfg.ListenAddress)
@@ -228,6 +223,14 @@ func main() {
 		fmt.Fprintln(os.Stderr, errors.Wrapf(err, "Error parsing commandline arguments"))
 		a.Usage(os.Args[1:])
 		os.Exit(2)
+	}
+
+	if cfg.DiagnosticOpenTelemetryAddress != nil {
+		endpoint := cfg.DiagnosticOpenTelemetryAddress.String()
+		defer telemetry.ConfigureOpentelemetry(
+			telemetry.WithSpanExporterEndpoint(endpoint),
+			telemetry.WithMetricExporterEndpoint(endpoint),
+		).Shutdown()
 	}
 
 	logger := promlog.New(&cfg.PromlogConfig)
