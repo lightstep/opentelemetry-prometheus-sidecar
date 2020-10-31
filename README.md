@@ -130,7 +130,7 @@ Flags:
       --version                  Show application version.
       --config-file=CONFIG-FILE  A configuration file.
       --opentelemetry.endpoint=
-                                 Address of the OpenTelemetry Metrics API.
+                                 Address of the OpenTelemetry Metrics endpoint.
       --opentelemetry.metrics-prefix=OPENTELEMETRY.METRICS-PREFIX
                                  Customized prefix for exporter metrics. If not set, none will be used
       --prometheus.wal-directory="data/wal"
