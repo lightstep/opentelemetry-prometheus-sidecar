@@ -16,7 +16,6 @@ package main
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"net/http"
 	"os"
 	"os/exec"
@@ -88,7 +87,7 @@ Loop:
 	t.Logf("stdout: %v\n", bout.String())
 	t.Logf("stderr: %v\n", berr.String())
 	if !startedOk {
-		t.Errorf("opentelemetry-prometheus-sidecar didn't start in the specified timeout")
+		t.Errorf("opentelemetry-prometheus-sidecar didn't start in the specified timeout: %v", stoppedErr)
 		return
 	}
 	if err := cmd.Process.Kill(); err == nil {
@@ -182,7 +181,6 @@ func TestProcessFileConfig(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			renameMappings, staticMetadata, err := processFileConfig(tt.config)
-			fmt.Println("ERR", err)
 			if diff := cmp.Diff(tt.renameMappings, renameMappings); diff != "" {
 				t.Errorf("renameMappings mismatch: %v", diff)
 			}

@@ -15,6 +15,7 @@ package retrieval
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"sort"
 	"strconv"
@@ -27,8 +28,7 @@ import (
 	"github.com/prometheus/common/version"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/textparse"
-	"github.com/prometheus/tsdb"
-	tsdbLabels "github.com/prometheus/tsdb/labels"
+	"github.com/prometheus/prometheus/tsdb/record"
 
 	common_pb "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/common/v1"
 	metric_pb "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
@@ -53,7 +53,7 @@ type sampleBuilder struct {
 
 // next extracts the next sample from the TSDB input sample list and returns
 // the remainder of the input.
-func (b *sampleBuilder) next(ctx context.Context, samples []tsdb.RefSample) (*metric_pb.ResourceMetrics, uint64, []tsdb.RefSample, error) {
+func (b *sampleBuilder) next(ctx context.Context, samples []record.RefSample) (*metric_pb.ResourceMetrics, uint64, []record.RefSample, error) {
 	sample := samples[0]
 	tailSamples := samples[1:]
 
@@ -150,6 +150,7 @@ func (b *sampleBuilder) next(ctx context.Context, samples []tsdb.RefSample) (*me
 		// be the same as well.
 		// Note: Always using DoubleHistogram points, ignores entry.metadata.ValueType.
 		var value *metric_pb.DoubleHistogramDataPoint
+		fmt.Println("HERE HERE", len(tailSamples), "w/", len(samples))
 		value, resetTimestamp, tailSamples, err = b.buildHistogram(ctx, entry.metadata.Metric, entry.lset, samples)
 		if value == nil || err != nil {
 			return nil, 0, tailSamples, err
@@ -295,9 +296,9 @@ func (d *distribution) Swap(i, j int) {
 func (b *sampleBuilder) buildHistogram(
 	ctx context.Context,
 	baseName string,
-	matchLset tsdbLabels.Labels,
-	samples []tsdb.RefSample,
-) (*metric_pb.DoubleHistogramDataPoint, int64, []tsdb.RefSample, error) {
+	matchLset labels.Labels,
+	samples []record.RefSample,
+) (*metric_pb.DoubleHistogramDataPoint, int64, []record.RefSample, error) {
 	var (
 		consumed       int
 		count, sum     float64
@@ -319,6 +320,9 @@ Loop:
 			// TODO(fabxc): increment metric.
 			continue
 		}
+		// @@@ HERE YOU ARE. There has been a tragic _mutation_ of e.lset.
+		// __name__ has been removed. FIXME.
+		// The former `pkgLabels()` call copied the entryLabels from e.lset.
 		name := e.lset.Get("__name__")
 		// The series matches if it has the same base name, the remainder is a valid histogram suffix,
 		// and the labels aside from the le and __name__ label match up.
@@ -403,7 +407,7 @@ Loop:
 
 // histogramLabelsEqual checks whether two label sets for a histogram series are equal aside from their
 // le and __name__ labels.
-func histogramLabelsEqual(a, b tsdbLabels.Labels) bool {
+func histogramLabelsEqual(a, b labels.Labels) bool {
 	i, j := 0, 0
 	for i < len(a) && j < len(b) {
 		if a[i].Name == "le" || a[i].Name == "__name__" {

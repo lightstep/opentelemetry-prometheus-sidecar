@@ -107,9 +107,7 @@ func (c *TestStorageClient) expectSamples(samples []*metric_pb.ResourceMetrics) 
 }
 
 func (c *TestStorageClient) waitForExpectedSamples(t *testing.T) {
-	//fmt.Println("Pre-Wait", time.Now())
 	c.wg.Wait()
-	//fmt.Println("Post-Wait", time.Now())
 
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
@@ -130,7 +128,6 @@ func (c *TestStorageClient) resetExpectedSamples() {
 }
 
 func (c *TestStorageClient) Store(req *metricsService.ExportMetricsServiceRequest) error {
-	//fmt.Println("TestStoreClient.Store")
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 	ctx := context.Background()

@@ -27,9 +27,8 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/prometheus/tsdb"
-	"github.com/prometheus/tsdb/fileutil"
-	"github.com/prometheus/tsdb/wal"
+	"github.com/prometheus/prometheus/tsdb/record"
+	"github.com/prometheus/prometheus/tsdb/wal"
 )
 
 // Tailer tails a write ahead log in a given directory.
@@ -52,14 +51,13 @@ func Tail(ctx context.Context, dir string) (*Tailer, error) {
 		ctx: ctx,
 		dir: dir,
 	}
-	cpdir, k, err := tsdb.LastCheckpoint(dir)
-	if errors.Cause(err) == tsdb.ErrNotFound {
+	cpdir, k, err := wal.LastCheckpoint(dir)
+	if errors.Cause(err) == record.ErrNotFound {
 		t.cur = ioutil.NopCloser(bytes.NewReader(nil))
 		t.nextSegment = 0
+	} else if err != nil {
+		return nil, errors.Wrap(err, "retrieve last checkpoint")
 	} else {
-		if err != nil {
-			return nil, errors.Wrap(err, "retrieve last checkpoint")
-		}
 		// Open the entire checkpoint first. It has to be consumed before
 		// the tailer proceeds to any segments.
 		t.cur, err = wal.NewSegmentsReader(cpdir)
@@ -76,27 +74,28 @@ type segmentRef struct {
 	index int
 }
 
-// TODO(fabxc): export this function in TSDB upstream.
+// TODO(jmacd): copied from upstream v2.22.0
 func listSegments(dir string) (refs []segmentRef, err error) {
-	files, err := fileutil.ReadDir(dir)
+	files, err := ioutil.ReadDir(dir)
 	if err != nil {
 		return nil, err
 	}
-	var last int
-	for _, fn := range files {
+	for _, f := range files {
+		fn := f.Name()
 		k, err := strconv.Atoi(fn)
 		if err != nil {
 			continue
 		}
-		if len(refs) > 0 && k > last+1 {
-			return nil, errors.New("segments are not sequential")
-		}
 		refs = append(refs, segmentRef{name: fn, index: k})
-		last = k
 	}
 	sort.Slice(refs, func(i, j int) bool {
 		return refs[i].index < refs[j].index
 	})
+	for i := 0; i < len(refs)-1; i++ {
+		if refs[i].index+1 != refs[i+1].index {
+			return nil, errors.New("segments are not sequential")
+		}
+	}
 	return refs, nil
 }
 
@@ -170,6 +169,8 @@ func (t *Tailer) Read(b []byte) (int, error) {
 		n, err := t.cur.Read(b)
 		if err != io.EOF {
 			t.incOffset(n)
+			if err != nil {
+			}
 			return n, err
 		}
 		select {
@@ -186,7 +187,7 @@ func (t *Tailer) Read(b []byte) (int, error) {
 		// We could do something more sophisticated to save syscalls, but this
 		// seems fine for the expected throughput (<5MB/s).
 		next, err := openSegment(t.dir, t.getNextSegment())
-		if err == tsdb.ErrNotFound {
+		if err == record.ErrNotFound {
 			// Next segment doesn't exist yet. We'll probably just have to
 			// wait for more data to be written.
 			select {
@@ -208,19 +209,19 @@ func (t *Tailer) Read(b []byte) (int, error) {
 }
 
 func openSegment(dir string, n int) (io.ReadCloser, error) {
-	files, err := fileutil.ReadDir(dir)
+	files, err := ioutil.ReadDir(dir)
 	if err != nil {
 		return nil, err
 	}
-	for _, fn := range files {
-		k, err := strconv.Atoi(fn)
+	for _, entry := range files {
+		k, err := strconv.Atoi(entry.Name())
 		if err != nil || k < n {
 			continue
 		}
 		if k > n {
 			return nil, errors.Errorf("next segment %d too high, expected %d", n, k)
 		}
-		return wal.OpenReadSegment(filepath.Join(dir, fn))
+		return wal.OpenReadSegment(filepath.Join(dir, entry.Name()))
 	}
-	return nil, tsdb.ErrNotFound
+	return nil, record.ErrNotFound
 }
