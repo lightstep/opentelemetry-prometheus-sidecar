@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
+	stdlog "log"
 	"net/http"
 	_ "net/http/pprof" // Comment this line to disable pprof endpoint.
 	"net/url"
@@ -32,6 +33,7 @@ import (
 
 	"github.com/ghodss/yaml"
 	"github.com/go-kit/kit/log"
+	kitlog "github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/cmd/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
@@ -225,15 +227,18 @@ func main() {
 		os.Exit(2)
 	}
 
+	logger := promlog.New(&cfg.PromlogConfig)
+	stdlog.SetOutput(kitlog.NewStdlibAdapter(log.With(logger, "component", "stdlog")))
+
 	if cfg.DiagnosticOpenTelemetryAddress != nil {
 		endpoint := cfg.DiagnosticOpenTelemetryAddress.String()
 		defer telemetry.ConfigureOpentelemetry(
 			telemetry.WithSpanExporterEndpoint(endpoint),
 			telemetry.WithMetricExporterEndpoint(endpoint),
+			telemetry.WithLogger(logger),
 		).Shutdown()
 	}
 
-	logger := promlog.New(&cfg.PromlogConfig)
 	if cfg.ConfigFilename != "" {
 		cfg.MetricRenames, cfg.StaticMetadata, err = parseConfigFile(cfg.ConfigFilename)
 		if err != nil {
@@ -343,7 +348,7 @@ func main() {
 	config.DefaultQueueConfig.Capacity = 3 * otlp.MaxTimeseriesesPerRequest
 
 	var scf otlp.StorageClientFactory = &otlpClientFactory{
-		logger:         log.With(logger, "component", "storage"),
+		logger:         kitlog.With(logger, "component", "storage"),
 		url:            cfg.OpenTelemetryAddress,
 		timeout:        10 * time.Second,
 		manualResolver: cfg.manualResolver,
@@ -352,7 +357,7 @@ func main() {
 	}
 
 	queueManager, err := otlp.NewQueueManager(
-		log.With(logger, "component", "queue_manager"),
+		kitlog.With(logger, "component", "queue_manager"),
 		config.DefaultQueueConfig,
 		scf,
 		tailer,
@@ -363,7 +368,7 @@ func main() {
 	}
 
 	prometheusReader := retrieval.NewPrometheusReader(
-		log.With(logger, "component", "Prometheus reader"),
+		kitlog.With(logger, "component", "Prometheus reader"),
 		cfg.WALDirectory,
 		tailer,
 		filtersets,
@@ -504,7 +509,7 @@ func main() {
 }
 
 type otlpClientFactory struct {
-	logger         log.Logger
+	logger         kitlog.Logger
 	url            *url.URL
 	timeout        time.Duration
 	manualResolver *manual.Resolver
@@ -527,7 +532,7 @@ func (s *otlpClientFactory) Name() string {
 	return s.url.String()
 }
 
-func waitForPrometheus(ctx context.Context, logger log.Logger, promURL *url.URL) {
+func waitForPrometheus(ctx context.Context, logger kitlog.Logger, promURL *url.URL) {
 	tick := time.NewTicker(3 * time.Second)
 	defer tick.Stop()
 
@@ -554,7 +559,7 @@ func waitForPrometheus(ctx context.Context, logger log.Logger, promURL *url.URL)
 
 // parseFiltersets parses two flags that contain PromQL-style metric/label selectors and
 // returns a list of the resulting matchers.
-func parseFiltersets(logger log.Logger, filtersets []string) ([][]*labels.Matcher, error) {
+func parseFiltersets(logger kitlog.Logger, filtersets []string) ([][]*labels.Matcher, error) {
 	var matchers [][]*labels.Matcher
 	for _, f := range filtersets {
 		m, err := parser.ParseMetricSelector(f)

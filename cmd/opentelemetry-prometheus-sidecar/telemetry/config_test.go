@@ -15,18 +15,17 @@
 package telemetry
 
 import (
-	"context"
+	"bytes"
 	"fmt"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
+	kitlog "github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
+	"github.com/go-logfmt/logfmt"
 	"github.com/stretchr/testify/assert"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/api/global"
-	"go.opentelemetry.io/otel/label"
-	"go.opentelemetry.io/otel/sdk/resource"
 )
 
 const (
@@ -42,12 +41,15 @@ func (logger *testLogger) addOutput(output string) {
 	logger.output = append(logger.output, output)
 }
 
-func (logger *testLogger) Fatalf(format string, v ...interface{}) {
-	logger.addOutput(fmt.Sprintf(format, v...))
-}
-
-func (logger *testLogger) Debugf(format string, v ...interface{}) {
-	logger.addOutput(fmt.Sprintf(format, v...))
+func (logger *testLogger) Log(kvs ...interface{}) error {
+	var buf bytes.Buffer
+	enc := logfmt.NewEncoder(&buf)
+	err := enc.EncodeKeyvals(kvs...)
+	if err != nil {
+		panic(err)
+	}
+	logger.addOutput(buf.String())
+	return nil
 }
 
 func (logger *testLogger) requireContains(t *testing.T, expected string) {
@@ -110,8 +112,9 @@ func TestMetricEndpointDisabled(t *testing.T) {
 	)
 }
 
-func TestValidConfig(t *testing.T) {
-	logger := &testLogger{}
+func TestValidConfig1(t *testing.T) {
+	logger, _ := filterDebugLogs()
+
 	lsOtel := ConfigureOpentelemetry(
 		WithLogger(logger),
 		WithErrorHandler(&testErrorHandler{}),
@@ -119,10 +122,13 @@ func TestValidConfig(t *testing.T) {
 	defer lsOtel.Shutdown()
 
 	logger.requireContains(t, expectedMetricsDisabledMessage)
-	logger.reset()
+}
 
-	lsOtel = ConfigureOpentelemetry(
-		WithLogger(logger),
+func TestValidConfig2(t *testing.T) {
+	logger, filtered := filterDebugLogs()
+
+	lsOtel := ConfigureOpentelemetry(
+		WithLogger(filtered),
 		WithMetricExporterEndpoint("localhost:443"),
 		WithSpanExporterEndpoint("localhost:443"),
 	)
@@ -133,32 +139,9 @@ func TestValidConfig(t *testing.T) {
 	}
 }
 
-func TestInvalidEnvironment(t *testing.T) {
-	os.Setenv("OTEL_EXPORTER_OTLP_METRIC_INSECURE", "bleargh")
-
-	logger := &testLogger{}
-	lsOtel := ConfigureOpentelemetry(
-		WithLogger(logger),
-	)
-	defer lsOtel.Shutdown()
-
-	logger.requireContains(t, "environment error")
-	unsetEnvironment()
-}
-
-func TestInvalidMetricsPushIntervalEnv(t *testing.T) {
-	os.Setenv("OTEL_EXPORTER_OTLP_METRIC_PERIOD", "300million")
-
-	logger := &testLogger{}
-	lsOtel := ConfigureOpentelemetry(
-		WithLogger(logger),
-		WithSpanExporterEndpoint("127.0.0.1:4000"),
-		WithMetricExporterEndpoint("127.0.0.1:4000"),
-	)
-	defer lsOtel.Shutdown()
-
-	logger.requireContains(t, "setup error: invalid metric reporting period")
-	unsetEnvironment()
+func filterDebugLogs() (*testLogger, kitlog.Logger) {
+	tl := &testLogger{}
+	return tl, level.NewFilter(tl, level.AllowInfo())
 }
 
 func TestInvalidMetricsPushIntervalConfig(t *testing.T) {
@@ -171,16 +154,15 @@ func TestInvalidMetricsPushIntervalConfig(t *testing.T) {
 	)
 	defer lsOtel.Shutdown()
 
-	logger.requireContains(t, "setup error: invalid metric reporting period")
-	unsetEnvironment()
+	logger.requireContains(t, "invalid metric reporting period")
 }
 
 func TestDebugEnabled(t *testing.T) {
-	logger := &testLogger{}
+	logger, _ := filterDebugLogs()
+
 	lsOtel := ConfigureOpentelemetry(
 		WithLogger(logger),
 		WithSpanExporterEndpoint("localhost:443"),
-		WithLogLevel("debug"),
 		WithResourceAttributes(map[string]string{
 			"attr1":     "val1",
 			"host.name": "host456",
@@ -190,36 +172,6 @@ func TestDebugEnabled(t *testing.T) {
 	output := strings.Join(logger.output[:], ",")
 	assert.Contains(t, output, "debug logging enabled")
 	assert.Contains(t, output, "localhost:443")
-}
-
-func TestConfigurationOverrides(t *testing.T) {
-	setEnvironment()
-	logger := &testLogger{}
-	handler := &testErrorHandler{}
-	config := newConfig(
-		WithSpanExporterEndpoint("override-satellite-url"),
-		WithSpanExporterInsecure(false),
-		WithMetricExporterEndpoint("override-metrics-url"),
-		WithMetricExporterInsecure(false),
-		WithLogLevel("info"),
-		WithLogger(logger),
-		WithErrorHandler(handler),
-		WithPropagators([]string{"b3"}),
-	)
-
-	expected := Config{
-		SpanExporterEndpoint:           "override-satellite-url",
-		SpanExporterEndpointInsecure:   false,
-		MetricExporterEndpoint:         "override-metrics-url",
-		MetricExporterEndpointInsecure: false,
-		MetricReportingPeriod:          "30s",
-		LogLevel:                       "info",
-		Propagators:                    []string{"b3"},
-		Resource:                       resource.Empty(),
-		logger:                         logger,
-		errorHandler:                   handler,
-	}
-	assert.Equal(t, expected, config)
 }
 
 type TestCarrier struct {
@@ -234,77 +186,6 @@ func (t TestCarrier) Set(key string, value string) {
 	t.values[key] = value
 }
 
-func TestConfigurePropagators(t *testing.T) {
-	ctx := otel.ContextWithBaggageValues(context.Background(),
-		label.String("keyone", "foo1"),
-		label.String("keytwo", "bar1"),
-	)
-	unsetEnvironment()
-	logger := &testLogger{}
-	lsOtel := ConfigureOpentelemetry(
-		WithLogger(logger),
-		WithSpanExporterEndpoint("localhost:443"),
-	)
-	defer lsOtel.Shutdown()
-	ctx, finish := global.Tracer("ex.com/basic").Start(ctx, "foo")
-	defer finish.End()
-	carrier := TestCarrier{values: map[string]string{}}
-	prop := global.TextMapPropagator()
-	prop.Inject(ctx, carrier)
-	assert.Greater(t, len(carrier.Get("x-b3-traceid")), 0)
-	assert.Equal(t, "", carrier.Get("otcorrelations"))
-
-	lsOtel = ConfigureOpentelemetry(
-		WithLogger(logger),
-		WithSpanExporterEndpoint("localhost:443"),
-		WithPropagators([]string{"b3", "cc"}),
-	)
-	defer lsOtel.Shutdown()
-	carrier = TestCarrier{values: map[string]string{}}
-	prop = global.TextMapPropagator()
-	prop.Inject(ctx, carrier)
-	assert.Greater(t, len(carrier.Get("x-b3-traceid")), 0)
-	assert.Equal(t, "keyone=foo1,keytwo=bar1", carrier.Get("otcorrelations"))
-
-	logger = &testLogger{}
-	lsOtel = ConfigureOpentelemetry(
-		WithLogger(logger),
-		WithSpanExporterEndpoint("localhost:443"),
-		WithPropagators([]string{"invalid"}),
-	)
-	defer lsOtel.Shutdown()
-
-	expected := "invalid configuration: unsupported propagators. Supported options: b3,cc"
-	if !strings.Contains(logger.output[0], expected) {
-		t.Errorf("\nString not found: %v\nIn: %v", expected, logger.output[0])
-	}
-}
-
-func setEnvironment() {
-	os.Setenv("OTEL_EXPORTER_OTLP_SPAN_ENDPOINT", "satellite-url")
-	os.Setenv("OTEL_EXPORTER_OTLP_SPAN_INSECURE", "true")
-	os.Setenv("OTEL_EXPORTER_OTLP_METRIC_ENDPOINT", "metrics-url")
-	os.Setenv("OTEL_EXPORTER_OTLP_METRIC_INSECURE", "true")
-	os.Setenv("OTEL_LOG_LEVEL", "debug")
-	os.Setenv("OTEL_PROPAGATORS", "b3,w3c")
-}
-
-func unsetEnvironment() {
-	vars := []string{
-		"OTEL_EXPORTER_OTLP_SPAN_ENDPOINT",
-		"OTEL_EXPORTER_OTLP_SPAN_INSECURE",
-		"OTEL_EXPORTER_OTLP_METRIC_ENDPOINT",
-		"OTEL_EXPORTER_OTLP_METRIC_INSECURE",
-		"OTEL_LOG_LEVEL",
-		"OTEL_PROPAGATORS",
-		"OTEL_EXPORTER_OTLP_METRIC_PERIOD",
-	}
-	for _, envvar := range vars {
-		os.Unsetenv(envvar)
-	}
-}
-
 func TestMain(m *testing.M) {
-	unsetEnvironment()
 	os.Exit(m.Run())
 }

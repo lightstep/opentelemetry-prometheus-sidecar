@@ -18,16 +18,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"os"
 	"time"
 
-	"github.com/sethvargo/go-envconfig"
+	kitlog "github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	hostMetrics "go.opentelemetry.io/contrib/instrumentation/host"
 	runtimeMetrics "go.opentelemetry.io/contrib/instrumentation/runtime"
 	"go.opentelemetry.io/contrib/propagators/b3"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/api/global"
 	"go.opentelemetry.io/otel/exporters/otlp"
+	"go.opentelemetry.io/otel/label"
 	"go.opentelemetry.io/otel/propagators"
 	controller "go.opentelemetry.io/otel/sdk/metric/controller/push"
 	processor "go.opentelemetry.io/otel/sdk/metric/processor/basic"
@@ -53,13 +55,6 @@ func WithSpanExporterEndpoint(url string) Option {
 	}
 }
 
-// WithLogLevel configures the logging level for OpenTelemetry
-func WithLogLevel(loglevel string) Option {
-	return func(c *Config) {
-		c.LogLevel = loglevel
-	}
-}
-
 // WithSpanExporterInsecure permits connecting to the
 // trace endpoint without a certificate
 func WithSpanExporterInsecure(insecure bool) Option {
@@ -79,12 +74,12 @@ func WithMetricExporterInsecure(insecure bool) Option {
 // WithResourceAttributes configures attributes on the resource
 func WithResourceAttributes(attributes map[string]string) Option {
 	return func(c *Config) {
-		c.resourceAttributes = attributes
+		c.ResourceAttributes = attributes
 	}
 }
 
 // WithPropagators configures propagators
-func WithPropagators(propagators []string) Option {
+func WithPropagators(propagators ...string) Option {
 	return func(c *Config) {
 		c.Propagators = propagators
 	}
@@ -106,56 +101,30 @@ func WithMetricReportingPeriod(p time.Duration) Option {
 	}
 }
 
-type Logger interface {
-	Fatalf(format string, v ...interface{})
-	Debugf(format string, v ...interface{})
-}
-
-func WithLogger(logger Logger) Option {
+func WithLogger(logger kitlog.Logger) Option {
 	return func(c *Config) {
 		c.logger = logger
 	}
 }
 
-type DefaultLogger struct {
-}
-
-func (l *DefaultLogger) Fatalf(format string, v ...interface{}) {
-	log.Fatalf(format, v...)
-}
-
-func (l *DefaultLogger) Debugf(format string, v ...interface{}) {
-	log.Printf(format, v...)
-}
-
 type defaultHandler struct {
-	logger Logger
+	logger kitlog.Logger
 }
 
 func (l *defaultHandler) Handle(err error) {
-	l.logger.Debugf("error: %v\n", err)
+	l.logger.Log("error", err)
 }
 
-const (
-	// Note: these values should match the defaults used in `env` tags for Config fields.
-	// Note: the MetricExporterEndpoint currently defaults to "".  When LS is ready for OTLP metrics
-	// we'll set this to `DefaultMetricExporterEndpoint`.
-
-	DefaultSpanExporterEndpoint   = "ingest.lightstep.com:443"
-	DefaultMetricExporterEndpoint = "ingest.lightstep.com:443"
-)
-
 type Config struct {
-	SpanExporterEndpoint           string   `env:"OTEL_EXPORTER_OTLP_SPAN_ENDPOINT,default=ingest.lightstep.com:443"`
-	SpanExporterEndpointInsecure   bool     `env:"OTEL_EXPORTER_OTLP_SPAN_INSECURE,default=false"`
-	MetricExporterEndpoint         string   `env:"OTEL_EXPORTER_OTLP_METRIC_ENDPOINT"`
-	MetricExporterEndpointInsecure bool     `env:"OTEL_EXPORTER_OTLP_METRIC_INSECURE,default=false"`
-	LogLevel                       string   `env:"OTEL_LOG_LEVEL,default=info"`
-	Propagators                    []string `env:"OTEL_PROPAGATORS,default=b3"`
-	MetricReportingPeriod          string   `env:"OTEL_EXPORTER_OTLP_METRIC_PERIOD,default=30s"`
-	resourceAttributes             map[string]string
-	Resource                       *resource.Resource
-	logger                         Logger
+	SpanExporterEndpoint           string
+	SpanExporterEndpointInsecure   bool
+	MetricExporterEndpoint         string
+	MetricExporterEndpointInsecure bool
+	Propagators                    []string
+	MetricReportingPeriod          string
+	ResourceAttributes             map[string]string
+	resource                       *resource.Resource
+	logger                         kitlog.Logger
 	errorHandler                   otel.ErrorHandler
 }
 
@@ -165,20 +134,16 @@ func validateConfiguration(c Config) error {
 
 func newConfig(opts ...Option) Config {
 	var c Config
-	envError := envconfig.Process(context.Background(), &c)
-	c.logger = &DefaultLogger{}
+	logWriter := kitlog.NewLogfmtLogger(kitlog.NewSyncWriter(os.Stdout))
+	c.Propagators = []string{"b3"}
+	c.logger = level.NewFilter(kitlog.With(logWriter, "component", "telemetry"), level.AllowInfo())
 	c.errorHandler = &defaultHandler{logger: c.logger}
 	var defaultOpts []Option
 
 	for _, opt := range append(defaultOpts, opts...) {
 		opt(&c)
 	}
-	c.Resource = newResource(&c)
-
-	if envError != nil {
-		c.logger.Fatalf("environment error: %v", envError)
-	}
-
+	c.resource = newResource(&c)
 	return c
 }
 
@@ -212,7 +177,11 @@ func configurePropagators(c *Config) error {
 func newResource(c *Config) *resource.Resource {
 	// TODO placholder until
 	// https://github.com/open-telemetry/opentelemetry-go/pull/1235
-	return resource.Empty()
+	var kv []label.KeyValue
+	for k, v := range c.ResourceAttributes {
+		kv = append(kv, label.String(k, v))
+	}
+	return resource.New(kv...)
 }
 
 func newExporter(endpoint string, insecure bool) (*otlp.Exporter, error) {
@@ -231,7 +200,7 @@ func newExporter(endpoint string, insecure bool) (*otlp.Exporter, error) {
 
 func setupTracing(c Config) (func() error, error) {
 	if c.SpanExporterEndpoint == "" {
-		c.logger.Debugf("tracing is disabled by configuration: no endpoint set")
+		level.Debug(c.logger).Log("msg", "tracing is disabled by configuration: no endpoint set")
 		return nil, nil
 	}
 	spanExporter, err := newExporter(c.SpanExporterEndpoint, c.SpanExporterEndpointInsecure)
@@ -242,7 +211,7 @@ func setupTracing(c Config) (func() error, error) {
 	tp := trace.NewTracerProvider(
 		trace.WithConfig(trace.Config{DefaultSampler: trace.AlwaysSample()}),
 		trace.WithSyncer(spanExporter),
-		trace.WithResource(c.Resource),
+		trace.WithResource(c.resource),
 	)
 
 	if err = configurePropagators(&c); err != nil {
@@ -260,7 +229,7 @@ type setupFunc func(Config) (func() error, error)
 
 func setupMetrics(c Config) (func() error, error) {
 	if c.MetricExporterEndpoint == "" {
-		c.logger.Debugf("metrics are disabled by configuration: no endpoint set")
+		level.Debug(c.logger).Log("msg", "metrics are disabled by configuration: no endpoint set")
 		return nil, nil
 	}
 	metricExporter, err := newExporter(c.MetricExporterEndpoint, c.MetricExporterEndpointInsecure)
@@ -285,7 +254,7 @@ func setupMetrics(c Config) (func() error, error) {
 			metricExporter,
 		),
 		metricExporter,
-		controller.WithResource(c.Resource),
+		controller.WithResource(c.resource),
 		controller.WithPeriod(period),
 	)
 
@@ -309,19 +278,15 @@ func setupMetrics(c Config) (func() error, error) {
 }
 
 func ConfigureOpentelemetry(opts ...Option) Launcher {
+	// @@@ TODO: See how promlog is configured w/ kingpin
+	// flags. Use that mechanism for the config fields in this
+	// package where `envconfig` was removed here.
+	// Lost a log level flag.... @@@n
 	c := newConfig(opts...)
 
-	if c.LogLevel == "debug" {
-		c.logger.Debugf("debug logging enabled")
-		c.logger.Debugf("configuration")
-		s, _ := json.MarshalIndent(c, "", "\t")
-		c.logger.Debugf(string(s))
-	}
-
-	err := validateConfiguration(c)
-	if err != nil {
-		c.logger.Fatalf("configuration error: %v", err)
-	}
+	level.Debug(c.logger).Log("msg", "debug logging enabled")
+	s, _ := json.MarshalIndent(c, "", "\t")
+	level.Debug(c.logger).Log("configuration", string(s))
 
 	if c.errorHandler != nil {
 		global.SetErrorHandler(c.errorHandler)
@@ -333,7 +298,7 @@ func ConfigureOpentelemetry(opts ...Option) Launcher {
 	for _, setup := range []setupFunc{setupTracing, setupMetrics} {
 		shutdown, err := setup(c)
 		if err != nil {
-			c.logger.Fatalf("setup error: %v", err)
+			level.Error(c.logger).Log("setup error", err)
 			continue
 		}
 		if shutdown != nil {
@@ -346,7 +311,7 @@ func ConfigureOpentelemetry(opts ...Option) Launcher {
 func (ls Launcher) Shutdown() {
 	for _, shutdown := range ls.shutdownFuncs {
 		if err := shutdown(); err != nil {
-			ls.config.logger.Fatalf("failed to stop exporter: %v", err)
+			level.Error(ls.config.logger).Log("msg", "failed to stop exporter", "error", err)
 		}
 	}
 }
