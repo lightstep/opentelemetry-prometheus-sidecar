@@ -119,12 +119,12 @@ func (m *ExportMetricsServiceResponse) XXX_DiscardUnknown() {
 var xxx_messageInfo_ExportMetricsServiceResponse proto.InternalMessageInfo
 
 func init() {
-	proto.RegisterType((*ExportMetricsServiceRequest)(nil), "opentelemetry.proto.collector.metrics.v1.ExportMetricsServiceRequest")
-	proto.RegisterType((*ExportMetricsServiceResponse)(nil), "opentelemetry.proto.collector.metrics.v1.ExportMetricsServiceResponse")
+	proto.RegisterType((*ExportMetricsServiceRequest)(nil), "otelprom.proto.collector.metrics.v1.ExportMetricsServiceRequest")
+	proto.RegisterType((*ExportMetricsServiceResponse)(nil), "otelprom.proto.collector.metrics.v1.ExportMetricsServiceResponse")
 }
 
 func init() {
-	proto.RegisterFile("opentelemetry/proto/collector/metrics/v1/metrics_service.proto", fileDescriptor_75fb6015e6e64798)
+	proto.RegisterFile("otelprom/proto/collector/metrics/v1/metrics_service.proto", fileDescriptor_75fb6015e6e64798)
 }
 
 var fileDescriptor_75fb6015e6e64798 = []byte{
