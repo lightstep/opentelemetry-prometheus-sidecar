@@ -27,11 +27,10 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/targets"
-	promlabels "github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/textparse"
-	"github.com/prometheus/tsdb"
-	"github.com/prometheus/tsdb/labels"
-	"github.com/prometheus/tsdb/wal"
+	"github.com/prometheus/prometheus/tsdb/record"
+	"github.com/prometheus/prometheus/tsdb/wal"
 )
 
 // This test primarily verifies the garbage collection logic of the cache.
@@ -80,7 +79,7 @@ func TestScrapeCache_GarbageCollect(t *testing.T) {
 		if !ok {
 			t.Fatalf("entry with ref %d not found", i)
 		}
-		if !entry.lset.Equals(labels.FromStrings("a", strconv.Itoa(i))) {
+		if !labels.Equal(entry.lset, labels.FromStrings("a", strconv.Itoa(i))) {
 			t.Fatalf("unexpected label set for ref %d: %s", i, entry.lset)
 		}
 	}
@@ -88,7 +87,7 @@ func TestScrapeCache_GarbageCollect(t *testing.T) {
 	// Create a checkpoint with index 10, in which some old series were dropped.
 	cp10dir := filepath.Join(dir, "checkpoint.00010")
 	{
-		series := []tsdb.RefSeries{
+		series := []record.RefSeries{
 			{Ref: 3, Labels: labels.FromStrings("a", "3")},
 			{Ref: 4, Labels: labels.FromStrings("a", "4")},
 		}
@@ -96,7 +95,7 @@ func TestScrapeCache_GarbageCollect(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		var enc tsdb.RecordEncoder
+		var enc record.Encoder
 		if err := w.Log(enc.Series(series, nil)); err != nil {
 			t.Fatal(err)
 		}
@@ -127,7 +126,7 @@ func TestScrapeCache_GarbageCollect(t *testing.T) {
 			if !ok {
 				t.Fatalf("label set with ref %d not found", i)
 			}
-			if !entry.lset.Equals(labels.FromStrings("a", strconv.Itoa(i))) {
+			if !labels.Equal(entry.lset, labels.FromStrings("a", strconv.Itoa(i))) {
 				t.Fatalf("unexpected label set for ref %d: %s", i, entry.lset)
 			}
 		}
@@ -136,14 +135,14 @@ func TestScrapeCache_GarbageCollect(t *testing.T) {
 	// We create a higher checkpoint, which garbageCollect should detect on its next call.
 	cp12dir := filepath.Join(dir, "checkpoint.00012")
 	{
-		series := []tsdb.RefSeries{
+		series := []record.RefSeries{
 			{Ref: 4, Labels: labels.FromStrings("a", "4")},
 		}
 		w, err := wal.New(nil, nil, cp12dir, false)
 		if err != nil {
 			t.Fatal(err)
 		}
-		var enc tsdb.RecordEncoder
+		var enc record.Encoder
 		if err := w.Log(enc.Series(series, nil)); err != nil {
 			t.Fatal(err)
 		}
@@ -174,7 +173,7 @@ func TestScrapeCache_GarbageCollect(t *testing.T) {
 		if !ok {
 			t.Fatalf("entry with ref %d not found", i)
 		}
-		if !entry.lset.Equals(labels.FromStrings("a", strconv.Itoa(i))) {
+		if !labels.Equal(entry.lset, labels.FromStrings("a", strconv.Itoa(i))) {
 			t.Fatalf("unexpected label set for ref %d: %s", i, entry.lset)
 		}
 	}
@@ -223,8 +222,8 @@ func TestSeriesCache_Refresh(t *testing.T) {
 
 	// Populate the getters with data.
 	targetMap["job1/inst1"] = &targets.Target{
-		Labels:           promlabels.FromStrings("job", "job1", "instance", "inst1"),
-		DiscoveredLabels: promlabels.FromStrings("__resource_a", "resource2_a"),
+		Labels:           labels.FromStrings("job", "job1", "instance", "inst1"),
+		DiscoveredLabels: labels.FromStrings("__resource_a", "resource2_a"),
 	}
 	metadataMap["job1/inst1/metric1"] = &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE}
 
@@ -252,8 +251,8 @@ func TestSeriesCache_RefreshMetadataNotFound(t *testing.T) {
 	logger := log.NewLogfmtLogger(logBuffer)
 	targetMap := targetMap{
 		"job1/inst1": &targets.Target{
-			Labels:           promlabels.FromStrings("job", "job1", "instance", "inst1"),
-			DiscoveredLabels: promlabels.FromStrings("__resource_a", "resource2_a"),
+			Labels:           labels.FromStrings("job", "job1", "instance", "inst1"),
+			DiscoveredLabels: labels.FromStrings("__resource_a", "resource2_a"),
 		},
 	}
 	metadataMap := metadataMap{}
@@ -285,8 +284,8 @@ func TestSeriesCache_Filter(t *testing.T) {
 	// Populate the getters with data.
 	targetMap := targetMap{
 		"job1/inst1": &targets.Target{
-			Labels:           promlabels.FromStrings("job", "job1", "instance", "inst1"),
-			DiscoveredLabels: promlabels.FromStrings("__resource_a", "resource2_a"),
+			Labels:           labels.FromStrings("job", "job1", "instance", "inst1"),
+			DiscoveredLabels: labels.FromStrings("__resource_a", "resource2_a"),
 		},
 	}
 	metadataMap := metadataMap{
@@ -299,12 +298,12 @@ func TestSeriesCache_Filter(t *testing.T) {
 		}
 	}()
 	logger := log.NewLogfmtLogger(logBuffer)
-	c := newSeriesCache(logger, "", [][]*promlabels.Matcher{
+	c := newSeriesCache(logger, "", [][]*labels.Matcher{
 		{
-			&promlabels.Matcher{Type: promlabels.MatchEqual, Name: "a", Value: "a1"},
-			&promlabels.Matcher{Type: promlabels.MatchEqual, Name: "b", Value: "b1"},
+			&labels.Matcher{Type: labels.MatchEqual, Name: "a", Value: "a1"},
+			&labels.Matcher{Type: labels.MatchEqual, Name: "b", Value: "b1"},
 		},
-		{&promlabels.Matcher{Type: promlabels.MatchEqual, Name: "c", Value: "c1"}},
+		{&labels.Matcher{Type: labels.MatchEqual, Name: "c", Value: "c1"}},
 	}, nil, targetMap, metadataMap, "")
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -340,8 +339,8 @@ func TestSeriesCache_RenameMetric(t *testing.T) {
 	// Populate the getters with data.
 	targetMap := targetMap{
 		"job1/inst1": &targets.Target{
-			Labels:           promlabels.FromStrings("job", "job1", "instance", "inst1"),
-			DiscoveredLabels: promlabels.FromStrings("__resource_a", "resource2_a"),
+			Labels:           labels.FromStrings("job", "job1", "instance", "inst1"),
+			DiscoveredLabels: labels.FromStrings("__resource_a", "resource2_a"),
 		},
 	}
 	metadataMap := metadataMap{
@@ -371,7 +370,7 @@ func TestSeriesCache_RenameMetric(t *testing.T) {
 	if !ok || err != nil {
 		t.Fatalf("metric not found: %s", err)
 	}
-	if !entry.lset.Equals(labels.FromStrings("__name__", "metric1", "job", "job1", "instance", "inst1")) {
+	if !labels.Equal(entry.lset, labels.FromStrings("__name__", "metric1", "job", "job1", "instance", "inst1")) {
 		t.Fatalf("unexpected labels %q", entry.lset)
 	}
 	if want := getMetricName("", "metric1"); entry.desc.Name != want {

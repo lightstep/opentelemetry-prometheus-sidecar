@@ -27,10 +27,9 @@ import (
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/targets"
 	"github.com/prometheus/common/version"
-	promlabels "github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/textparse"
-	"github.com/prometheus/tsdb"
-	"github.com/prometheus/tsdb/labels"
+	"github.com/prometheus/prometheus/tsdb/record"
 	"gopkg.in/d4l3k/messagediff.v1"
 )
 
@@ -41,7 +40,7 @@ type seriesMap map[uint64]labels.Labels
 // It never returns an error.
 type targetMap map[string]*targets.Target
 
-func (g targetMap) Get(ctx context.Context, lset promlabels.Labels) (*targets.Target, error) {
+func (g targetMap) Get(ctx context.Context, lset labels.Labels) (*targets.Target, error) {
 	key := lset.Get("job") + "/" + lset.Get("instance")
 	return g[key], nil
 }
@@ -211,7 +210,7 @@ func TestSampleBuilder(t *testing.T) {
 		targets      TargetGetter
 		metadata     MetadataGetter
 		metricPrefix string
-		input        []tsdb.RefSample
+		input        []record.RefSample
 		result       []*metric_pb.ResourceMetrics
 		fail         bool
 	}{
@@ -232,12 +231,12 @@ func TestSampleBuilder(t *testing.T) {
 			},
 			targets: targetMap{
 				"job1/instance1": &targets.Target{
-					Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
-					DiscoveredLabels: promlabels.FromStrings("resource_a", "abc"),
+					Labels:           labels.FromStrings("job", "job1", "instance", "instance1"),
+					DiscoveredLabels: labels.FromStrings("resource_a", "abc"),
 				},
 				"job2/instance1": &targets.Target{
-					Labels:           promlabels.FromStrings("job", "job2", "instance", "instance1"),
-					DiscoveredLabels: promlabels.FromStrings("unused", "xxx", "resource_a", "def"),
+					Labels:           labels.FromStrings("job", "job2", "instance", "instance1"),
+					DiscoveredLabels: labels.FromStrings("unused", "xxx", "resource_a", "def"),
 				},
 			},
 			metadata: metadataMap{
@@ -257,7 +256,7 @@ func TestSampleBuilder(t *testing.T) {
 				"job1/instance1/labelnum_11k":         &metadata.Entry{Metric: "labelnum_11k", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
 				"job2/instance1/resource_from_metric": &metadata.Entry{Metric: "resource_from_metric", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
 			},
-			input: []tsdb.RefSample{
+			input: []record.RefSample{
 				{Ref: 2, T: 2000, V: 5.5}, // 0
 				{Ref: 2, T: 3000, V: 8},
 				{Ref: 2, T: 4000, V: 9},
@@ -397,11 +396,11 @@ func TestSampleBuilder(t *testing.T) {
 			name: "absense of data",
 			targets: targetMap{
 				"job1/instance1": &targets.Target{
-					Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
-					DiscoveredLabels: promlabels.FromStrings("resource_a", "abc"),
+					Labels:           labels.FromStrings("job", "job1", "instance", "instance1"),
+					DiscoveredLabels: labels.FromStrings("resource_a", "abc"),
 				},
 				"job1/instance_noresource": &targets.Target{
-					Labels: promlabels.FromStrings("job", "job1", "instance", "instance_noresource"),
+					Labels: labels.FromStrings("job", "job1", "instance", "instance_noresource"),
 				},
 			},
 			metadata: metadataMap{
@@ -412,7 +411,7 @@ func TestSampleBuilder(t *testing.T) {
 				2: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric_notfound"),
 				3: labels.FromStrings("job", "job1", "instance", "instance_noresource", "__name__", "metric1"),
 			},
-			input: []tsdb.RefSample{
+			input: []record.RefSample{
 				{Ref: 1, T: 1000, V: 1},
 				{Ref: 2, T: 2000, V: 2},
 				{Ref: 3, T: 3000, V: 3},
@@ -424,8 +423,8 @@ func TestSampleBuilder(t *testing.T) {
 			name: "summary",
 			targets: targetMap{
 				"job1/instance1": &targets.Target{
-					Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
-					DiscoveredLabels: promlabels.FromStrings("resource_a", "abc"),
+					Labels:           labels.FromStrings("job", "job1", "instance", "instance1"),
+					DiscoveredLabels: labels.FromStrings("resource_a", "abc"),
 				},
 			},
 			metadata: metadataMap{
@@ -437,7 +436,7 @@ func TestSampleBuilder(t *testing.T) {
 				3: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_count"),
 				4: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1", "quantile", "0.9"),
 			},
-			input: []tsdb.RefSample{
+			input: []record.RefSample{
 				{Ref: 1, T: 1000, V: 1},
 				{Ref: 1, T: 1500, V: 1},
 				{Ref: 2, T: 2000, V: 2},
@@ -485,8 +484,8 @@ func TestSampleBuilder(t *testing.T) {
 			name: "histogram",
 			targets: targetMap{
 				"job1/instance1": &targets.Target{
-					Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
-					DiscoveredLabels: promlabels.FromStrings("resource_a", "abc"),
+					Labels:           labels.FromStrings("job", "job1", "instance", "instance1"),
+					DiscoveredLabels: labels.FromStrings("resource_a", "abc"),
 				},
 			},
 			metadata: metadataMap{
@@ -508,7 +507,7 @@ func TestSampleBuilder(t *testing.T) {
 				// Series that triggers more edge cases.
 				10: labels.FromStrings("job", "job1", "instance", "instance1", "a", "b", "__name__", "metric1_a_count"),
 			},
-			input: []tsdb.RefSample{
+			input: []record.RefSample{
 				// Mix up order of the series to test bucket sorting.
 				// First sample set, should be skipped by reset handling.
 				{Ref: 3, T: 1000, V: 2},    // 0.1
@@ -579,19 +578,19 @@ func TestSampleBuilder(t *testing.T) {
 			// Both instances map to the same monitored resource and will thus produce the same series.
 			targets: targetMap{
 				"job1/instance1": &targets.Target{
-					Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
-					DiscoveredLabels: promlabels.FromStrings("resource_a", "abc"),
+					Labels:           labels.FromStrings("job", "job1", "instance", "instance1"),
+					DiscoveredLabels: labels.FromStrings("resource_a", "abc"),
 				},
 				"job1/instance2": &targets.Target{
-					Labels:           promlabels.FromStrings("job", "job1", "instance", "instance2"),
-					DiscoveredLabels: promlabels.FromStrings("resource_a", "abc"),
+					Labels:           labels.FromStrings("job", "job1", "instance", "instance2"),
+					DiscoveredLabels: labels.FromStrings("resource_a", "abc"),
 				},
 			},
 			metadata: metadataMap{
 				"job1/instance1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeCounter, ValueType: metadata.DOUBLE},
 				"job1/instance2/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeCounter, ValueType: metadata.DOUBLE},
 			},
-			input: []tsdb.RefSample{
+			input: []record.RefSample{
 				// First sample for both series will define the reset timestamp.
 				{Ref: 1, T: 1000, V: 4},
 				{Ref: 2, T: 1500, V: 5},
@@ -634,15 +633,15 @@ func TestSampleBuilder(t *testing.T) {
 			},
 			targets: targetMap{
 				"job1/instance1": &targets.Target{
-					Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
-					DiscoveredLabels: promlabels.FromStrings("resource_a", "abc"),
+					Labels:           labels.FromStrings("job", "job1", "instance", "instance1"),
+					DiscoveredLabels: labels.FromStrings("resource_a", "abc"),
 				},
 			},
 			metadata: metadataMap{
 				"job1/instance1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
 			},
 			metricPrefix: "test.otel.io",
-			input: []tsdb.RefSample{
+			input: []record.RefSample{
 				{Ref: 1, T: 1000, V: 200},
 			},
 			result: []*metric_pb.ResourceMetrics{
@@ -664,14 +663,14 @@ func TestSampleBuilder(t *testing.T) {
 			},
 			targets: targetMap{
 				"job1/instance1": &targets.Target{
-					Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
-					DiscoveredLabels: promlabels.FromStrings("resource_a", "abc"),
+					Labels:           labels.FromStrings("job", "job1", "instance", "instance1"),
+					DiscoveredLabels: labels.FromStrings("resource_a", "abc"),
 				},
 			},
 			metadata: metadataMap{
 				"job1/instance1/metric1_total": &metadata.Entry{Metric: "metric1_total", MetricType: textparse.MetricTypeCounter, ValueType: metadata.DOUBLE},
 			},
-			input: []tsdb.RefSample{
+			input: []record.RefSample{
 				{Ref: 1, T: 2000, V: 5.5},
 				{Ref: 1, T: 3000, V: 8},
 			},
@@ -697,14 +696,14 @@ func TestSampleBuilder(t *testing.T) {
 			},
 			targets: targetMap{
 				"job1/instance1": &targets.Target{
-					Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
-					DiscoveredLabels: promlabels.FromStrings("resource_a", "abc"),
+					Labels:           labels.FromStrings("job", "job1", "instance", "instance1"),
+					DiscoveredLabels: labels.FromStrings("resource_a", "abc"),
 				},
 			},
 			metadata: metadataMap{
 				"job1/instance1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeCounter, ValueType: metadata.DOUBLE},
 			},
-			input: []tsdb.RefSample{
+			input: []record.RefSample{
 				{Ref: 1, T: 2000, V: 5.5},
 				{Ref: 1, T: 3000, V: 8},
 			},
@@ -730,14 +729,14 @@ func TestSampleBuilder(t *testing.T) {
 			},
 			targets: targetMap{
 				"job1/instance1": &targets.Target{
-					Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
-					DiscoveredLabels: promlabels.FromStrings("resource_a", "abc"),
+					Labels:           labels.FromStrings("job", "job1", "instance", "instance1"),
+					DiscoveredLabels: labels.FromStrings("resource_a", "abc"),
 				},
 			},
 			metadata: metadataMap{
 				"job1/instance1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
 			},
-			input: []tsdb.RefSample{
+			input: []record.RefSample{
 				{Ref: 1, T: 3000, V: 8},
 			},
 			result: []*metric_pb.ResourceMetrics{
@@ -754,8 +753,8 @@ func TestSampleBuilder(t *testing.T) {
 		{
 			targets: targetMap{
 				"job1/instance1": &targets.Target{
-					Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
-					DiscoveredLabels: promlabels.FromStrings("resource_a", "abc"),
+					Labels:           labels.FromStrings("job", "job1", "instance", "instance1"),
+					DiscoveredLabels: labels.FromStrings("resource_a", "abc"),
 				},
 			},
 			series: seriesMap{
@@ -764,7 +763,7 @@ func TestSampleBuilder(t *testing.T) {
 			metadata: metadataMap{
 				"job1/instance1/metric1": &metadata.Entry{Metric: "metric1_count", MetricType: textparse.MetricTypeSummary, ValueType: metadata.DOUBLE},
 			},
-			input: []tsdb.RefSample{
+			input: []record.RefSample{
 				// A first non-NaN sample is necessary to avoid false-positives, since the
 				// first result will always be nil due to reset timestamp handling.
 				{Ref: 1, T: 2000, V: 5},
@@ -779,8 +778,8 @@ func TestSampleBuilder(t *testing.T) {
 		{
 			targets: targetMap{
 				"job1/instance1": &targets.Target{
-					Labels:           promlabels.FromStrings("job", "job1", "instance", "instance1"),
-					DiscoveredLabels: promlabels.FromStrings("resource_a", "abc"),
+					Labels:           labels.FromStrings("job", "job1", "instance", "instance1"),
+					DiscoveredLabels: labels.FromStrings("resource_a", "abc"),
 				},
 			},
 			series: seriesMap{
@@ -789,7 +788,7 @@ func TestSampleBuilder(t *testing.T) {
 			metadata: metadataMap{
 				"job1/instance1/metric1": &metadata.Entry{Metric: "metric1_count", MetricType: textparse.MetricTypeSummary, ValueType: metadata.DOUBLE},
 			},
-			input: []tsdb.RefSample{
+			input: []record.RefSample{
 				// A first non-NaN sample is necessary to avoid false-positives, since the
 				// first result will always be nil due to reset timestamp handling.
 				{Ref: 1, T: 2000, V: 5},

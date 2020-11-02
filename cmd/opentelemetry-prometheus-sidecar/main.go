@@ -50,7 +50,7 @@ import (
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/textparse"
-	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"go.opencensus.io/plugin/ocgrpc"
 	"go.opencensus.io/plugin/ochttp"
 	"go.opencensus.io/stats"
@@ -554,7 +554,7 @@ func waitForPrometheus(ctx context.Context, logger log.Logger, promURL *url.URL)
 func parseFiltersets(logger log.Logger, filtersets []string) ([][]*labels.Matcher, error) {
 	var matchers [][]*labels.Matcher
 	for _, f := range filtersets {
-		m, err := promql.ParseMetricSelector(f)
+		m, err := parser.ParseMetricSelector(f)
 		if err != nil {
 			return nil, errors.Errorf("cannot parse --include flag '%s': %q", f, err)
 		}
