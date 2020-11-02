@@ -17,7 +17,7 @@ require (
 	github.com/cockroachdb/cockroach-go v0.0.0-20181001143604-e0a95dfd547c // indirect
 	github.com/coreos/etcd v3.3.12+incompatible // indirect
 	github.com/d4l3k/messagediff v1.2.1 // indirect
-	github.com/davecgh/go-spew v1.1.1
+	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dustin/go-humanize v1.0.0 // indirect
 	github.com/elastic/gosigar v0.9.0 // indirect
 	github.com/elazarl/go-bindata-assetfs v1.0.0 // indirect
@@ -66,7 +66,7 @@ require (
 	github.com/rubyist/circuitbreaker v2.2.1+incompatible // indirect
 	github.com/sasha-s/go-deadlock v0.0.0-20161201235124-341000892f3d // indirect
 	github.com/shopspring/decimal v0.0.0-20180709203117-cd690d0c9e24 // indirect
-	github.com/stretchr/testify v1.5.1
+	github.com/stretchr/testify v1.5.1 // indirect
 	go.opencensus.io v0.22.4
 	golang.org/x/time v0.0.0-20200630173020-3af7569d3a1e
 	golang.org/x/tools v0.0.0-20201014170642-d1624618ad65 // indirect

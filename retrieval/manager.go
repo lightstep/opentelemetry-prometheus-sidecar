@@ -220,6 +220,7 @@ Outer:
 		case record.Tombstones:
 		default:
 			// TODO: How about Unknown?
+			level.Warn(r.logger).Log("msg", "unknown WAL record type")
 		}
 	}
 	level.Info(r.logger).Log("msg", "Done processing WAL.")

@@ -320,9 +320,6 @@ Loop:
 			// TODO(fabxc): increment metric.
 			continue
 		}
-		// @@@ HERE YOU ARE. There has been a tragic _mutation_ of e.lset.
-		// __name__ has been removed. FIXME.
-		// The former `pkgLabels()` call copied the entryLabels from e.lset.
 		name := e.lset.Get("__name__")
 		// The series matches if it has the same base name, the remainder is a valid histogram suffix,
 		// and the labels aside from the le and __name__ label match up.

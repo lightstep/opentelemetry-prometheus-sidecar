@@ -87,7 +87,7 @@ Loop:
 	t.Logf("stdout: %v\n", bout.String())
 	t.Logf("stderr: %v\n", berr.String())
 	if !startedOk {
-		t.Errorf("opentelemetry-prometheus-sidecar didn't start in the specified timeout: %v", stoppedErr)
+		t.Errorf("opentelemetry-prometheus-sidecar didn't start in the specified timeout")
 		return
 	}
 	if err := cmd.Process.Kill(); err == nil {

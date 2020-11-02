@@ -74,7 +74,8 @@ type segmentRef struct {
 	index int
 }
 
-// TODO(jmacd): copied from upstream v2.22.0
+// listSegments was last copied from Prometheus v2.22.0.  TODO: keep
+// this up to date.
 func listSegments(dir string) (refs []segmentRef, err error) {
 	files, err := ioutil.ReadDir(dir)
 	if err != nil {
