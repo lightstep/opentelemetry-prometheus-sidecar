@@ -48,7 +48,7 @@ import (
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/textparse"
-	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	grpcMetadata "google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/resolver/manual"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
@@ -182,7 +182,7 @@ func main() {
 
 	a.Flag("config-file", "A configuration file.").StringVar(&cfg.ConfigFilename)
 
-	a.Flag("opentelemetry.api-address", "Address of the OpenTelemetry Metrics API.").
+	a.Flag("opentelemetry.endpoint", "Address of the OpenTelemetry Metrics endpoint.").
 		Default("").URLVar(&cfg.OpenTelemetryAddress)
 
 	a.Flag("opentelemetry.metrics-prefix", "Customized prefix for exporter metrics. If not set, none will be used").
@@ -557,7 +557,7 @@ func waitForPrometheus(ctx context.Context, logger log.Logger, promURL *url.URL)
 func parseFiltersets(logger log.Logger, filtersets []string) ([][]*labels.Matcher, error) {
 	var matchers [][]*labels.Matcher
 	for _, f := range filtersets {
-		m, err := promql.ParseMetricSelector(f)
+		m, err := parser.ParseMetricSelector(f)
 		if err != nil {
 			return nil, errors.Errorf("cannot parse --include flag '%s': %q", f, err)
 		}

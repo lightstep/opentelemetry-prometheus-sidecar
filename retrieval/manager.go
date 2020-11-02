@@ -27,12 +27,9 @@ import (
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/targets"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/tsdb"
-	"github.com/prometheus/tsdb/fileutil"
-	tsdblabels "github.com/prometheus/tsdb/labels"
-	"github.com/prometheus/tsdb/wal"
-	// "go.opencensus.io/stats"
-	// "go.opencensus.io/stats/view"
+	"github.com/prometheus/prometheus/tsdb/fileutil"
+	"github.com/prometheus/prometheus/tsdb/record"
+	"github.com/prometheus/prometheus/tsdb/wal"
 )
 
 type TargetGetter interface {
@@ -137,13 +134,13 @@ func (r *PrometheusReader) Run(ctx context.Context, startOffset int) error {
 		reader   = wal.NewReader(r.tailer)
 		err      error
 		lastSave time.Time
-		samples  []tsdb.RefSample
-		series   []tsdb.RefSeries
+		samples  []record.RefSample
+		series   []record.RefSeries
 	)
 Outer:
 	for reader.Next() {
 		offset := r.tailer.Offset()
-		record := reader.Record()
+		rec := reader.Record()
 
 		if offset > startOffset && time.Since(lastSave) > r.progressSaveInterval {
 			if err := SaveProgressFile(r.walDirectory, offset); err != nil {
@@ -152,11 +149,11 @@ Outer:
 				lastSave = time.Now()
 			}
 		}
-		var decoder tsdb.RecordDecoder
+		var decoder record.Decoder
 
-		switch decoder.Type(record) {
-		case tsdb.RecordSeries:
-			series, err = decoder.Series(record, series[:0])
+		switch decoder.Type(rec) {
+		case record.Series:
+			series, err = decoder.Series(rec, series[:0])
 			if err != nil {
 				level.Error(r.logger).Log("error", err)
 				continue
@@ -164,7 +161,7 @@ Outer:
 			for _, s := range series {
 				seriesCache.set(ctx, s.Ref, s.Labels, r.tailer.CurrentSegment())
 			}
-		case tsdb.RecordSamples:
+		case record.Samples:
 			// Skip sample records before the the boundary offset.
 			if offset < startOffset {
 				skipped++
@@ -175,7 +172,11 @@ Outer:
 					"start_offset", startOffset, "skipped_records", skipped)
 				started = true
 			}
-			samples, err = decoder.Samples(record, samples[:0])
+			samples, err = decoder.Samples(rec, samples[:0])
+			if len(samples) > 0 {
+				if len(samples) > 1 {
+				}
+			}
 			if err != nil {
 				level.Error(r.logger).Log("error", err)
 				continue
@@ -215,7 +216,10 @@ Outer:
 			// stats.Record(ctx, samplesProcessed.M(int64(processed)), samplesProduced.M(int64(produced)))
 			_ = processed
 
-		case tsdb.RecordTombstones:
+		case record.Tombstones:
+		default:
+			// TODO: How about Unknown?
+			level.Warn(r.logger).Log("msg", "unknown WAL record type")
 		}
 	}
 	level.Info(r.logger).Log("msg", "Done processing WAL.")
@@ -268,12 +272,12 @@ func SaveProgressFile(dir string, offset int) error {
 	return nil
 }
 
-// TODO(jkohen): We should be able to avoid this conversion.
-func pkgLabels(input tsdblabels.Labels) labels.Labels {
-	output := make(labels.Labels, 0, len(input))
-	for _, l := range input {
-		output = append(output, labels.Label(l))
-	}
+// copyLabels copies a slice of labels.  The caller will mutate the
+// copy, otherwise the types are the same.  Note that the code could
+// be restructured to avoid this copy.
+func copyLabels(input labels.Labels) labels.Labels {
+	output := make(labels.Labels, len(input))
+	copy(output, input)
 	return output
 }
 
