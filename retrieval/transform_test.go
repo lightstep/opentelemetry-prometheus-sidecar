@@ -69,11 +69,11 @@ func TestSampleBuilder(t *testing.T) {
 		DoubleSumCumulativeMonotonic  = otlptest.DoubleSumCumulativeMonotonic
 		DoubleGauge                   = otlptest.DoubleGauge
 		DoubleDataPoint               = otlptest.DoubleDataPoint
-		// DoubleHistogramDataPoint      = otlptest.DoubleHistogramDataPoint
-		// DoubleHistogramCumulative     = otlptest.DoubleHistogramCumulative
-		// DoubleHistogramBucket         = otlptest.DoubleHistogramBucket
-		Labels = otlptest.Labels
-		Label  = otlptest.Label
+		DoubleHistogramDataPoint      = otlptest.DoubleHistogramDataPoint
+		DoubleHistogramCumulative     = otlptest.DoubleHistogramCumulative
+		DoubleHistogramBucket         = otlptest.DoubleHistogramBucket
+		Labels                        = otlptest.Labels
+		Label                         = otlptest.Label
 
 		testResource = ResourceLabels(
 			KeyValue("resource_a", "abc"),
@@ -177,32 +177,32 @@ func TestSampleBuilder(t *testing.T) {
 			)
 		}
 
-	// 	DoubleHistogramPoint = func(
-	// 		reslab []*common_pb.KeyValue,
-	// 		labels []*common_pb.StringKeyValue,
-	// 		name string,
-	// 		start, end time.Time,
-	// 		sum float64, count uint64,
-	// 		buckets ...DoubleHistogramBucketStruct,
-	// 	) *metric_pb.ResourceMetrics {
-	// 		return ResourceMetrics(
-	// 			Resource(reslab...),
-	// 			InstrumentationLibraryMetrics(
-	// 				InstrumentationLibrary(sidecar.InstrumentationLibrary, version.Version),
-	// 				DoubleHistogramCumulative(
-	// 					name, "", "",
-	// 					DoubleHistogramDataPoint(
-	// 						labels,
-	// 						start,
-	// 						end,
-	// 						sum,
-	// 						count,
-	// 						buckets...,
-	// 					),
-	// 				),
-	// 			),
-	// 		)
-	// 	}
+		DoubleHistogramPoint = func(
+			reslab []*common_pb.KeyValue,
+			labels []*common_pb.StringKeyValue,
+			name string,
+			start, end time.Time,
+			sum float64, count uint64,
+			buckets ...DoubleHistogramBucketStruct,
+		) *metric_pb.ResourceMetrics {
+			return ResourceMetrics(
+				Resource(reslab...),
+				InstrumentationLibraryMetrics(
+					InstrumentationLibrary(sidecar.InstrumentationLibrary, version.Version),
+					DoubleHistogramCumulative(
+						name, "", "",
+						DoubleHistogramDataPoint(
+							labels,
+							start,
+							end,
+							sum,
+							count,
+							buckets...,
+						),
+					),
+				),
+			)
+		}
 	)
 	cases := []struct {
 		name         string
@@ -480,94 +480,94 @@ func TestSampleBuilder(t *testing.T) {
 			},
 		},
 		// Histogram.
-		// {
-		// 	name: "histogram",
-		// 	targets: targetMap{
-		// 		"job1/instance1": &targets.Target{
-		// 			Labels:           labels.FromStrings("job", "job1", "instance", "instance1"),
-		// 			DiscoveredLabels: labels.FromStrings("resource_a", "abc"),
-		// 		},
-		// 	},
-		// 	metadata: metadataMap{
-		// 		"job1/instance1/metric1":         &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeHistogram, ValueType: metadata.DOUBLE},
-		// 		"job1/instance1/metric1_a_count": &metadata.Entry{Metric: "metric1_a_count", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
-		// 	},
-		// 	series: seriesMap{
-		// 		1: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_sum"),
-		// 		2: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_count"),
-		// 		3: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_bucket", "le", "0.1"),
-		// 		4: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_bucket", "le", "0.5"),
-		// 		5: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_bucket", "le", "1"),
-		// 		6: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_bucket", "le", "2.5"),
-		// 		7: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_bucket", "le", "+Inf"),
-		// 		// Add another series that only deviates by having an extra label. We must properly detect a new histogram.
-		// 		// This is an discouraged but possible case of metric labeling.
-		// 		8: labels.FromStrings("job", "job1", "instance", "instance1", "a", "b", "__name__", "metric1_sum"),
-		// 		9: labels.FromStrings("job", "job1", "instance", "instance1", "a", "b", "__name__", "metric1_count"),
-		// 		// Series that triggers more edge cases.
-		// 		10: labels.FromStrings("job", "job1", "instance", "instance1", "a", "b", "__name__", "metric1_a_count"),
-		// 	},
-		// 	input: []record.RefSample{
-		// 		// Mix up order of the series to test bucket sorting.
-		// 		// First sample set, should be skipped by reset handling.
-		// 		{Ref: 3, T: 1000, V: 2},    // 0.1
-		// 		{Ref: 5, T: 1000, V: 6},    // 1
-		// 		{Ref: 6, T: 1000, V: 8},    // 2.5
-		// 		{Ref: 7, T: 1000, V: 10},   // inf
-		// 		{Ref: 1, T: 1000, V: 55.1}, // sum
-		// 		{Ref: 4, T: 1000, V: 5},    // 0.5
-		// 		{Ref: 2, T: 1000, V: 10},   // count
-		// 		// Second sample set should actually be emitted.
-		// 		{Ref: 2, T: 2000, V: 21},    // count
-		// 		{Ref: 3, T: 2000, V: 4},     // 0.1
-		// 		{Ref: 6, T: 2000, V: 15},    // 2.5
-		// 		{Ref: 5, T: 2000, V: 11},    // 1
-		// 		{Ref: 1, T: 2000, V: 123.4}, // sum
-		// 		{Ref: 7, T: 2000, V: 21},    // inf
-		// 		{Ref: 4, T: 2000, V: 9},     // 0.5
-		// 		// New histogram without actual buckets – should still work.
-		// 		{Ref: 8, T: 1000, V: 100},
-		// 		{Ref: 9, T: 1000, V: 10},
-		// 		{Ref: 8, T: 2000, V: 115},
-		// 		{Ref: 9, T: 2000, V: 13},
-		// 		// New metric that actually matches the base name but the suffix is more more than a valid histogram suffix.
-		// 		{Ref: 10, T: 1000, V: 3},
-		// 	},
-		// 	result: []*metric_pb.ResourceMetrics{
-		// 		nil, // 0: skipped by reset handling.
-		// 		DoubleHistogramPoint( // 1:
-		// 			testResource,
-		// 			Labels(),
-		// 			"metric1",
-		// 			time.Unix(1, 0),
-		// 			time.Unix(2, 0),
-		// 			float64(123.4)-float64(55.1),
-		// 			21-10,
-		// 			DoubleHistogramBucket(0.1, 2),
-		// 			DoubleHistogramBucket(0.5, 2),
-		// 			DoubleHistogramBucket(1, 1),
-		// 			DoubleHistogramBucket(2.5, 2),
-		// 			DoubleHistogramBucket(math.Inf(+1), 4),
-		// 		),
-		// 		nil, // 2: skipped
-		// 		DoubleHistogramPoint( // 3: histogram w/ no buckets
-		// 			testResource,
-		// 			Labels(Label("a", "b")),
-		// 			"metric1",
-		// 			time.Unix(1, 0),
-		// 			time.Unix(2, 0),
-		// 			15,
-		// 			3,
-		// 		),
-		// 		DoubleGaugePoint( // 4: not a histogram
-		// 			testResource,
-		// 			Labels(Label("a", "b")),
-		// 			"metric1_a_count",
-		// 			time.Unix(1, 0),
-		// 			3,
-		// 		),
-		// 	},
-		// },
+		{
+			name: "histogram",
+			targets: targetMap{
+				"job1/instance1": &targets.Target{
+					Labels:           labels.FromStrings("job", "job1", "instance", "instance1"),
+					DiscoveredLabels: labels.FromStrings("resource_a", "abc"),
+				},
+			},
+			metadata: metadataMap{
+				"job1/instance1/metric1":         &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeHistogram, ValueType: metadata.DOUBLE},
+				"job1/instance1/metric1_a_count": &metadata.Entry{Metric: "metric1_a_count", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
+			},
+			series: seriesMap{
+				1: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_sum"),
+				2: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_count"),
+				3: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_bucket", "le", "0.1"),
+				4: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_bucket", "le", "0.5"),
+				5: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_bucket", "le", "1"),
+				6: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_bucket", "le", "2.5"),
+				7: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_bucket", "le", "+Inf"),
+				// Add another series that only deviates by having an extra label. We must properly detect a new histogram.
+				// This is an discouraged but possible case of metric labeling.
+				8: labels.FromStrings("job", "job1", "instance", "instance1", "a", "b", "__name__", "metric1_sum"),
+				9: labels.FromStrings("job", "job1", "instance", "instance1", "a", "b", "__name__", "metric1_count"),
+				// Series that triggers more edge cases.
+				10: labels.FromStrings("job", "job1", "instance", "instance1", "a", "b", "__name__", "metric1_a_count"),
+			},
+			input: []record.RefSample{
+				// Mix up order of the series to test bucket sorting.
+				// First sample set, should be skipped by reset handling.
+				{Ref: 3, T: 1000, V: 2},    // 0.1
+				{Ref: 5, T: 1000, V: 6},    // 1
+				{Ref: 6, T: 1000, V: 8},    // 2.5
+				{Ref: 7, T: 1000, V: 10},   // inf
+				{Ref: 1, T: 1000, V: 55.1}, // sum
+				{Ref: 4, T: 1000, V: 5},    // 0.5
+				{Ref: 2, T: 1000, V: 10},   // count
+				// Second sample set should actually be emitted.
+				{Ref: 2, T: 2000, V: 21},    // count
+				{Ref: 3, T: 2000, V: 4},     // 0.1
+				{Ref: 6, T: 2000, V: 15},    // 2.5
+				{Ref: 5, T: 2000, V: 11},    // 1
+				{Ref: 1, T: 2000, V: 123.4}, // sum
+				{Ref: 7, T: 2000, V: 21},    // inf
+				{Ref: 4, T: 2000, V: 9},     // 0.5
+				// New histogram without actual buckets – should still work.
+				{Ref: 8, T: 1000, V: 100},
+				{Ref: 9, T: 1000, V: 10},
+				{Ref: 8, T: 2000, V: 115},
+				{Ref: 9, T: 2000, V: 13},
+				// New metric that actually matches the base name but the suffix is more more than a valid histogram suffix.
+				{Ref: 10, T: 1000, V: 3},
+			},
+			result: []*metric_pb.ResourceMetrics{
+				nil, // 0: skipped by reset handling.
+				DoubleHistogramPoint( // 1:
+					testResource,
+					Labels(),
+					"metric1",
+					time.Unix(1, 0),
+					time.Unix(2, 0),
+					float64(123.4)-float64(55.1),
+					21-10,
+					DoubleHistogramBucket(0.1, 2),
+					DoubleHistogramBucket(0.5, 2),
+					DoubleHistogramBucket(1, 1),
+					DoubleHistogramBucket(2.5, 2),
+					DoubleHistogramBucket(math.Inf(+1), 4),
+				),
+				nil, // 2: skipped
+				DoubleHistogramPoint( // 3: histogram w/ no buckets
+					testResource,
+					Labels(Label("a", "b")),
+					"metric1",
+					time.Unix(1, 0),
+					time.Unix(2, 0),
+					15,
+					3,
+				),
+				DoubleGaugePoint( // 4: not a histogram
+					testResource,
+					Labels(Label("a", "b")),
+					"metric1_a_count",
+					time.Unix(1, 0),
+					3,
+				),
+			},
+		},
 		// Interval overlap handling.
 		{
 			name: "interval overlap handling",

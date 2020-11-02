@@ -328,7 +328,7 @@ func (c *seriesCache) refresh(ctx context.Context, ref uint64) error {
 	c.mtx.Unlock()
 
 	entry.lastRefresh = time.Now()
-	entryLabels := entry.lset
+	entryLabels := copyLabels(entry.lset)
 
 	// Probe for the target, its applicable resource, and the series metadata.
 	// They will be used subsequently for all other Prometheus series that map to the same
@@ -344,6 +344,16 @@ func (c *seriesCache) refresh(ctx context.Context, ref uint64) error {
 		level.Debug(c.logger).Log("msg", "target not found", "labels", entry.lset)
 		return nil
 	}
+	// Remove __name__ label.
+	for i, l := range entryLabels {
+		if l.Name == "__name__" {
+			entryLabels = append(entryLabels[:i], entryLabels[i+1:]...)
+			break
+		}
+	}
+
+	// Remove target.Labels, which are redundant with Resource.
+	entryLabels = targets.DropTargetLabels(entryLabels, target.Labels)
 	var (
 		metricName     = entry.lset.Get("__name__")
 		baseMetricName string
@@ -355,16 +365,6 @@ func (c *seriesCache) refresh(ctx context.Context, ref uint64) error {
 	if err != nil {
 		return errors.Wrap(err, "get metadata")
 	}
-	// Remove __name__ label.
-	for i, l := range entryLabels {
-		if l.Name == "__name__" {
-			entryLabels = append(entryLabels[:i], entryLabels[i+1:]...)
-			break
-		}
-	}
-
-	// Remove target.Labels, which are redundant with Resource.
-	entryLabels = targets.DropTargetLabels(entryLabels, target.Labels)
 
 	if meta == nil {
 		// The full name didn't turn anything up. Check again in case it's a summary,

@@ -272,6 +272,15 @@ func SaveProgressFile(dir string, offset int) error {
 	return nil
 }
 
+// copyLabels copies a slice of labels.  The caller will mutate the
+// copy, otherwise the types are the same.  Note that the code could
+// be restructured to avoid this copy.
+func copyLabels(input labels.Labels) labels.Labels {
+	output := make(labels.Labels, len(input))
+	copy(output, input)
+	return output
+}
+
 func hashSeries(s tsDesc) uint64 {
 	const sep = '\xff'
 	h := hashNew()
