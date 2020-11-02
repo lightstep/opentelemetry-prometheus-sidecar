@@ -156,10 +156,6 @@ func (c *TestStorageClient) Store(req *metricsService.ExportMetricsServiceReques
 			c.t.Fatalf("unexpected number of points %d: %s", vs.PointCount(), string(d))
 		}
 	}
-	// {
-	// 	data, _ := json.MarshalIndent(req.ResourceMetrics, "", "  ")
-	// 	fmt.Println("Now DONE this", string(data))
-	// }
 	if c.checkUniq {
 		for i, ts := range req.ResourceMetrics {
 			ts.InstrumentationLibraryMetrics[0].Metrics[0].Data = nil

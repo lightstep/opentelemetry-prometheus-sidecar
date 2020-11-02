@@ -15,7 +15,6 @@ package retrieval
 
 import (
 	"context"
-	"fmt"
 	"math"
 	"sort"
 	"strconv"
@@ -150,7 +149,6 @@ func (b *sampleBuilder) next(ctx context.Context, samples []record.RefSample) (*
 		// be the same as well.
 		// Note: Always using DoubleHistogram points, ignores entry.metadata.ValueType.
 		var value *metric_pb.DoubleHistogramDataPoint
-		fmt.Println("HERE HERE", len(tailSamples), "w/", len(samples))
 		value, resetTimestamp, tailSamples, err = b.buildHistogram(ctx, entry.metadata.Metric, entry.lset, samples)
 		if value == nil || err != nil {
 			return nil, 0, tailSamples, err
