@@ -83,11 +83,11 @@ func (m *Resource) GetDroppedAttributesCount() uint32 {
 }
 
 func init() {
-	proto.RegisterType((*Resource)(nil), "opentelemetry.proto.resource.v1.Resource")
+	proto.RegisterType((*Resource)(nil), "otelprom.proto.resource.v1.Resource")
 }
 
 func init() {
-	proto.RegisterFile("opentelemetry/proto/resource/v1/resource.proto", fileDescriptor_446f73eacf88f3f5)
+	proto.RegisterFile("otelprom/proto/resource/v1/resource.proto", fileDescriptor_446f73eacf88f3f5)
 }
 
 var fileDescriptor_446f73eacf88f3f5 = []byte{

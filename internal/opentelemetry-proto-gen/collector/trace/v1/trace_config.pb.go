@@ -207,7 +207,7 @@ func (*TraceConfig) XXX_OneofWrappers() []interface{} {
 
 // Sampler that always makes a constant decision on span sampling.
 type ConstantSampler struct {
-	Decision             ConstantSampler_ConstantDecision `protobuf:"varint,1,opt,name=decision,proto3,enum=opentelemetry.proto.trace.v1.ConstantSampler_ConstantDecision" json:"decision,omitempty"`
+	Decision             ConstantSampler_ConstantDecision `protobuf:"varint,1,opt,name=decision,proto3,enum=otelprom.proto.trace.v1.ConstantSampler_ConstantDecision" json:"decision,omitempty"`
 	XXX_NoUnkeyedLiteral struct{}                         `json:"-"`
 	XXX_unrecognized     []byte                           `json:"-"`
 	XXX_sizecache        int32                            `json:"-"`
@@ -353,15 +353,15 @@ func (m *RateLimitingSampler) GetQps() int64 {
 }
 
 func init() {
-	proto.RegisterEnum("opentelemetry.proto.trace.v1.ConstantSampler_ConstantDecision", ConstantSampler_ConstantDecision_name, ConstantSampler_ConstantDecision_value)
-	proto.RegisterType((*TraceConfig)(nil), "opentelemetry.proto.trace.v1.TraceConfig")
-	proto.RegisterType((*ConstantSampler)(nil), "opentelemetry.proto.trace.v1.ConstantSampler")
-	proto.RegisterType((*ProbabilitySampler)(nil), "opentelemetry.proto.trace.v1.ProbabilitySampler")
-	proto.RegisterType((*RateLimitingSampler)(nil), "opentelemetry.proto.trace.v1.RateLimitingSampler")
+	proto.RegisterEnum("otelprom.proto.trace.v1.ConstantSampler_ConstantDecision", ConstantSampler_ConstantDecision_name, ConstantSampler_ConstantDecision_value)
+	proto.RegisterType((*TraceConfig)(nil), "otelprom.proto.trace.v1.TraceConfig")
+	proto.RegisterType((*ConstantSampler)(nil), "otelprom.proto.trace.v1.ConstantSampler")
+	proto.RegisterType((*ProbabilitySampler)(nil), "otelprom.proto.trace.v1.ProbabilitySampler")
+	proto.RegisterType((*RateLimitingSampler)(nil), "otelprom.proto.trace.v1.RateLimitingSampler")
 }
 
 func init() {
-	proto.RegisterFile("opentelemetry/proto/trace/v1/trace_config.proto", fileDescriptor_5936aa8fa6443e6f)
+	proto.RegisterFile("otelprom/proto/trace/v1/trace_config.proto", fileDescriptor_5936aa8fa6443e6f)
 }
 
 var fileDescriptor_5936aa8fa6443e6f = []byte{

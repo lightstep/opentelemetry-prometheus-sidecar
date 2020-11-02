@@ -596,7 +596,7 @@ type IntSum struct {
 	DataPoints []*IntDataPoint `protobuf:"bytes,1,rep,name=data_points,json=dataPoints,proto3" json:"data_points,omitempty"`
 	// aggregation_temporality describes if the aggregator reports delta changes
 	// since last report time, or cumulative changes since a fixed start time.
-	AggregationTemporality AggregationTemporality `protobuf:"varint,2,opt,name=aggregation_temporality,json=aggregationTemporality,proto3,enum=opentelemetry.proto.metrics.v1.AggregationTemporality" json:"aggregation_temporality,omitempty"`
+	AggregationTemporality AggregationTemporality `protobuf:"varint,2,opt,name=aggregation_temporality,json=aggregationTemporality,proto3,enum=otelprom.proto.metrics.v1.AggregationTemporality" json:"aggregation_temporality,omitempty"`
 	// If "true" means that the sum is monotonic.
 	IsMonotonic          bool     `protobuf:"varint,3,opt,name=is_monotonic,json=isMonotonic,proto3" json:"is_monotonic,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
@@ -664,7 +664,7 @@ type DoubleSum struct {
 	DataPoints []*DoubleDataPoint `protobuf:"bytes,1,rep,name=data_points,json=dataPoints,proto3" json:"data_points,omitempty"`
 	// aggregation_temporality describes if the aggregator reports delta changes
 	// since last report time, or cumulative changes since a fixed start time.
-	AggregationTemporality AggregationTemporality `protobuf:"varint,2,opt,name=aggregation_temporality,json=aggregationTemporality,proto3,enum=opentelemetry.proto.metrics.v1.AggregationTemporality" json:"aggregation_temporality,omitempty"`
+	AggregationTemporality AggregationTemporality `protobuf:"varint,2,opt,name=aggregation_temporality,json=aggregationTemporality,proto3,enum=otelprom.proto.metrics.v1.AggregationTemporality" json:"aggregation_temporality,omitempty"`
 	// If "true" means that the sum is monotonic.
 	IsMonotonic          bool     `protobuf:"varint,3,opt,name=is_monotonic,json=isMonotonic,proto3" json:"is_monotonic,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
@@ -732,7 +732,7 @@ type IntHistogram struct {
 	DataPoints []*IntHistogramDataPoint `protobuf:"bytes,1,rep,name=data_points,json=dataPoints,proto3" json:"data_points,omitempty"`
 	// aggregation_temporality describes if the aggregator reports delta changes
 	// since last report time, or cumulative changes since a fixed start time.
-	AggregationTemporality AggregationTemporality `protobuf:"varint,2,opt,name=aggregation_temporality,json=aggregationTemporality,proto3,enum=opentelemetry.proto.metrics.v1.AggregationTemporality" json:"aggregation_temporality,omitempty"`
+	AggregationTemporality AggregationTemporality `protobuf:"varint,2,opt,name=aggregation_temporality,json=aggregationTemporality,proto3,enum=otelprom.proto.metrics.v1.AggregationTemporality" json:"aggregation_temporality,omitempty"`
 	XXX_NoUnkeyedLiteral   struct{}               `json:"-"`
 	XXX_unrecognized       []byte                 `json:"-"`
 	XXX_sizecache          int32                  `json:"-"`
@@ -791,7 +791,7 @@ type DoubleHistogram struct {
 	DataPoints []*DoubleHistogramDataPoint `protobuf:"bytes,1,rep,name=data_points,json=dataPoints,proto3" json:"data_points,omitempty"`
 	// aggregation_temporality describes if the aggregator reports delta changes
 	// since last report time, or cumulative changes since a fixed start time.
-	AggregationTemporality AggregationTemporality `protobuf:"varint,2,opt,name=aggregation_temporality,json=aggregationTemporality,proto3,enum=opentelemetry.proto.metrics.v1.AggregationTemporality" json:"aggregation_temporality,omitempty"`
+	AggregationTemporality AggregationTemporality `protobuf:"varint,2,opt,name=aggregation_temporality,json=aggregationTemporality,proto3,enum=otelprom.proto.metrics.v1.AggregationTemporality" json:"aggregation_temporality,omitempty"`
 	XXX_NoUnkeyedLiteral   struct{}               `json:"-"`
 	XXX_unrecognized       []byte                 `json:"-"`
 	XXX_sizecache          int32                  `json:"-"`
@@ -1547,26 +1547,26 @@ func (m *DoubleExemplar) GetTraceId() []byte {
 }
 
 func init() {
-	proto.RegisterEnum("opentelemetry.proto.metrics.v1.AggregationTemporality", AggregationTemporality_name, AggregationTemporality_value)
-	proto.RegisterType((*ResourceMetrics)(nil), "opentelemetry.proto.metrics.v1.ResourceMetrics")
-	proto.RegisterType((*InstrumentationLibraryMetrics)(nil), "opentelemetry.proto.metrics.v1.InstrumentationLibraryMetrics")
-	proto.RegisterType((*Metric)(nil), "opentelemetry.proto.metrics.v1.Metric")
-	proto.RegisterType((*IntGauge)(nil), "opentelemetry.proto.metrics.v1.IntGauge")
-	proto.RegisterType((*DoubleGauge)(nil), "opentelemetry.proto.metrics.v1.DoubleGauge")
-	proto.RegisterType((*IntSum)(nil), "opentelemetry.proto.metrics.v1.IntSum")
-	proto.RegisterType((*DoubleSum)(nil), "opentelemetry.proto.metrics.v1.DoubleSum")
-	proto.RegisterType((*IntHistogram)(nil), "opentelemetry.proto.metrics.v1.IntHistogram")
-	proto.RegisterType((*DoubleHistogram)(nil), "opentelemetry.proto.metrics.v1.DoubleHistogram")
-	proto.RegisterType((*IntDataPoint)(nil), "opentelemetry.proto.metrics.v1.IntDataPoint")
-	proto.RegisterType((*DoubleDataPoint)(nil), "opentelemetry.proto.metrics.v1.DoubleDataPoint")
-	proto.RegisterType((*IntHistogramDataPoint)(nil), "opentelemetry.proto.metrics.v1.IntHistogramDataPoint")
-	proto.RegisterType((*DoubleHistogramDataPoint)(nil), "opentelemetry.proto.metrics.v1.DoubleHistogramDataPoint")
-	proto.RegisterType((*IntExemplar)(nil), "opentelemetry.proto.metrics.v1.IntExemplar")
-	proto.RegisterType((*DoubleExemplar)(nil), "opentelemetry.proto.metrics.v1.DoubleExemplar")
+	proto.RegisterEnum("otelprom.proto.metrics.v1.AggregationTemporality", AggregationTemporality_name, AggregationTemporality_value)
+	proto.RegisterType((*ResourceMetrics)(nil), "otelprom.proto.metrics.v1.ResourceMetrics")
+	proto.RegisterType((*InstrumentationLibraryMetrics)(nil), "otelprom.proto.metrics.v1.InstrumentationLibraryMetrics")
+	proto.RegisterType((*Metric)(nil), "otelprom.proto.metrics.v1.Metric")
+	proto.RegisterType((*IntGauge)(nil), "otelprom.proto.metrics.v1.IntGauge")
+	proto.RegisterType((*DoubleGauge)(nil), "otelprom.proto.metrics.v1.DoubleGauge")
+	proto.RegisterType((*IntSum)(nil), "otelprom.proto.metrics.v1.IntSum")
+	proto.RegisterType((*DoubleSum)(nil), "otelprom.proto.metrics.v1.DoubleSum")
+	proto.RegisterType((*IntHistogram)(nil), "otelprom.proto.metrics.v1.IntHistogram")
+	proto.RegisterType((*DoubleHistogram)(nil), "otelprom.proto.metrics.v1.DoubleHistogram")
+	proto.RegisterType((*IntDataPoint)(nil), "otelprom.proto.metrics.v1.IntDataPoint")
+	proto.RegisterType((*DoubleDataPoint)(nil), "otelprom.proto.metrics.v1.DoubleDataPoint")
+	proto.RegisterType((*IntHistogramDataPoint)(nil), "otelprom.proto.metrics.v1.IntHistogramDataPoint")
+	proto.RegisterType((*DoubleHistogramDataPoint)(nil), "otelprom.proto.metrics.v1.DoubleHistogramDataPoint")
+	proto.RegisterType((*IntExemplar)(nil), "otelprom.proto.metrics.v1.IntExemplar")
+	proto.RegisterType((*DoubleExemplar)(nil), "otelprom.proto.metrics.v1.DoubleExemplar")
 }
 
 func init() {
-	proto.RegisterFile("opentelemetry/proto/metrics/v1/metrics.proto", fileDescriptor_3c3112f9fa006917)
+	proto.RegisterFile("otelprom/proto/metrics/v1/metrics.proto", fileDescriptor_3c3112f9fa006917)
 }
 
 var fileDescriptor_3c3112f9fa006917 = []byte{
