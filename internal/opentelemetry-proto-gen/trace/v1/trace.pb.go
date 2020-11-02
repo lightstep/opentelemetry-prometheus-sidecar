@@ -320,7 +320,7 @@ type Span struct {
 	// Distinguishes between spans generated in a particular context. For example,
 	// two spans with the same name may be distinguished using `CLIENT` (caller)
 	// and `SERVER` (callee) to identify queueing latency associated with the span.
-	Kind Span_SpanKind `protobuf:"varint,6,opt,name=kind,proto3,enum=opentelemetry.proto.trace.v1.Span_SpanKind" json:"kind,omitempty"`
+	Kind Span_SpanKind `protobuf:"varint,6,opt,name=kind,proto3,enum=otelprom.proto.trace.v1.Span_SpanKind" json:"kind,omitempty"`
 	// start_time_unix_nano is the start time of the span. On the client side, this is the time
 	// kept by the local machine where the span execution starts. On the server side, this
 	// is the time when the server's application handler starts running.
@@ -680,7 +680,7 @@ func (m *Span_Link) GetDroppedAttributesCount() uint32 {
 type Status struct {
 	// The status code. This is optional field. It is safe to assume 0 (OK)
 	// when not set.
-	Code Status_StatusCode `protobuf:"varint,1,opt,name=code,proto3,enum=opentelemetry.proto.trace.v1.Status_StatusCode" json:"code,omitempty"`
+	Code Status_StatusCode `protobuf:"varint,1,opt,name=code,proto3,enum=otelprom.proto.trace.v1.Status_StatusCode" json:"code,omitempty"`
 	// A developer-facing human readable error message.
 	Message              string   `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
@@ -736,18 +736,18 @@ func (m *Status) GetMessage() string {
 }
 
 func init() {
-	proto.RegisterEnum("opentelemetry.proto.trace.v1.Span_SpanKind", Span_SpanKind_name, Span_SpanKind_value)
-	proto.RegisterEnum("opentelemetry.proto.trace.v1.Status_StatusCode", Status_StatusCode_name, Status_StatusCode_value)
-	proto.RegisterType((*ResourceSpans)(nil), "opentelemetry.proto.trace.v1.ResourceSpans")
-	proto.RegisterType((*InstrumentationLibrarySpans)(nil), "opentelemetry.proto.trace.v1.InstrumentationLibrarySpans")
-	proto.RegisterType((*Span)(nil), "opentelemetry.proto.trace.v1.Span")
-	proto.RegisterType((*Span_Event)(nil), "opentelemetry.proto.trace.v1.Span.Event")
-	proto.RegisterType((*Span_Link)(nil), "opentelemetry.proto.trace.v1.Span.Link")
-	proto.RegisterType((*Status)(nil), "opentelemetry.proto.trace.v1.Status")
+	proto.RegisterEnum("otelprom.proto.trace.v1.Span_SpanKind", Span_SpanKind_name, Span_SpanKind_value)
+	proto.RegisterEnum("otelprom.proto.trace.v1.Status_StatusCode", Status_StatusCode_name, Status_StatusCode_value)
+	proto.RegisterType((*ResourceSpans)(nil), "otelprom.proto.trace.v1.ResourceSpans")
+	proto.RegisterType((*InstrumentationLibrarySpans)(nil), "otelprom.proto.trace.v1.InstrumentationLibrarySpans")
+	proto.RegisterType((*Span)(nil), "otelprom.proto.trace.v1.Span")
+	proto.RegisterType((*Span_Event)(nil), "otelprom.proto.trace.v1.Span.Event")
+	proto.RegisterType((*Span_Link)(nil), "otelprom.proto.trace.v1.Span.Link")
+	proto.RegisterType((*Status)(nil), "otelprom.proto.trace.v1.Status")
 }
 
 func init() {
-	proto.RegisterFile("opentelemetry/proto/trace/v1/trace.proto", fileDescriptor_5c407ac9c675a601)
+	proto.RegisterFile("otelprom/proto/trace/v1/trace.proto", fileDescriptor_5c407ac9c675a601)
 }
 
 var fileDescriptor_5c407ac9c675a601 = []byte{
