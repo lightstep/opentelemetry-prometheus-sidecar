@@ -16,7 +16,6 @@ package main
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"net/http"
 	"os"
 	"os/exec"
@@ -182,7 +181,6 @@ func TestProcessFileConfig(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			renameMappings, staticMetadata, err := processFileConfig(tt.config)
-			fmt.Println("ERR", err)
 			if diff := cmp.Diff(tt.renameMappings, renameMappings); diff != "" {
 				t.Errorf("renameMappings mismatch: %v", diff)
 			}

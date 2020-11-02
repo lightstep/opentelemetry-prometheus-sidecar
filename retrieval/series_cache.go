@@ -24,11 +24,10 @@ import (
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/targets"
 	"github.com/pkg/errors"
-	promlabels "github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/textparse"
-	"github.com/prometheus/tsdb"
-	"github.com/prometheus/tsdb/labels"
-	"github.com/prometheus/tsdb/wal"
+	"github.com/prometheus/prometheus/tsdb/record"
+	"github.com/prometheus/prometheus/tsdb/wal"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
@@ -45,8 +44,8 @@ var (
 // point.
 type tsDesc struct {
 	Name      string
-	Labels    promlabels.Labels // Sorted
-	Resource  promlabels.Labels // Sorted
+	Labels    labels.Labels // Sorted
+	Resource  labels.Labels // Sorted
 	Kind      metadata.Kind
 	ValueType metadata.ValueType
 }
@@ -82,7 +81,7 @@ type seriesGetter interface {
 type seriesCache struct {
 	logger        log.Logger
 	dir           string
-	filtersets    [][]*promlabels.Matcher
+	filtersets    [][]*labels.Matcher
 	targets       TargetGetter
 	metaget       MetadataGetter
 	metricsPrefix string
@@ -137,7 +136,7 @@ func (e *seriesCacheEntry) shouldRefresh() bool {
 func newSeriesCache(
 	logger log.Logger,
 	dir string,
-	filtersets [][]*promlabels.Matcher,
+	filtersets [][]*labels.Matcher,
 	renames map[string]string,
 	targets TargetGetter,
 	metaget MetadataGetter,
@@ -178,8 +177,8 @@ func (c *seriesCache) run(ctx context.Context) {
 // garbageCollect drops obsolete cache entries based on the contents of the most
 // recent checkpoint.
 func (c *seriesCache) garbageCollect() error {
-	cpDir, cpNum, err := tsdb.LastCheckpoint(c.dir)
-	if errors.Cause(err) == tsdb.ErrNotFound {
+	cpDir, cpNum, err := wal.LastCheckpoint(c.dir)
+	if errors.Cause(err) == record.ErrNotFound {
 		return nil // Nothing to do.
 	}
 	if err != nil {
@@ -199,12 +198,12 @@ func (c *seriesCache) garbageCollect() error {
 	var (
 		r      = wal.NewReader(sr)
 		exists = map[uint64]struct{}{}
-		dec    tsdb.RecordDecoder
-		series []tsdb.RefSeries
+		dec    record.Decoder
+		series []record.RefSeries
 	)
 	for r.Next() {
 		rec := r.Record()
-		if dec.Type(rec) != tsdb.RecordSeries {
+		if dec.Type(rec) != record.Series {
 			continue
 		}
 		series, err = dec.Series(rec, series[:0])
@@ -329,7 +328,7 @@ func (c *seriesCache) refresh(ctx context.Context, ref uint64) error {
 	c.mtx.Unlock()
 
 	entry.lastRefresh = time.Now()
-	entryLabels := pkgLabels(entry.lset)
+	entryLabels := copyLabels(entry.lset)
 
 	// Probe for the target, its applicable resource, and the series metadata.
 	// They will be used subsequently for all other Prometheus series that map to the same
@@ -355,7 +354,6 @@ func (c *seriesCache) refresh(ctx context.Context, ref uint64) error {
 
 	// Remove target.Labels, which are redundant with Resource.
 	entryLabels = targets.DropTargetLabels(entryLabels, target.Labels)
-
 	var (
 		metricName     = entry.lset.Get("__name__")
 		baseMetricName string
@@ -367,6 +365,7 @@ func (c *seriesCache) refresh(ctx context.Context, ref uint64) error {
 	if err != nil {
 		return errors.Wrap(err, "get metadata")
 	}
+
 	if meta == nil {
 		// The full name didn't turn anything up. Check again in case it's a summary,
 		// histogram, or counter without the metric name suffix.
@@ -455,7 +454,7 @@ func (c *seriesCache) getMetricName(prefix, name string) string {
 }
 
 // matchFiltersets checks whether any of the supplied filtersets passes.
-func matchFiltersets(lset labels.Labels, filtersets [][]*promlabels.Matcher) bool {
+func matchFiltersets(lset labels.Labels, filtersets [][]*labels.Matcher) bool {
 	for _, fs := range filtersets {
 		if matchFilterset(lset, fs) {
 			return true
@@ -466,7 +465,7 @@ func matchFiltersets(lset labels.Labels, filtersets [][]*promlabels.Matcher) boo
 
 // matchFilterset checks whether labels match a given list of label matchers.
 // All matchers need to match for the function to return true.
-func matchFilterset(lset labels.Labels, filterset []*promlabels.Matcher) bool {
+func matchFilterset(lset labels.Labels, filterset []*labels.Matcher) bool {
 	for _, matcher := range filterset {
 		if !matcher.Matches(lset.Get(matcher.Name)) {
 			return false

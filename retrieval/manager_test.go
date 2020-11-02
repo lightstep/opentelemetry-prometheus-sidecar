@@ -27,15 +27,14 @@ import (
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/targets"
-	promlabels "github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/textparse"
-	"github.com/prometheus/tsdb"
-	"github.com/prometheus/tsdb/labels"
-	"github.com/prometheus/tsdb/wal"
+	"github.com/prometheus/prometheus/tsdb/record"
+	"github.com/prometheus/prometheus/tsdb/wal"
 )
 
 type nopAppender struct {
-	lock sync.Mutex
+	lock    sync.Mutex
 	samples []*metric_pb.ResourceMetrics
 }
 
@@ -72,9 +71,9 @@ func TestReader_Progress(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var enc tsdb.RecordEncoder
+	var enc record.Encoder
 	// Write single series record that  we use for all sample records.
-	err = w.Log(enc.Series([]tsdb.RefSeries{
+	err = w.Log(enc.Series([]record.RefSeries{
 		{Ref: 1, Labels: labels.FromStrings("__name__", "metric1", "job", "job1", "instance", "inst1")},
 	}, nil))
 	if err != nil {
@@ -84,8 +83,8 @@ func TestReader_Progress(t *testing.T) {
 	// Populate the getters with data.
 	targetMap := targetMap{
 		"job1/inst1": &targets.Target{
-			Labels: promlabels.FromStrings("job", "job1", "instance", "inst1"),
-			DiscoveredLabels: promlabels.FromStrings(
+			Labels: labels.FromStrings("job", "job1", "instance", "inst1"),
+			DiscoveredLabels: labels.FromStrings(
 				"project_id", "proj1",
 				"namespace", "ns1", "location", "loc1",
 				"job", "job1", "__address__", "inst1"),
@@ -117,8 +116,8 @@ func TestReader_Progress(t *testing.T) {
 				t.Error(err)
 				break
 			}
-			samples := make([]tsdb.RefSample, 1000)
-			samples[0] = tsdb.RefSample{Ref: 1, T: int64(sz) * 1000}
+			samples := make([]record.RefSample, 1000)
+			samples[0] = record.RefSample{Ref: 1, T: int64(sz) * 1000}
 
 			if err := w.Log(enc.Samples(samples, nil)); err != nil {
 				t.Error(err)
@@ -225,8 +224,8 @@ func TestReader_ProgressFile(t *testing.T) {
 func TestHashSeries(t *testing.T) {
 	a := tsDesc{
 		Name:     "mtype1",
-		Labels:   promlabels.Labels{{"l3", "l3"}, {"l4", "l4"}},
-		Resource: promlabels.Labels{{"l1", "l1"}, {"l2", "l2"}},
+		Labels:   labels.Labels{{"l3", "l3"}, {"l4", "l4"}},
+		Resource: labels.Labels{{"l1", "l1"}, {"l2", "l2"}},
 	}
 	// Hash a many times and ensure the hash doesn't change. This checks that we don't produce different
 	// hashes by unordered map iteration.
@@ -239,18 +238,18 @@ func TestHashSeries(t *testing.T) {
 	for _, b := range []tsDesc{
 		{
 			Name:     "mtype2",
-			Labels:   promlabels.Labels{{"l3", "l3"}, {"l4", "l4"}},
-			Resource: promlabels.Labels{{"l1", "l1"}, {"l2", "l2"}},
+			Labels:   labels.Labels{{"l3", "l3"}, {"l4", "l4"}},
+			Resource: labels.Labels{{"l1", "l1"}, {"l2", "l2"}},
 		},
 		{
 			Name:     "mtype1",
-			Labels:   promlabels.Labels{{"l3", "l3"}, {"l4", "l4"}},
-			Resource: promlabels.Labels{{"l1", "l1"}, {"l2", "l2-"}},
+			Labels:   labels.Labels{{"l3", "l3"}, {"l4", "l4"}},
+			Resource: labels.Labels{{"l1", "l1"}, {"l2", "l2-"}},
 		},
 		{
 			Name:     "mtype1",
-			Labels:   promlabels.Labels{{"l3", "l3-"}, {"l4", "l4"}},
-			Resource: promlabels.Labels{{"l1", "l1"}, {"l2", "l2"}},
+			Labels:   labels.Labels{{"l3", "l3-"}, {"l4", "l4"}},
+			Resource: labels.Labels{{"l1", "l1"}, {"l2", "l2"}},
 		},
 	} {
 		if hashSeries(b) == hash {

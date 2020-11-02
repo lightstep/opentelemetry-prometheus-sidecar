@@ -25,7 +25,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/tsdb/wal"
+	"github.com/prometheus/prometheus/tsdb/wal"
 )
 
 func TestTailFuzz(t *testing.T) {
