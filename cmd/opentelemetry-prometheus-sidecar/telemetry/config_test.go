@@ -100,7 +100,7 @@ func TestTraceEndpointDisabled(t *testing.T) {
 	testEndpointDisabled(
 		t,
 		expectedTracingDisabledMessage,
-		WithSpanExporterEndpoint(""),
+		WithExporterEndpoint(""),
 	)
 }
 
@@ -108,7 +108,7 @@ func TestMetricEndpointDisabled(t *testing.T) {
 	testEndpointDisabled(
 		t,
 		expectedMetricsDisabledMessage,
-		WithMetricExporterEndpoint(""),
+		WithExporterEndpoint(""),
 	)
 }
 
@@ -129,8 +129,7 @@ func TestValidConfig2(t *testing.T) {
 
 	lsOtel := ConfigureOpentelemetry(
 		WithLogger(filtered),
-		WithMetricExporterEndpoint("localhost:443"),
-		WithSpanExporterEndpoint("localhost:443"),
+		WithExporterEndpoint("localhost:443"),
 	)
 	defer lsOtel.Shutdown()
 
@@ -148,8 +147,7 @@ func TestInvalidMetricsPushIntervalConfig(t *testing.T) {
 	logger := &testLogger{}
 	lsOtel := ConfigureOpentelemetry(
 		WithLogger(logger),
-		WithSpanExporterEndpoint("127.0.0.1:4000"),
-		WithMetricExporterEndpoint("127.0.0.1:4000"),
+		WithExporterEndpoint("127.0.0.1:4000"),
 		WithMetricReportingPeriod(-time.Second),
 	)
 	defer lsOtel.Shutdown()
@@ -162,7 +160,7 @@ func TestDebugEnabled(t *testing.T) {
 
 	lsOtel := ConfigureOpentelemetry(
 		WithLogger(logger),
-		WithSpanExporterEndpoint("localhost:443"),
+		WithExporterEndpoint("localhost:443"),
 		WithResourceAttributes(map[string]string{
 			"attr1":     "val1",
 			"host.name": "host456",

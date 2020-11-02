@@ -32,7 +32,6 @@ import (
 	"time"
 
 	"github.com/ghodss/yaml"
-	"github.com/go-kit/kit/log"
 	kitlog "github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/cmd/opentelemetry-prometheus-sidecar/telemetry"
@@ -52,7 +51,6 @@ import (
 	"github.com/prometheus/prometheus/pkg/textparse"
 	"github.com/prometheus/prometheus/promql/parser"
 	grpcMetadata "google.golang.org/grpc/metadata"
-	"google.golang.org/grpc/resolver/manual"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
 
@@ -141,31 +139,35 @@ type securityConfig struct {
 	RootCertificate string `json:"root_certificate"`
 }
 
-type grpcConfig struct {
-	Headers []string `json:"headers"`
-}
-
-type resourceConfig struct {
-	Attributes    []string `json:"attributes"`
-	UseMetaLabels bool     `json:"use_meta_labels"`
+type otlpConfig struct {
+	Attributes []string `json:"attributes"`
+	Endpoint   *url.URL `json:"endpoint"`
+	Headers    []string `json:"headers"`
 }
 
 type mainConfig struct {
-	ConfigFilename                 string
-	OpenTelemetryAddress           *url.URL
-	DiagnosticOpenTelemetryAddress *url.URL
-	MetricsPrefix                  string
-	WALDirectory                   string
-	PrometheusURL                  *url.URL
-	ListenAddress                  string
-	Filtersets                     []string
-	MetricRenames                  map[string]string
-	StaticMetadata                 []*metadata.Entry
-	manualResolver                 *manual.Resolver
-	PromlogConfig                  promlog.Config
-	Security                       securityConfig
-	GRPC                           grpcConfig
-	Resource                       resourceConfig
+	// General
+	ConfigFilename string         `json:"config_filename"`
+	Security       securityConfig `json:"security"`
+	ListenAddress  string         `json:"listen_address"`
+
+	// Prometheus input
+	WALDirectory  string   `json:"wal_directory"`
+	PrometheusURL *url.URL `json:"prometheus_url"`
+
+	// Primary output
+	MetricsPrefix string     `json:"metrics_prefix"`
+	UseMetaLabels bool       `json:"use_meta_labels"`
+	Output        otlpConfig `json:"output"`
+
+	// Diagnostic output
+	Diagnostics   otlpConfig     `json:"diagonstics"`
+	PromlogConfig promlog.Config `json:"log_config"`
+
+	// Sidecar customization
+	Filtersets     []string          `json:"filter_sets"`
+	MetricRenames  map[string]string `json:"metric_renames"`
+	StaticMetadata []*metadata.Entry `json:"static_metadata"`
 }
 
 func main() {
@@ -184,8 +186,10 @@ func main() {
 
 	a.Flag("config-file", "A configuration file.").StringVar(&cfg.ConfigFilename)
 
-	a.Flag("opentelemetry.endpoint", "Address of the OpenTelemetry Metrics endpoint.").
-		Default("").URLVar(&cfg.OpenTelemetryAddress)
+	a.Flag("opentelemetry.endpoint", "Address of the OpenTelemetry Metrics protocol (gRPC) endpoint. Use ?auth=false for an insecure connection.").
+		Default("").URLVar(&cfg.Output.Endpoint)
+	a.Flag("opentelemetry.diagnostics-endpoint", "Address of an OpenTelemetry protocol (gRPC) endpoint used for monitoring this process.  Use ?auth=false for an insecure connection.").
+		Default("").URLVar(&cfg.Diagnostics.Endpoint)
 
 	a.Flag("opentelemetry.metrics-prefix", "Customized prefix for exporter metrics. If not set, none will be used").
 		StringVar(&cfg.MetricsPrefix)
@@ -193,13 +197,10 @@ func main() {
 	a.Flag("prometheus.wal-directory", "Directory from where to read the Prometheus TSDB WAL.").
 		Default("data/wal").StringVar(&cfg.WALDirectory)
 
-	a.Flag("prometheus.api-address", "Address to listen on for UI, API, and telemetry.  Use ?auth=false for an insecure connection.").
+	a.Flag("prometheus.endpoint", "Endpoint where Prometheus hosts its  UI, API, and serves its own metrics.").
 		Default("http://127.0.0.1:9090/").URLVar(&cfg.PrometheusURL)
 
-	a.Flag("opentelemetry.diagnostic-endpoint", "Address of an OpenTelemetry Metrics API endpoint used for monitoring this process").Default("").
-		URLVar(&cfg.DiagnosticOpenTelemetryAddress)
-
-	a.Flag("web.listen-address", "Address to listen on for UI, API, and telemetry.").
+	a.Flag("web.listen-address", "Address this process listens on.  Note: there is nothing to see here. TODO(healthcheck)").
 		Default("0.0.0.0:9091").StringVar(&cfg.ListenAddress)
 
 	a.Flag("include", "PromQL metric and label matcher which must pass for a series to be forwarded to OpenTelemetry. If repeated, the series must pass any of the filter sets to be forwarded.").
@@ -208,15 +209,19 @@ func main() {
 	a.Flag("security.root-certificate", "Root CA certificate to use for TLS connections, in PEM format (e.g., root.crt).").
 		StringVar(&cfg.Security.RootCertificate)
 
-	// TODO: Cover the two flags below in the end-to-end test.
+	// TODO: Cover the flags below in the end-to-end test.
 	a.Flag("grpc.header", "Headers for gRPC connection (e.g., MyHeader=Value1). May be repeated.").
-		StringsVar(&cfg.GRPC.Headers)
+		StringsVar(&cfg.Output.Headers)
+	a.Flag("grpc.diagnostics-header", "Headers for gRPC connection (e.g., MyHeader=Value1) used for monitoring this process. May be repeated.").
+		StringsVar(&cfg.Diagnostics.Headers)
 
 	a.Flag("resource.attribute", "Attributes for exported metrics (e.g., MyResource=Value1). May be repeated.").
-		StringsVar(&cfg.Resource.Attributes)
+		StringsVar(&cfg.Output.Attributes)
+	a.Flag("resource.diagnostics-attribute", "Attributes for exported metrics (e.g., MyResource=Value1) used for monitoring this process. May be repeated.").
+		StringsVar(&cfg.Diagnostics.Attributes)
 
 	a.Flag("resource.use-meta-labels", "Prometheus target labels prefixed with __meta_ map into labels.").
-		BoolVar(&cfg.Resource.UseMetaLabels)
+		BoolVar(&cfg.UseMetaLabels)
 
 	promlogflag.AddFlags(a, &cfg.PromlogConfig)
 
@@ -228,14 +233,42 @@ func main() {
 	}
 
 	logger := promlog.New(&cfg.PromlogConfig)
-	stdlog.SetOutput(kitlog.NewStdlibAdapter(log.With(logger, "component", "stdlog")))
+	mainLogger := kitlog.With(logger, "component", "main")
+	stdlog.SetOutput(kitlog.NewStdlibAdapter(kitlog.With(logger, "component", "stdlog")))
 
-	if cfg.DiagnosticOpenTelemetryAddress != nil {
-		endpoint := cfg.DiagnosticOpenTelemetryAddress.String()
+	level.Info(logger).Log(
+		"msg", "Starting OpenTelemetry Prometheus sidecar",
+		"version", version.Info(),
+		"build_context", version.BuildContext(),
+		"host_details", Uname(),
+		"fd_limits", FdLimits(),
+	)
+
+	_, grpcHeaders, err := buildGRPCHeaders(cfg.Output.Headers)
+	if err != nil {
+		level.Error(mainLogger).Log("msg", "could not parse --grpc.header", "err", err)
+		os.Exit(2)
+	}
+
+	if cfg.Diagnostics.Endpoint != nil {
+		endpoint := cfg.Diagnostics.Endpoint.String()
+
+		diagnosticsHeadersMap, _, err := buildGRPCHeaders(cfg.Diagnostics.Headers)
+		if err != nil {
+			level.Error(mainLogger).Log("msg", "could not parse --grpc.diagnostics-header", "err", err)
+			os.Exit(2)
+		}
+
+		diagnosticsAttrs, err := parseResourceAttributes(cfg.Diagnostics.Attributes)
+		if err != nil {
+			level.Error(mainLogger).Log("msg", "could not parse --resource.diagnostics-attribute", "err", err)
+			os.Exit(2)
+		}
 		defer telemetry.ConfigureOpentelemetry(
-			telemetry.WithSpanExporterEndpoint(endpoint),
-			telemetry.WithMetricExporterEndpoint(endpoint),
-			telemetry.WithLogger(logger),
+			telemetry.WithExporterEndpoint(endpoint),
+			telemetry.WithLogger(kitlog.With(logger, "component", "telemetry")),
+			telemetry.WithHeaders(diagnosticsHeadersMap),
+			telemetry.WithResourceAttributes(diagnosticsAttrs),
 		).Shutdown()
 	}
 
@@ -243,26 +276,10 @@ func main() {
 		cfg.MetricRenames, cfg.StaticMetadata, err = parseConfigFile(cfg.ConfigFilename)
 		if err != nil {
 			msg := fmt.Sprintf("Parse config file %s", cfg.ConfigFilename)
-			level.Error(logger).Log("msg", msg, "err", err)
+			level.Error(mainLogger).Log("msg", msg, "err", err)
 			os.Exit(2)
 		}
 	}
-
-	level.Info(logger).Log("msg", "Starting OpenTelemetry Prometheus sidecar", "version", version.Info())
-	level.Info(logger).Log("build_context", version.BuildContext())
-	level.Info(logger).Log("host_details", Uname())
-	level.Info(logger).Log("fd_limits", FdLimits())
-
-	grpcHeadersMap := map[string]string{}
-	for _, hdr := range cfg.GRPC.Headers {
-		kvs := strings.SplitN(hdr, "=", 2)
-		if len(kvs) != 2 {
-			level.Error(logger).Log("msg", "grpc header should have key=value syntax", "ex", hdr)
-			os.Exit(2)
-		}
-		grpcHeadersMap[kvs[0]] = kvs[1]
-	}
-	grpcHeaders := grpcMetadata.New(grpcHeadersMap)
 
 	// We instantiate a context here since the tailer is used by two other components.
 	// The context will be used in the lifecycle of prometheusReader further down.
@@ -302,31 +319,28 @@ func main() {
 
 	filtersets, err := parseFiltersets(logger, cfg.Filtersets)
 	if err != nil {
-		level.Error(logger).Log("msg", "Error parsing --include", "err", err)
+		level.Error(logger).Log("msg", "error parsing --include", "err", err)
 		os.Exit(2)
 	}
 
 	targetsURL, err := cfg.PrometheusURL.Parse(targets.DefaultAPIEndpoint)
 	if err != nil {
-		panic(err)
+		level.Error(logger).Log("msg", "error parsing --prometheus.endpoint", "err", err)
+		os.Exit(2)
 	}
 
-	resAttrMap := map[string]string{}
-	for _, attr := range cfg.Resource.Attributes {
-		kvs := strings.SplitN(attr, "=", 2)
-		if len(kvs) != 2 {
-			level.Error(logger).Log("msg", "resource attribute should have key=value syntax", "ex", attr)
-			os.Exit(2)
-		}
-		resAttrMap[kvs[0]] = kvs[1]
+	outputAttrs, err := parseResourceAttributes(cfg.Output.Attributes)
+	if err != nil {
+		level.Error(logger).Log("msg", "error parsing --resource.attribute", "err", err)
+		os.Exit(2)
 	}
 
 	targetCache := targets.NewCache(
 		logger,
 		httpClient,
 		targetsURL,
-		labels.FromMap(resAttrMap),
-		cfg.Resource.UseMetaLabels,
+		labels.FromMap(outputAttrs),
+		cfg.UseMetaLabels,
 	)
 
 	metadataURL, err := cfg.PrometheusURL.Parse(metadata.DefaultEndpointPath)
@@ -348,12 +362,11 @@ func main() {
 	config.DefaultQueueConfig.Capacity = 3 * otlp.MaxTimeseriesesPerRequest
 
 	var scf otlp.StorageClientFactory = &otlpClientFactory{
-		logger:         kitlog.With(logger, "component", "storage"),
-		url:            cfg.OpenTelemetryAddress,
-		timeout:        10 * time.Second,
-		manualResolver: cfg.manualResolver,
-		security:       cfg.Security,
-		headers:        grpcHeaders,
+		logger:   kitlog.With(logger, "component", "storage"),
+		url:      cfg.Output.Endpoint,
+		timeout:  10 * time.Second,
+		security: cfg.Security,
+		headers:  grpcHeaders,
 	}
 
 	queueManager, err := otlp.NewQueueManager(
@@ -508,13 +521,29 @@ func main() {
 	level.Info(logger).Log("msg", "See you next time!")
 }
 
+func buildGRPCHeaders(values []string) (map[string]string, grpcMetadata.MD, error) {
+	gm, err := parseResourceAttributes(values)
+	return gm, grpcMetadata.New(gm), err
+}
+
+func parseResourceAttributes(values []string) (map[string]string, error) {
+	m := map[string]string{}
+	for _, hdr := range values {
+		kvs := strings.SplitN(hdr, "=", 2)
+		if len(kvs) != 2 {
+			return nil, fmt.Errorf("should have key=value syntax: %v", hdr)
+		}
+		m[kvs[0]] = kvs[1]
+	}
+	return m, nil
+}
+
 type otlpClientFactory struct {
-	logger         kitlog.Logger
-	url            *url.URL
-	timeout        time.Duration
-	manualResolver *manual.Resolver
-	security       securityConfig
-	headers        grpcMetadata.MD
+	logger   kitlog.Logger
+	url      *url.URL
+	timeout  time.Duration
+	security securityConfig
+	headers  grpcMetadata.MD
 }
 
 func (s *otlpClientFactory) New() otlp.StorageClient {
@@ -522,7 +551,6 @@ func (s *otlpClientFactory) New() otlp.StorageClient {
 		Logger:          s.logger,
 		URL:             s.url,
 		Timeout:         s.timeout,
-		Resolver:        s.manualResolver,
 		RootCertificate: s.security.RootCertificate,
 		Headers:         s.headers,
 	})

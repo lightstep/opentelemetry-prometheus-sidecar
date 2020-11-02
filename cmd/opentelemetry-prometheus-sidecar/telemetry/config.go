@@ -41,33 +41,18 @@ import (
 
 type Option func(*Config)
 
-// WithMetricExporterEndpoint configures the endpoint for sending metrics via OTLP
-func WithMetricExporterEndpoint(url string) Option {
+// WithExporterEndpoint configures the endpoint for sending metrics via OTLP
+func WithExporterEndpoint(url string) Option {
 	return func(c *Config) {
-		c.MetricExporterEndpoint = url
+		c.ExporterEndpoint = url
 	}
 }
 
-// WithSpanExporterEndpoint configures the endpoint for sending traces via OTLP
-func WithSpanExporterEndpoint(url string) Option {
-	return func(c *Config) {
-		c.SpanExporterEndpoint = url
-	}
-}
-
-// WithSpanExporterInsecure permits connecting to the
+// WithExporterInsecure permits connecting to the
 // trace endpoint without a certificate
-func WithSpanExporterInsecure(insecure bool) Option {
+func WithExporterInsecure(insecure bool) Option {
 	return func(c *Config) {
-		c.SpanExporterEndpointInsecure = insecure
-	}
-}
-
-// WithMetricExporterInsecure permits connecting to the
-// metric endpoint without a certificate
-func WithMetricExporterInsecure(insecure bool) Option {
-	return func(c *Config) {
-		c.MetricExporterEndpointInsecure = insecure
+		c.ExporterEndpointInsecure = insecure
 	}
 }
 
@@ -107,6 +92,12 @@ func WithLogger(logger kitlog.Logger) Option {
 	}
 }
 
+func WithHeaders(headers map[string]string) Option {
+	return func(c *Config) {
+		c.Headers = headers
+	}
+}
+
 type defaultHandler struct {
 	logger kitlog.Logger
 }
@@ -116,27 +107,22 @@ func (l *defaultHandler) Handle(err error) {
 }
 
 type Config struct {
-	SpanExporterEndpoint           string
-	SpanExporterEndpointInsecure   bool
-	MetricExporterEndpoint         string
-	MetricExporterEndpointInsecure bool
-	Propagators                    []string
-	MetricReportingPeriod          string
-	ResourceAttributes             map[string]string
-	resource                       *resource.Resource
-	logger                         kitlog.Logger
-	errorHandler                   otel.ErrorHandler
-}
-
-func validateConfiguration(c Config) error {
-	return nil
+	ExporterEndpoint         string
+	ExporterEndpointInsecure bool
+	Propagators              []string
+	MetricReportingPeriod    string
+	ResourceAttributes       map[string]string
+	Headers                  map[string]string
+	resource                 *resource.Resource
+	logger                   kitlog.Logger
+	errorHandler             otel.ErrorHandler
 }
 
 func newConfig(opts ...Option) Config {
 	var c Config
 	logWriter := kitlog.NewLogfmtLogger(kitlog.NewSyncWriter(os.Stdout))
 	c.Propagators = []string{"b3"}
-	c.logger = level.NewFilter(kitlog.With(logWriter, "component", "telemetry"), level.AllowInfo())
+	c.logger = level.NewFilter(logWriter, level.AllowInfo())
 	c.errorHandler = &defaultHandler{logger: c.logger}
 	var defaultOpts []Option
 
@@ -184,9 +170,7 @@ func newResource(c *Config) *resource.Resource {
 	return resource.New(kv...)
 }
 
-func newExporter(endpoint string, insecure bool) (*otlp.Exporter, error) {
-	headers := map[string]string{}
-
+func newExporter(endpoint string, insecure bool, headers map[string]string) (*otlp.Exporter, error) {
 	secureOption := otlp.WithTLSCredentials(credentials.NewClientTLSFromCert(nil, ""))
 	if insecure {
 		secureOption = otlp.WithInsecure()
@@ -199,11 +183,11 @@ func newExporter(endpoint string, insecure bool) (*otlp.Exporter, error) {
 }
 
 func setupTracing(c Config) (func() error, error) {
-	if c.SpanExporterEndpoint == "" {
+	if c.ExporterEndpoint == "" {
 		level.Debug(c.logger).Log("msg", "tracing is disabled by configuration: no endpoint set")
 		return nil, nil
 	}
-	spanExporter, err := newExporter(c.SpanExporterEndpoint, c.SpanExporterEndpointInsecure)
+	spanExporter, err := newExporter(c.ExporterEndpoint, c.ExporterEndpointInsecure, c.Headers)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create span exporter: %v", err)
 	}
@@ -228,11 +212,11 @@ func setupTracing(c Config) (func() error, error) {
 type setupFunc func(Config) (func() error, error)
 
 func setupMetrics(c Config) (func() error, error) {
-	if c.MetricExporterEndpoint == "" {
+	if c.ExporterEndpoint == "" {
 		level.Debug(c.logger).Log("msg", "metrics are disabled by configuration: no endpoint set")
 		return nil, nil
 	}
-	metricExporter, err := newExporter(c.MetricExporterEndpoint, c.MetricExporterEndpointInsecure)
+	metricExporter, err := newExporter(c.ExporterEndpoint, c.ExporterEndpointInsecure, c.Headers)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create metric exporter: %v", err)
 	}
@@ -278,10 +262,6 @@ func setupMetrics(c Config) (func() error, error) {
 }
 
 func ConfigureOpentelemetry(opts ...Option) Launcher {
-	// @@@ TODO: See how promlog is configured w/ kingpin
-	// flags. Use that mechanism for the config fields in this
-	// package where `envconfig` was removed here.
-	// Lost a log level flag.... @@@n
 	c := newConfig(opts...)
 
 	level.Debug(c.logger).Log("msg", "debug logging enabled")
