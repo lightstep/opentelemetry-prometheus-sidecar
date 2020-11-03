@@ -30,6 +30,7 @@ require (
 	github.com/stretchr/testify v1.6.1
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.13.0
 	go.opentelemetry.io/contrib/instrumentation/host v0.13.0
+	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.13.0
 	go.opentelemetry.io/contrib/instrumentation/runtime v0.13.0
 	go.opentelemetry.io/contrib/propagators v0.13.0
 	go.opentelemetry.io/otel v0.13.0

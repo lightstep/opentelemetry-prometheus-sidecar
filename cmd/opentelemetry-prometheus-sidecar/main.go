@@ -50,13 +50,15 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/textparse"
 	"github.com/prometheus/prometheus/promql/parser"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	grpcMetadata "google.golang.org/grpc/metadata"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
 
 // @@@
-// const startupDelay = time.Minute
-const startupDelay = time.Second
+const startupDelay = time.Minute
+
+// const startupDelay = time.Second
 
 // var (
 // 	sizeDistribution    = view.Distribution(0, 1024, 2048, 4096, 16384, 65536, 262144, 1048576, 4194304, 33554432)
@@ -323,7 +325,7 @@ func main() {
 	// }()
 
 	httpClient := &http.Client{
-		//Transport: &ochttp.Transport{}
+		Transport: otelhttp.NewTransport(http.DefaultTransport),
 	}
 
 	// for _, backend := range cfg.MonitoringBackends {

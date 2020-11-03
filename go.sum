@@ -205,6 +205,8 @@ github.com/evanphx/json-patch v4.9.0+incompatible/go.mod h1:50XU6AFN0ol/bzJsmQLi
 github.com/fatih/color v1.7.0/go.mod h1:Zm6kSWBoL9eyXnKyktHP6abPY2pDugNf5KwzbycvMj4=
 github.com/fatih/color v1.9.0 h1:8xPHl4/q1VyqGIPif1F+1V3Y3lSmrq01EabUW3CoW5s=
 github.com/fatih/color v1.9.0/go.mod h1:eQcE1qtQxscV5RaZvpXrrb8Drkc3/DdQ+uUYCNjL+zU=
+github.com/felixge/httpsnoop v1.0.1 h1:lvB5Jl89CsZtGIWuTcDM1E/vkVs49/Ml7JJe07l8SPQ=
+github.com/felixge/httpsnoop v1.0.1/go.mod h1:m8KPJKqk1gH5J9DgRY2ASl2lWCfGKXixSwevea8zH2U=
 github.com/fogleman/gg v1.2.1-0.20190220221249-0403632d5b90/go.mod h1:R/bRT+9gY/C5z7JzPU0zXsXHKM4/ayA+zqcVNZzPa1k=
 github.com/form3tech-oss/jwt-go v3.2.2+incompatible h1:TcekIExNqud5crz4xD2pavyTgWiPvpYe4Xau31I0PRk=
 github.com/form3tech-oss/jwt-go v3.2.2+incompatible/go.mod h1:pbq4aXjuKjdthFRnoDwaVPLA+WlJuPGy+QneDUgJi2k=
@@ -832,6 +834,9 @@ go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.1
 go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.13.0/go.mod h1:ffigAFAlfY9AfFwJocEw88qbbvjAKfvqZg5tLyZv0l0=
 go.opentelemetry.io/contrib/instrumentation/host v0.13.0 h1:NGT5j2yX3w5WnyG6gKtfape2ecS+SD8K+2njvbP/Hag=
 go.opentelemetry.io/contrib/instrumentation/host v0.13.0/go.mod h1:eh7NEINMuXjFV8/TcPfLU0/4FKNif2kZRGjkc9XQMcw=
+go.opentelemetry.io/contrib/instrumentation/net/http v0.11.0 h1:ufewgDRmtrrdDpPgm7b4/gr4RXLS7KhDttAhyThtYS4=
+go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.13.0 h1:dnZy1afzxEDrHybTYoJE1bQ3fphNwZF2ipSsynlITP4=
+go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.13.0/go.mod h1:SeQm4RTCcZ2/hlMSTuHb7nwIROe5odBtgfKx+7MMqEs=
 go.opentelemetry.io/contrib/instrumentation/runtime v0.13.0 h1:U5EXyt+Dq46yQ93Bf8h5+u/8Aal6H/BUDnBip1kzx2k=
 go.opentelemetry.io/contrib/instrumentation/runtime v0.13.0/go.mod h1:HIznjbLjna24masZxJ9nmullwSXrVNm/WFDhEPPD0JY=
 go.opentelemetry.io/contrib/propagators v0.13.0 h1:kvhyo7uEkOHzKLBCp0w6b5ZMukRHFOxgRgGQ7lLWFoM=
