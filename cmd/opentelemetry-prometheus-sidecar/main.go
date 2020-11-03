@@ -190,9 +190,9 @@ func main() {
 
 	a.Flag("config-file", "A configuration file.").StringVar(&cfg.ConfigFilename)
 
-	a.Flag("opentelemetry.endpoint", "Address of the OpenTelemetry Metrics protocol (gRPC) endpoint. Use ?auth=false for an insecure connection.").
+	a.Flag("opentelemetry.endpoint", "Address of the OpenTelemetry Metrics protocol (gRPC) endpoint (e.g., https://host:port).  Use \"http\" (not \"https\") for an insecure connection.").
 		Default("").URLVar(&cfg.Output.Endpoint)
-	a.Flag("opentelemetry.diagnostics-endpoint", "Address of an OpenTelemetry protocol (gRPC) endpoint used for monitoring this process.  Use ?auth=false for an insecure connection.").
+	a.Flag("opentelemetry.diagnostics-endpoint", "Address of the OpenTelemetry Metrics protocol (gRPC) endpoint (e.g., https://host:port) used for monitoring this process.  Use \"http\" (not \"https\") for an insecure connection.").
 		Default("").URLVar(&cfg.Diagnostics.Endpoint)
 
 	a.Flag("opentelemetry.metrics-prefix", "Customized prefix for exporter metrics. If not set, none will be used").
