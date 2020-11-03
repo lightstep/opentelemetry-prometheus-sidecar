@@ -55,10 +55,7 @@ import (
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
 
-// @@@
-const startupDelay = time.Minute
-
-// const startupDelay = time.Second
+const defaultStartupDelay = time.Minute
 
 // var (
 // 	sizeDistribution    = view.Distribution(0, 1024, 2048, 4096, 16384, 65536, 262144, 1048576, 4194304, 33554432)
@@ -156,6 +153,7 @@ type mainConfig struct {
 	ConfigFilename string         `json:"config_filename"`
 	Security       securityConfig `json:"security"`
 	ListenAddress  string         `json:"listen_address"`
+	StartupDelay   time.Duration  `json:"startup_delay"`
 
 	// Prometheus input
 	WALDirectory  string   `json:"wal_directory"`
@@ -228,6 +226,8 @@ func main() {
 
 	a.Flag("resource.use-meta-labels", "Prometheus target labels prefixed with __meta_ map into labels.").
 		BoolVar(&cfg.UseMetaLabels)
+	a.Flag("startup.delay", "Delay at startup to allow Prometheus its initial scrape").
+		Default(defaultStartupDelay.String()).DurationVar(&cfg.StartupDelay)
 
 	promlogflag.AddFlags(a, &cfg.PromlogConfig)
 
@@ -485,7 +485,7 @@ func main() {
 				waitForPrometheus(ctx, mainLogger, cfg.PrometheusURL)
 				// Sleep a fixed amount of time to allow the first scrapes to complete.
 				select {
-				case <-time.After(startupDelay):
+				case <-time.After(cfg.StartupDelay):
 				case <-ctx.Done():
 					return nil
 				}
