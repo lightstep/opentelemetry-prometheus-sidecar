@@ -1,3 +1,5 @@
-# Ignore checkpoint file.
-lightstep_sidecar.json
+# checkpoint file
+opentelemetry_sidecar.json
+# this binary
+/opentelemetry-prometheus-sidecar
 
