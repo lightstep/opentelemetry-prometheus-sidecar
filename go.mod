@@ -28,6 +28,7 @@ require (
 	github.com/prometheus/prometheus v1.8.2-0.20201015110737-0a7fdd3b7696
 	github.com/sethvargo/go-envconfig v0.3.2
 	github.com/stretchr/testify v1.6.1
+	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.13.0
 	go.opentelemetry.io/contrib/instrumentation/host v0.13.0
 	go.opentelemetry.io/contrib/instrumentation/runtime v0.13.0
 	go.opentelemetry.io/contrib/propagators v0.13.0

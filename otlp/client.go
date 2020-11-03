@@ -24,11 +24,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	metricsService "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/collector/metrics/v1"
-	// "go.opencensus.io/plugin/ocgrpc"
-	// "go.opencensus.io/stats"
-	// "go.opencensus.io/stats/view"
-	// "go.opencensus.io/tag"
+	"github.com/prometheus/common/version"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/balancer/roundrobin"
 	"google.golang.org/grpc/codes"
@@ -36,10 +36,6 @@ import (
 	grpcMetadata "google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/resolver/manual"
 	"google.golang.org/grpc/status"
-
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
-	"github.com/prometheus/common/version"
 )
 
 const (
@@ -129,7 +125,7 @@ func (c *Client) getConnection(ctx context.Context) (*grpc.ClientConn, error) {
 		grpc.WithBalancerName(roundrobin.Name),
 		grpc.WithBlock(), // Wait for the connection to be established before using it.
 		grpc.WithUserAgent(userAgent),
-		//grpc.WithStatsHandler(&ocgrpc.ClientHandler{}),
+		grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
 	}
 	if useAuth {
 		var tcfg tls.Config
