@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
 	_ "net/http/pprof" // Comment this line to disable pprof endpoint.
 	"net/url"
@@ -248,6 +249,23 @@ func main() {
 		"fd_limits", FdLimits(),
 	)
 
+	for _, e := range []*url.URL{
+		cfg.Output.Endpoint,
+		cfg.Diagnostics.Endpoint,
+		cfg.PrometheusURL,
+	} {
+		if e.String() == "" {
+			continue
+		}
+		switch e.Scheme {
+		case "http", "https":
+			// Good!
+		default:
+			level.Error(mainLogger).Log("msg", "endpoints must use http or https", "endpoint", e)
+			os.Exit(2)
+		}
+	}
+
 	_, grpcHeaders, err := buildGRPCHeaders(cfg.Output.Headers)
 	if err != nil {
 		level.Error(mainLogger).Log("msg", "could not parse --grpc.header", "err", err)
@@ -255,11 +273,10 @@ func main() {
 	}
 
 	if cfg.Diagnostics.Endpoint != nil && cfg.Diagnostics.Endpoint.String() != "" {
-		endpoint := cfg.Diagnostics.Endpoint.String()
-
-		if cfg.Diagnostics.Endpoint.Scheme != "grpc" {
-			level.Error(mainLogger).Log("msg", "endpoint protocol should be grpc", "endpoint", endpoint)
-			os.Exit(1)
+		endpoint := cfg.Diagnostics.Endpoint
+		hostport := endpoint.Hostname()
+		if len(endpoint.Port()) > 0 {
+			hostport = net.JoinHostPort(hostport, endpoint.Port())
 		}
 
 		diagnosticsHeadersMap, _, err := buildGRPCHeaders(cfg.Diagnostics.Headers)
@@ -274,7 +291,7 @@ func main() {
 			os.Exit(2)
 		}
 		defer telemetry.ConfigureOpentelemetry(
-			telemetry.WithExporterEndpoint(endpoint),
+			telemetry.WithExporterEndpoint(hostport),
 			telemetry.WithLogger(kitlog.With(logger, "component", "telemetry")),
 			telemetry.WithHeaders(diagnosticsHeadersMap),
 			telemetry.WithResourceAttributes(diagnosticsAttrs),
@@ -369,11 +386,6 @@ func main() {
 	// Testing with different latencies and shard numbers have shown that 3x of the batch size
 	// works well.
 	config.DefaultQueueConfig.Capacity = 3 * otlp.MaxTimeseriesesPerRequest
-
-	if cfg.Output.Endpoint.Scheme != "grpc" {
-		level.Error(mainLogger).Log("msg", "endpoint protocol should be grpc", "endpoint", cfg.Output.Endpoint)
-		os.Exit(1)
-	}
 
 	var scf otlp.StorageClientFactory = &otlpClientFactory{
 		logger:   kitlog.With(logger, "component", "storage"),

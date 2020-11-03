@@ -21,7 +21,6 @@ import (
 	"io/ioutil"
 	"net"
 	"net/url"
-	"strconv"
 	"sync"
 	"time"
 
@@ -120,10 +119,7 @@ func (c *Client) getConnection(ctx context.Context) (*grpc.ClientConn, error) {
 		return c.conn, nil
 	}
 
-	useAuth, err := strconv.ParseBool(c.url.Query().Get("auth"))
-	if err != nil {
-		useAuth = true // Default to auth enabled.
-	}
+	useAuth := c.url.Scheme == "https"
 	level.Debug(c.logger).Log(
 		"msg", "new otlp connection",
 		"auth", useAuth,
