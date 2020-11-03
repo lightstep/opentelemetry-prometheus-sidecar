@@ -170,7 +170,7 @@ func (c *Client) getConnection(ctx context.Context) (*grpc.ClientConn, error) {
 	if err != nil {
 		level.Debug(c.logger).Log(
 			"msg", "connection status",
-			"url", c.url.String(),
+			"address", address,
 			"err", err,
 		)
 	}
