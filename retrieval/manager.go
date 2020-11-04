@@ -30,8 +30,6 @@ import (
 	"github.com/prometheus/prometheus/tsdb/fileutil"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wal"
-	"go.opencensus.io/stats"
-	"go.opencensus.io/stats/view"
 )
 
 type TargetGetter interface {
@@ -42,7 +40,7 @@ type MetadataGetter interface {
 	Get(ctx context.Context, job, instance, metric string) (*metadata.Entry, error)
 }
 
-// NewPrometheusReader is the PrometheusReader constructor
+// NewProemtheusReader is the PrometheusReader constructor
 func NewPrometheusReader(
 	logger log.Logger,
 	walDirectory string,
@@ -84,31 +82,31 @@ type PrometheusReader struct {
 	metricsPrefix        string
 }
 
-var (
-	samplesProcessed = stats.Int64("prometheus_sidecar/samples_processed", "Number of WAL samples processed", stats.UnitDimensionless)
-	samplesProduced  = stats.Int64("prometheus_sidecar/samples_produced", "Number of Metric samples produced", stats.UnitDimensionless)
-)
+// var (
+// 	samplesProcessed = stats.Int64("prometheus_sidecar/samples_processed", "Number of WAL samples processed", stats.UnitDimensionless)
+// 	samplesProduced  = stats.Int64("prometheus_sidecar/samples_produced", "Number of Metric samples produced", stats.UnitDimensionless)
+// )
 
-func init() {
-	view.Register(&view.View{
-		Name:        "prometheus_sidecar/batches_processed",
-		Description: "Total number of sample batches processed",
-		Measure:     samplesProcessed,
-		Aggregation: view.Count(),
-	})
-	view.Register(&view.View{
-		Name:        "prometheus_sidecar/samples_processed",
-		Description: "Number of WAL samples processed",
-		Measure:     samplesProcessed,
-		Aggregation: view.Sum(),
-	})
-	view.Register(&view.View{
-		Name:        "prometheus_sidecar/samples_produced",
-		Description: "Number of samples produced",
-		Measure:     samplesProduced,
-		Aggregation: view.Sum(),
-	})
-}
+// func init() {
+// 	view.Register(&view.View{
+// 		Name:        "prometheus_sidecar/batches_processed",
+// 		Description: "Total number of sample batches processed",
+// 		Measure:     samplesProcessed,
+// 		Aggregation: view.Count(),
+// 	})
+// 	view.Register(&view.View{
+// 		Name:        "prometheus_sidecar/samples_processed",
+// 		Description: "Number of WAL samples processed",
+// 		Measure:     samplesProcessed,
+// 		Aggregation: view.Sum(),
+// 	})
+// 	view.Register(&view.View{
+// 		Name:        "prometheus_sidecar/samples_produced",
+// 		Description: "Number of samples produced",
+// 		Measure:     samplesProduced,
+// 		Aggregation: view.Sum(),
+// 	})
+// }
 
 func (r *PrometheusReader) Run(ctx context.Context, startOffset int) error {
 	level.Info(r.logger).Log("msg", "Starting Prometheus reader...")
@@ -188,6 +186,7 @@ Outer:
 			// once at the end.
 			// Otherwise it will increase CPU usage by ~10%.
 			processed, produced := len(samples), 0
+			_ = processed
 
 			for len(samples) > 0 {
 				select {
@@ -215,7 +214,7 @@ Outer:
 				r.appender.Append(hash, outputSample)
 				produced++
 			}
-			stats.Record(ctx, samplesProcessed.M(int64(processed)), samplesProduced.M(int64(produced)))
+			// stats.Record(ctx, samplesProcessed.M(int64(processed)), samplesProduced.M(int64(produced)))
 
 		case record.Tombstones:
 		default:
