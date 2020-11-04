@@ -21,11 +21,13 @@ import (
 	"io/ioutil"
 	"net"
 	"net/url"
-	"strconv"
 	"sync"
 	"time"
 
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	metricsService "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/collector/metrics/v1"
+	"github.com/prometheus/common/version"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/balancer/roundrobin"
 	"google.golang.org/grpc/codes"
@@ -33,10 +35,6 @@ import (
 	grpcMetadata "google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/resolver/manual"
 	"google.golang.org/grpc/status"
-
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
-	"github.com/prometheus/common/version"
 )
 
 const (
@@ -116,10 +114,7 @@ func (c *Client) getConnection(ctx context.Context) (*grpc.ClientConn, error) {
 		return c.conn, nil
 	}
 
-	useAuth, err := strconv.ParseBool(c.url.Query().Get("auth"))
-	if err != nil {
-		useAuth = true // Default to auth enabled.
-	}
+	useAuth := c.url.Scheme == "https"
 	level.Debug(c.logger).Log(
 		"msg", "new otlp connection",
 		"auth", useAuth,
@@ -130,8 +125,8 @@ func (c *Client) getConnection(ctx context.Context) (*grpc.ClientConn, error) {
 		grpc.WithBlock(), // Wait for the connection to be established before using it.
 		grpc.WithUserAgent(userAgent),
 
-		// TODO: enable gRPC tracing
-		// grpc.WithStatsHandler(&ocgrpc.ClientHandler{}),
+		// TODO: Re-enable gRPC tracing.
+		// grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
 	}
 	if useAuth {
 		var tcfg tls.Config
@@ -168,7 +163,7 @@ func (c *Client) getConnection(ctx context.Context) (*grpc.ClientConn, error) {
 	if err != nil {
 		level.Debug(c.logger).Log(
 			"msg", "connection status",
-			"url", c.url.String(),
+			"address", address,
 			"err", err,
 		)
 	}

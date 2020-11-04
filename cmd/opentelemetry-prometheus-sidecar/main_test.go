@@ -138,21 +138,21 @@ func TestParseFiltersets(t *testing.T) {
 func TestProcessFileConfig(t *testing.T) {
 	for _, tt := range []struct {
 		name           string
-		config         fileConfig
+		config         mainConfig
 		renameMappings map[string]string
 		staticMetadata []*metadata.Entry
 		err            error
 	}{
 		{
 			"empty",
-			fileConfig{},
+			mainConfig{},
 			map[string]string{},
 			[]*metadata.Entry{},
 			nil,
 		},
 		{
 			"smoke",
-			fileConfig{
+			mainConfig{
 				MetricRenames: []metricRenamesConfig{
 					{From: "from", To: "to"},
 				},
@@ -172,7 +172,7 @@ func TestProcessFileConfig(t *testing.T) {
 		},
 		{
 			"missing_metric_type",
-			fileConfig{
+			mainConfig{
 				StaticMetadata: []staticMetadataConfig{{Metric: "int64_default", ValueType: "int64"}},
 			},
 			nil, nil,
@@ -180,11 +180,11 @@ func TestProcessFileConfig(t *testing.T) {
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			renameMappings, staticMetadata, err := processFileConfig(tt.config)
-			if diff := cmp.Diff(tt.renameMappings, renameMappings); diff != "" {
+			err := processMainConfig(&tt.config)
+			if diff := cmp.Diff(tt.renameMappings, tt.config.metricRenames); diff != "" {
 				t.Errorf("renameMappings mismatch: %v", diff)
 			}
-			if diff := cmp.Diff(tt.staticMetadata, staticMetadata); diff != "" {
+			if diff := cmp.Diff(tt.staticMetadata, tt.config.staticMetadata); diff != "" {
 				t.Errorf("staticMetadata mismatch: %v", diff)
 			}
 			if (tt.err != nil && err != nil && tt.err.Error() != err.Error()) ||

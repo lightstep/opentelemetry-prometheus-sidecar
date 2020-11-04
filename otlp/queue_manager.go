@@ -183,7 +183,9 @@ func NewQueueManager(logger log.Logger, cfg config.QueueConfig, clientFactory St
 	// numShards.WithLabelValues(t.queueName).Set(float64(t.numShards))
 	// queueCapacity.WithLabelValues(t.queueName).Set(float64(t.cfg.Capacity))
 
-	// Initialise counter labels to zero.
+	// Initialise counter labels to zero.  TODO(jmacd) understand
+	// what was intended by these statements: is it to establish a
+	// reset timestamp?
 	// sentBatchDuration.WithLabelValues(t.queueName)
 	// succeededSamplesTotal.WithLabelValues(t.queueName)
 	// failedSamplesTotal.WithLabelValues(t.queueName)
