@@ -128,40 +128,43 @@ sends metrics data to an OpenTelemetry (https://opentelemetry.io) Protocol endpo
 Flags:
   -h, --help                     Show context-sensitive help (also try --help-long and --help-man).
       --version                  Show application version.
-      --config-file=""           A configuration file.
-      --opentelemetry.endpoint=  Address of the OpenTelemetry Metrics protocol (gRPC) endpoint (e.g.,
+      --config-file=CONFIG-FILE  A configuration file.
+      --destination.endpoint=DESTINATION.ENDPOINT
+                                 Address of the OpenTelemetry Metrics protocol (gRPC) endpoint (e.g.,
                                  https://host:port). Use "http" (not "https") for an insecure
                                  connection.
-      --opentelemetry.metrics-prefix=""
+      --opentelemetry.metrics-prefix=OPENTELEMETRY.METRICS-PREFIX
                                  Customized prefix for exporter metrics. If not set, none will be used
-      --prometheus.wal-directory="data/wal"
-                                 Directory from where to read the Prometheus TSDB WAL.
-      --prometheus.endpoint=http://127.0.0.1:9090/
+      --prometheus.wal=PROMETHEUS.WAL
+                                 Directory from where to read the Prometheus TSDB WAL. Default:
+                                 data/wal
+      --prometheus.endpoint=PROMETHEUS.ENDPOINT
                                  Endpoint where Prometheus hosts its UI, API, and serves its own
-                                 metrics.
-      --web.listen-address="0.0.0.0:9091"
-                                 Address this process listens on. Note: there is nothing to see here.
-                                 TODO(healthcheck)
+                                 metrics. Default: http://127.0.0.1:9090/
+      --admin.listen-address=ADMIN.LISTEN-ADDRESS
+                                 Administrative HTTP address this process listens on. Default:
+                                 0.0.0.0:9091
       --include=INCLUDE ...      PromQL metric and label matcher which must pass for a series to be
                                  forwarded to OpenTelemetry. If repeated, the series must pass any of
                                  the filter sets to be forwarded.
-      --security.root-certificate=""
+      --security.root-certificate=SECURITY.ROOT-CERTIFICATE ...
                                  Root CA certificate to use for TLS connections, in PEM format (e.g.,
-                                 root.crt).
-      --grpc.header=GRPC.HEADER ...
+                                 root.crt). May be repeated.
+      --destination.header=DESTINATION.HEADER ...
                                  Headers for gRPC connection (e.g., MyHeader=Value1). May be repeated.
-      --resource.attribute=RESOURCE.ATTRIBUTE ...
+      --destination.attribute=DESTINATION.ATTRIBUTE ...
                                  Attributes for exported metrics (e.g., MyResource=Value1). May be
                                  repeated.
       --resource.use-meta-labels
                                  Prometheus target labels prefixed with __meta_ map into labels.
-      --startup.delay=1m0s       Delay at startup to allow Prometheus its initial scrape
+      --startup.delay=STARTUP.DELAY
+                                 Delay at startup to allow Prometheus its initial scrape. Default: 1m0s
       --log.level=info           Only log messages with the given severity or above. One of: [debug,
                                  info, warn, error]
       --log.format=logfmt        Output format of log messages. One of: [logfmt, json]
 ```
 
-TODO: Document the configuration file format.
+TODO: Document and test the configuration file format mechanism.
 
 #### Resources
 
