@@ -52,6 +52,8 @@ import (
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
 
+// TODO(jmacd): Define a path for healthchecks.
+
 const (
 	defaultStartupDelay = time.Minute
 
@@ -167,11 +169,15 @@ type otelConfig struct {
 	MetricsPrefix string `json:"metrics_prefix"`
 }
 
+type adminConfig struct {
+	ListenAddress string `json:"listen_address"`
+}
+
 type mainConfig struct {
 	// General
 	ConfigFilename string         `json:"-"`
 	Security       securityConfig `json:"security"`
-	ListenAddress  string         `json:"listen_address"`
+	Admin          adminConfig    `json:"admin"`
 	StartupDelay   durationConfig `json:"startup_delay"`
 
 	// Prometheus input
@@ -198,6 +204,9 @@ func main() {
 		Prometheus: promConfig{
 			WAL:      "data/wal",
 			Endpoint: "http://127.0.0.1:9090/",
+		},
+		Admin: adminConfig{
+			ListenAddress: "0.0.0.0:9091",
 		},
 		Destination: otlpConfig{
 			Headers:    map[string]string{},
@@ -231,8 +240,8 @@ func main() {
 	a.Flag("prometheus.endpoint", "Endpoint where Prometheus hosts its  UI, API, and serves its own metrics.").
 		StringVar(&cfg.Prometheus.Endpoint)
 
-	a.Flag("web.listen-address", "Address this process listens on.  Note: there is nothing to see here. TODO(healthcheck)").
-		Default("0.0.0.0:9091").StringVar(&cfg.ListenAddress)
+	a.Flag("admin.listen-address", "Administrative HTTP address this process listens on.").
+		StringVar(&cfg.Admin.ListenAddress)
 
 	a.Flag("include", "PromQL metric and label matcher which must pass for a series to be forwarded to OpenTelemetry. If repeated, the series must pass any of the filter sets to be forwarded.").
 		StringsVar(&cfg.Filtersets)
@@ -558,7 +567,7 @@ func main() {
 	{
 		cancel := make(chan struct{})
 		server := &http.Server{
-			Addr: cfg.ListenAddress,
+			Addr: cfg.Admin.ListenAddress,
 		}
 		g.Add(
 			func() error {
