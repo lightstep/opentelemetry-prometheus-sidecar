@@ -27,7 +27,6 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"syscall"
 	"time"
 
@@ -53,7 +52,15 @@ import (
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
 
-const defaultStartupDelay = time.Minute
+const (
+	defaultStartupDelay = time.Minute
+
+	briefDescription = `
+The OpenTelemetry Prometheus sidecar runs alongside the
+Prometheus (https://prometheus.io/) Server and sends metrics data to
+an OpenTelemetry (https://opentelemetry.io) Protocol endpoint.
+`
+)
 
 // var (
 // 	sizeDistribution    = view.Distribution(0, 1024, 2048, 4096, 16384, 65536, 262144, 1048576, 4194304, 33554432)
@@ -143,15 +150,10 @@ type durationConfig struct {
 	time.Duration `yaml:"-,inline"`
 }
 
-// @@@ HERE: TODO: Switch these []string to map[string]string.  Move
-// copies of these vars out of the config struct (likewise
-// MetricRenames and StaticMetadata) as has already been done for
-// promlog.Config.
-
 type otlpConfig struct {
-	Attributes []string  `json:"attributes"`
-	Endpoint   urlConfig `json:"endpoint"`
-	Headers    []string  `json:"headers"`
+	Attributes map[string]string `json:"attributes"`
+	Endpoint   urlConfig         `json:"endpoint"`
+	Headers    map[string]string `json:"headers"`
 }
 
 type logConfig struct {
@@ -189,26 +191,46 @@ type mainConfig struct {
 }
 
 func main() {
+	defaultPromURL, _ := url.Parse("http://127.0.0.1:9090/")
+
+	cfg := mainConfig{
+		ListenAddress: "0.0.0.0:9091",
+		StartupDelay: durationConfig{
+			Duration: defaultStartupDelay,
+		},
+		WALDirectory: "data/wal",
+		PrometheusURL: urlConfig{
+			URL: defaultPromURL,
+		},
+		LogConfig: logConfig{
+			Level:  "info",
+			Format: "logfmt",
+		},
+		Output: otlpConfig{
+			Attributes: map[string]string{},
+			Headers:    map[string]string{},
+		},
+	}
+
 	if os.Getenv("DEBUG") != "" {
 		runtime.SetBlockProfileRate(20)
 		runtime.SetMutexProfileFraction(20)
 	}
 
-	var cfg mainConfig
-
-	a := kingpin.New(filepath.Base(os.Args[0]), "OpenTelemetry Prometheus sidecar")
+	a := kingpin.New(filepath.Base(os.Args[0]), briefDescription)
 
 	a.Version(version.Print("opentelemetry-prometheus-sidecar"))
 
 	a.HelpFlag.Short('h')
 
-	a.Flag("config-file", "A configuration file.").StringVar(&cfg.ConfigFilename)
+	a.Flag("config-file", "A configuration file.").
+		Default("").StringVar(&cfg.ConfigFilename)
 
 	a.Flag("opentelemetry.endpoint", "Address of the OpenTelemetry Metrics protocol (gRPC) endpoint (e.g., https://host:port).  Use \"http\" (not \"https\") for an insecure connection.").
 		Default("").URLVar(&cfg.Output.Endpoint.URL)
 
 	a.Flag("opentelemetry.metrics-prefix", "Customized prefix for exporter metrics. If not set, none will be used").
-		StringVar(&cfg.MetricsPrefix)
+		Default("").StringVar(&cfg.MetricsPrefix)
 
 	a.Flag("prometheus.wal-directory", "Directory from where to read the Prometheus TSDB WAL.").
 		Default("data/wal").StringVar(&cfg.WALDirectory)
@@ -226,19 +248,18 @@ func main() {
 		Default("").StringVar(&cfg.Security.RootCertificate)
 
 	a.Flag("grpc.header", "Headers for gRPC connection (e.g., MyHeader=Value1). May be repeated.").
-		StringsVar(&cfg.Output.Headers)
+		StringMapVar(&cfg.Output.Headers)
 
 	a.Flag("resource.attribute", "Attributes for exported metrics (e.g., MyResource=Value1). May be repeated.").
-		StringsVar(&cfg.Output.Attributes)
+		StringMapVar(&cfg.Output.Attributes)
 
 	a.Flag("resource.use-meta-labels", "Prometheus target labels prefixed with __meta_ map into labels.").
 		BoolVar(&cfg.UseMetaLabels)
+
 	a.Flag("startup.delay", "Delay at startup to allow Prometheus its initial scrape").
 		Default(defaultStartupDelay.String()).DurationVar(&cfg.StartupDelay.Duration)
 
 	var plc promlog.Config
-	plc.Level = &promlog.AllowedLevel{}
-	plc.Format = &promlog.AllowedFormat{}
 	promlogflag.AddFlags(a, &plc)
 
 	_, err := a.Parse(os.Args[1:])
@@ -291,7 +312,7 @@ func main() {
 		}
 	}
 
-	_, grpcHeaders, err := buildGRPCHeaders(cfg.Output.Headers)
+	grpcMetadata, err := buildGRPCHeaders(cfg.Output.Headers)
 	if err != nil {
 		level.Error(logger).Log("msg", "could not parse --grpc.header", "err", err)
 		os.Exit(2)
@@ -346,8 +367,7 @@ func main() {
 		os.Exit(2)
 	}
 
-	outputAttrs, err := parseResourceAttributes(cfg.Output.Attributes)
-	if err != nil {
+	if err := parseResourceAttributes(cfg.Output.Attributes); err != nil {
 		level.Error(logger).Log("msg", "error parsing --resource.attribute", "err", err)
 		os.Exit(2)
 	}
@@ -356,7 +376,7 @@ func main() {
 		logger,
 		httpClient,
 		targetsURL,
-		labels.FromMap(outputAttrs),
+		labels.FromMap(cfg.Output.Attributes),
 		cfg.UseMetaLabels,
 	)
 
@@ -383,7 +403,7 @@ func main() {
 		url:      cfg.Output.Endpoint.URL,
 		timeout:  10 * time.Second,
 		security: cfg.Security,
-		headers:  grpcHeaders,
+		headers:  grpcMetadata,
 	}
 
 	queueManager, err := otlp.NewQueueManager(
@@ -538,21 +558,14 @@ func main() {
 	level.Info(logger).Log("msg", "See you next time!")
 }
 
-func buildGRPCHeaders(values []string) (map[string]string, grpcMetadata.MD, error) {
-	gm, err := parseResourceAttributes(values)
-	return gm, grpcMetadata.New(gm), err
+func buildGRPCHeaders(values map[string]string) (grpcMetadata.MD, error) {
+	// TODO: sanitize key names?
+	return grpcMetadata.New(values), nil
 }
 
-func parseResourceAttributes(values []string) (map[string]string, error) {
-	m := map[string]string{}
-	for _, hdr := range values {
-		kvs := strings.SplitN(hdr, "=", 2)
-		if len(kvs) != 2 {
-			return nil, fmt.Errorf("should have key=value syntax: %v", hdr)
-		}
-		m[kvs[0]] = kvs[1]
-	}
-	return m, nil
+func parseResourceAttributes(values map[string]string) error {
+	// TODO: sanitize key names?
+	return nil
 }
 
 type otlpClientFactory struct {
@@ -677,7 +690,11 @@ func usage(desc string, err error) {
 	)
 }
 
-func (u *urlConfig) UnmarshalJSON(data []byte) error {
+func (u urlConfig) MarshalJSON() ([]byte, error) {
+	return json.Marshal(u.URL.String())
+}
+
+func (u urlConfig) UnmarshalJSON(data []byte) error {
 	var s string
 	if err := json.Unmarshal(data, &s); err != nil {
 		return err
@@ -690,7 +707,7 @@ func (u *urlConfig) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (d *durationConfig) UnmarshalJSON(data []byte) error {
+func (d durationConfig) UnmarshalJSON(data []byte) error {
 	var s string
 	if err := json.Unmarshal(data, &s); err != nil {
 		return err
@@ -701,4 +718,8 @@ func (d *durationConfig) UnmarshalJSON(data []byte) error {
 	}
 	d.Duration = parsed
 	return nil
+}
+
+func (d durationConfig) MarshalJSON() ([]byte, error) {
+	return json.Marshal(d.Duration.String())
 }
