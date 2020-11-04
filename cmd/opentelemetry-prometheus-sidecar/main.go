@@ -139,11 +139,8 @@ type staticMetadataConfig struct {
 }
 
 type securityConfig struct {
+	// @@@ TODO should be []string
 	RootCertificate string `json:"root_certificate"`
-}
-
-type urlConfig struct {
-	*url.URL `yaml:",inline"`
 }
 
 type durationConfig struct {
@@ -152,13 +149,22 @@ type durationConfig struct {
 
 type otlpConfig struct {
 	Attributes map[string]string `json:"attributes"`
-	Endpoint   urlConfig         `json:"endpoint"`
+	Endpoint   string            `json:"endpoint"`
 	Headers    map[string]string `json:"headers"`
 }
 
 type logConfig struct {
 	Level  string `json:"level"`
 	Format string `json:"format"`
+}
+
+type promConfig struct {
+	WAL      string `json:"wal"`
+	Endpoint string `json:"endpoint"`
+}
+
+type otelConfig struct {
+	MetricsPrefix string `json:"metrics_prefix"`
 }
 
 type mainConfig struct {
@@ -169,48 +175,26 @@ type mainConfig struct {
 	StartupDelay   durationConfig `json:"startup_delay"`
 
 	// Prometheus input
-	WALDirectory  string    `json:"wal_directory"`
-	PrometheusURL urlConfig `json:"prometheus_url"`
+	Prometheus promConfig `json:"prometheus"`
+
+	// Opentelemetry setup
+	OpenTelemetry otelConfig `json:"opentelemetry"`
 
 	// Primary output
-	MetricsPrefix string     `json:"metrics_prefix"`
-	UseMetaLabels bool       `json:"use_meta_labels"`
-	Output        otlpConfig `json:"output"`
+	Destination otlpConfig `json:"destination"`
 
 	// Diagnostic output
 	LogConfig logConfig `json:"log_config"`
 
 	// Sidecar customization
-	Filtersets []string `json:"filter_sets"`
-
-	MetricRenames []metricRenamesConfig
-	metricRenames map[string]string `json:"metric_renames"`
-
-	StaticMetadata []staticMetadataConfig
-	staticMetadata []*metadata.Entry `json:"static_metadata"`
+	Filtersets     []string               `json:"filter_sets"`
+	MetricRenames  []metricRenamesConfig  `json:"metric_renames"`
+	StaticMetadata []staticMetadataConfig `json:"static_metadata"`
+	UseMetaLabels  bool                   `json:"use_meta_labels"`
 }
 
 func main() {
-	defaultPromURL, _ := url.Parse("http://127.0.0.1:9090/")
-
-	cfg := mainConfig{
-		ListenAddress: "0.0.0.0:9091",
-		StartupDelay: durationConfig{
-			Duration: defaultStartupDelay,
-		},
-		WALDirectory: "data/wal",
-		PrometheusURL: urlConfig{
-			URL: defaultPromURL,
-		},
-		LogConfig: logConfig{
-			Level:  "info",
-			Format: "logfmt",
-		},
-		Output: otlpConfig{
-			Attributes: map[string]string{},
-			Headers:    map[string]string{},
-		},
-	}
+	var cfg mainConfig
 
 	if os.Getenv("DEBUG") != "" {
 		runtime.SetBlockProfileRate(20)
@@ -226,17 +210,17 @@ func main() {
 	a.Flag("config-file", "A configuration file.").
 		Default("").StringVar(&cfg.ConfigFilename)
 
-	a.Flag("opentelemetry.endpoint", "Address of the OpenTelemetry Metrics protocol (gRPC) endpoint (e.g., https://host:port).  Use \"http\" (not \"https\") for an insecure connection.").
-		Default("").URLVar(&cfg.Output.Endpoint.URL)
+	a.Flag("destination.endpoint", "Address of the OpenTelemetry Metrics protocol (gRPC) endpoint (e.g., https://host:port).  Use \"http\" (not \"https\") for an insecure connection.").
+		Default("").StringVar(&cfg.Destination.Endpoint)
 
 	a.Flag("opentelemetry.metrics-prefix", "Customized prefix for exporter metrics. If not set, none will be used").
-		Default("").StringVar(&cfg.MetricsPrefix)
+		Default("").StringVar(&cfg.OpenTelemetry.MetricsPrefix)
 
-	a.Flag("prometheus.wal-directory", "Directory from where to read the Prometheus TSDB WAL.").
-		Default("data/wal").StringVar(&cfg.WALDirectory)
+	a.Flag("prometheus.wal", "Directory from where to read the Prometheus TSDB WAL.").
+		Default("data/wal").StringVar(&cfg.Prometheus.WAL)
 
 	a.Flag("prometheus.endpoint", "Endpoint where Prometheus hosts its  UI, API, and serves its own metrics.").
-		Default("http://127.0.0.1:9090/").URLVar(&cfg.PrometheusURL.URL)
+		Default("http://127.0.0.1:9090/").StringVar(&cfg.Prometheus.Endpoint)
 
 	a.Flag("web.listen-address", "Address this process listens on.  Note: there is nothing to see here. TODO(healthcheck)").
 		Default("0.0.0.0:9091").StringVar(&cfg.ListenAddress)
@@ -247,11 +231,11 @@ func main() {
 	a.Flag("security.root-certificate", "Root CA certificate to use for TLS connections, in PEM format (e.g., root.crt).").
 		Default("").StringVar(&cfg.Security.RootCertificate)
 
-	a.Flag("grpc.header", "Headers for gRPC connection (e.g., MyHeader=Value1). May be repeated.").
-		StringMapVar(&cfg.Output.Headers)
+	a.Flag("destination.header", "Headers for gRPC connection (e.g., MyHeader=Value1). May be repeated.").
+		StringMapVar(&cfg.Destination.Headers)
 
-	a.Flag("resource.attribute", "Attributes for exported metrics (e.g., MyResource=Value1). May be repeated.").
-		StringMapVar(&cfg.Output.Attributes)
+	a.Flag("destination.attribute", "Attributes for exported metrics (e.g., MyResource=Value1). May be repeated.").
+		StringMapVar(&cfg.Destination.Attributes)
 
 	a.Flag("resource.use-meta-labels", "Prometheus target labels prefixed with __meta_ map into labels.").
 		BoolVar(&cfg.UseMetaLabels)
@@ -271,12 +255,33 @@ func main() {
 	cfg.LogConfig.Level = plc.Level.String()
 	cfg.LogConfig.Format = plc.Format.String()
 
+	var (
+		metricRenames  map[string]string
+		staticMetadata []*metadata.Entry
+	)
+
 	if cfg.ConfigFilename != "" {
-		err := parseConfigFile(&cfg)
+		var fromFile mainConfig
+		metricRenames, staticMetadata, err = parseConfigFile(cfg.ConfigFilename, &fromFile)
 		if err != nil {
 			usage("error parsing configuration file", err)
 			os.Exit(2)
 		}
+		fmt.Println("BEFORE", cfg)
+		fmt.Println("READ url", fromFile.Prometheus.Endpoint)
+
+		cfg = fromFile
+
+		// Re-parse the command-line flags to let the
+		// command-line have precedence.
+		fmt.Println("Re-parsing:", os.Args[1:])
+		_, err := a.Parse(os.Args[1:])
+		if err != nil {
+			usage("error re-parsing command-line arguments", err)
+			os.Exit(2)
+		}
+
+		fmt.Println("AFTER", cfg)
 	}
 
 	plc.Level.Set(cfg.LogConfig.Level)
@@ -296,23 +301,38 @@ func main() {
 		level.Debug(logger).Log("config", string(data))
 	}
 
-	for _, e := range []*url.URL{
-		cfg.Output.Endpoint.URL,
-		cfg.PrometheusURL.URL,
+	// We avoided using the kingpin support for URL flags because
+	// it leads to special cases merging configs and because URL
+	// parsing succeeds in cases w/o a scheme, needs to be
+	// validated anyway.
+	type namedURL struct {
+		name  string
+		value string
+	}
+	for _, pair := range []namedURL{
+		{"destination.endpoint", cfg.Destination.Endpoint},
+		{"prometheus.endpoint", cfg.Prometheus.Endpoint},
 	} {
-		if e.String() == "" {
-			continue
+		if pair.value == "" {
+			level.Error(logger).Log("msg", "endpoint must be set", "name", pair.name)
+			os.Exit(2)
 		}
-		switch e.Scheme {
+		url, err := url.Parse(pair.value)
+		if err != nil {
+			level.Error(logger).Log("msg", "invalid endpoint", "name", pair.name, "endpoint", pair.value, "error", err)
+			os.Exit(2)
+		}
+
+		switch url.Scheme {
 		case "http", "https":
 			// Good!
 		default:
-			level.Error(logger).Log("msg", "endpoints must use http or https", "endpoint", e)
+			level.Error(logger).Log("msg", "endpoints must use http or https", "name", pair.name, "endpoint", pair.value)
 			os.Exit(2)
 		}
 	}
 
-	grpcMetadata, err := buildGRPCHeaders(cfg.Output.Headers)
+	grpcMetadata, err := buildGRPCHeaders(cfg.Destination.Headers)
 	if err != nil {
 		level.Error(logger).Log("msg", "could not parse --grpc.header", "err", err)
 		os.Exit(2)
@@ -361,13 +381,16 @@ func main() {
 		os.Exit(2)
 	}
 
-	targetsURL, err := cfg.PrometheusURL.Parse(targets.DefaultAPIEndpoint)
+	// Parse was validated already, ignore error.
+	promURL, _ := url.Parse(cfg.Prometheus.Endpoint)
+
+	targetsURL, err := promURL.Parse(targets.DefaultAPIEndpoint)
 	if err != nil {
 		level.Error(logger).Log("msg", "error parsing --prometheus.endpoint", "err", err)
 		os.Exit(2)
 	}
 
-	if err := parseResourceAttributes(cfg.Output.Attributes); err != nil {
+	if err := parseResourceAttributes(cfg.Destination.Attributes); err != nil {
 		level.Error(logger).Log("msg", "error parsing --resource.attribute", "err", err)
 		os.Exit(2)
 	}
@@ -376,17 +399,17 @@ func main() {
 		logger,
 		httpClient,
 		targetsURL,
-		labels.FromMap(cfg.Output.Attributes),
+		labels.FromMap(cfg.Destination.Attributes),
 		cfg.UseMetaLabels,
 	)
 
-	metadataURL, err := cfg.PrometheusURL.Parse(metadata.DefaultEndpointPath)
+	metadataURL, err := promURL.Parse(metadata.DefaultEndpointPath)
 	if err != nil {
 		panic(err)
 	}
-	metadataCache := metadata.NewCache(httpClient, metadataURL, cfg.staticMetadata)
+	metadataCache := metadata.NewCache(httpClient, metadataURL, staticMetadata)
 
-	tailer, err := tail.Tail(ctx, cfg.WALDirectory)
+	tailer, err := tail.Tail(ctx, cfg.Prometheus.WAL)
 	if err != nil {
 		level.Error(logger).Log("msg", "tailing WAL failed", "err", err)
 		os.Exit(1)
@@ -398,9 +421,11 @@ func main() {
 	// works well.
 	config.DefaultQueueConfig.Capacity = 3 * otlp.MaxTimeseriesesPerRequest
 
+	outputURL, _ := url.Parse(cfg.Destination.Endpoint)
+
 	var scf otlp.StorageClientFactory = &otlpClientFactory{
 		logger:   log.With(logger, "component", "storage"),
-		url:      cfg.Output.Endpoint.URL,
+		url:      outputURL,
 		timeout:  10 * time.Second,
 		security: cfg.Security,
 		headers:  grpcMetadata,
@@ -419,14 +444,14 @@ func main() {
 
 	prometheusReader := retrieval.NewPrometheusReader(
 		log.With(logger, "component", "prom_wal"),
-		cfg.WALDirectory,
+		cfg.Prometheus.WAL,
 		tailer,
 		filtersets,
-		cfg.metricRenames,
+		metricRenames,
 		targetCache,
 		metadataCache,
 		queueManager,
-		cfg.MetricsPrefix,
+		cfg.OpenTelemetry.MetricsPrefix,
 	)
 
 	// Exclude kingpin default flags to expose only Prometheus ones.
@@ -482,16 +507,16 @@ func main() {
 		// depends on to exit properly.
 		g.Add(
 			func() error {
-				startOffset, err := retrieval.ReadProgressFile(cfg.WALDirectory)
+				startOffset, err := retrieval.ReadProgressFile(cfg.Prometheus.WAL)
 				if err != nil {
 					level.Warn(logger).Log("msg", "reading progress file failed", "err", err)
 					startOffset = 0
 				}
 				// Write the file again once to ensure we have write permission on startup.
-				if err := retrieval.SaveProgressFile(cfg.WALDirectory, startOffset); err != nil {
+				if err := retrieval.SaveProgressFile(cfg.Prometheus.WAL, startOffset); err != nil {
 					return err
 				}
-				waitForPrometheus(ctx, logger, cfg.PrometheusURL.URL)
+				waitForPrometheus(ctx, logger, promURL)
 				// Sleep a fixed amount of time to allow the first scrapes to complete.
 				select {
 				case <-time.After(cfg.StartupDelay.Duration):
@@ -629,18 +654,18 @@ func parseFiltersets(logger log.Logger, filtersets []string) ([][]*labels.Matche
 	return matchers, nil
 }
 
-func parseConfigFile(cfg *mainConfig) error {
-	b, err := ioutil.ReadFile(cfg.ConfigFilename)
+func parseConfigFile(filename string, cfg *mainConfig) (map[string]string, []*metadata.Entry, error) {
+	b, err := ioutil.ReadFile(filename)
 	if err != nil {
-		return errors.Wrap(err, "reading file")
+		return nil, nil, errors.Wrap(err, "reading file")
 	}
 	if err := yaml.Unmarshal(b, cfg); err != nil {
-		return errors.Wrap(err, "invalid YAML")
+		return nil, nil, errors.Wrap(err, "invalid YAML")
 	}
 	return processMainConfig(cfg)
 }
 
-func processMainConfig(cfg *mainConfig) error {
+func processMainConfig(cfg *mainConfig) (map[string]string, []*metadata.Entry, error) {
 	renameMapping := map[string]string{}
 	for _, r := range cfg.MetricRenames {
 		renameMapping[r.From] = r.To
@@ -654,7 +679,7 @@ func processMainConfig(cfg *mainConfig) error {
 		case textparse.MetricTypeCounter, textparse.MetricTypeGauge, textparse.MetricTypeHistogram,
 			textparse.MetricTypeSummary, textparse.MetricTypeUnknown:
 		default:
-			return errors.Errorf("invalid metric type %q", sm.Type)
+			return nil, nil, errors.Errorf("invalid metric type %q", sm.Type)
 		}
 		var valueType metadata.ValueType
 		switch sm.ValueType {
@@ -663,7 +688,7 @@ func processMainConfig(cfg *mainConfig) error {
 		case "int64":
 			valueType = metadata.INT64
 		default:
-			return errors.Errorf("invalid value type %q", sm.ValueType)
+			return nil, nil, errors.Errorf("invalid value type %q", sm.ValueType)
 		}
 		staticMetadata = append(
 			staticMetadata,
@@ -675,9 +700,7 @@ func processMainConfig(cfg *mainConfig) error {
 			},
 		)
 	}
-	cfg.metricRenames = renameMapping
-	cfg.staticMetadata = staticMetadata
-	return nil
+	return renameMapping, staticMetadata, nil
 }
 
 func usage(desc string, err error) {
@@ -690,24 +713,10 @@ func usage(desc string, err error) {
 	)
 }
 
-func (u urlConfig) MarshalJSON() ([]byte, error) {
-	return json.Marshal(u.URL.String())
-}
-
-func (u urlConfig) UnmarshalJSON(data []byte) error {
-	var s string
-	if err := json.Unmarshal(data, &s); err != nil {
-		return err
+func (d *durationConfig) UnmarshalJSON(data []byte) error {
+	if d == nil {
+		return nil
 	}
-	parsed, err := url.Parse(s)
-	if err != nil {
-		return err
-	}
-	*u.URL = *parsed
-	return nil
-}
-
-func (d durationConfig) UnmarshalJSON(data []byte) error {
 	var s string
 	if err := json.Unmarshal(data, &s); err != nil {
 		return err

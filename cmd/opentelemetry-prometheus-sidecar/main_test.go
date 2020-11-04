@@ -43,7 +43,11 @@ func TestStartupInterrupt(t *testing.T) {
 		t.Skip("skipping test in short mode.")
 	}
 
-	cmd := exec.Command(os.Args[0], "--prometheus.wal-directory=testdata/wal")
+	cmd := exec.Command(
+		os.Args[0],
+		"--prometheus.wal=testdata/wal",
+		"--destination.endpoint=http://localhost:9999",
+	)
 	cmd.Env = append(os.Environ(), "RUN_MAIN=1")
 	var bout, berr bytes.Buffer
 	cmd.Stdout = &bout
@@ -180,11 +184,11 @@ func TestProcessFileConfig(t *testing.T) {
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			err := processMainConfig(&tt.config)
-			if diff := cmp.Diff(tt.renameMappings, tt.config.metricRenames); diff != "" {
+			metricRenames, staticMetadata, err := processMainConfig(&tt.config)
+			if diff := cmp.Diff(tt.renameMappings, metricRenames); diff != "" {
 				t.Errorf("renameMappings mismatch: %v", diff)
 			}
-			if diff := cmp.Diff(tt.staticMetadata, tt.config.staticMetadata); diff != "" {
+			if diff := cmp.Diff(tt.staticMetadata, staticMetadata); diff != "" {
 				t.Errorf("staticMetadata mismatch: %v", diff)
 			}
 			if (tt.err != nil && err != nil && tt.err.Error() != err.Error()) ||
