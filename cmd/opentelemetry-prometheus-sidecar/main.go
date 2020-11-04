@@ -55,7 +55,10 @@ import (
 // TODO(jmacd): Define a path for healthchecks.
 
 const (
-	defaultStartupDelay = time.Minute
+	defaultStartupDelay       = time.Minute
+	defaultWALDirectory       = "data/wal"
+	defaultAdminListenAddress = "0.0.0.0:9091"
+	defaultPrometheusEndpoint = "http://127.0.0.1:9090/"
 
 	briefDescription = `
 The OpenTelemetry Prometheus sidecar runs alongside the
@@ -202,15 +205,18 @@ type mainConfig struct {
 func main() {
 	cfg := mainConfig{
 		Prometheus: promConfig{
-			WAL:      "data/wal",
-			Endpoint: "http://127.0.0.1:9090/",
+			WAL:      defaultWALDirectory,
+			Endpoint: defaultPrometheusEndpoint,
 		},
 		Admin: adminConfig{
-			ListenAddress: "0.0.0.0:9091",
+			ListenAddress: defaultAdminListenAddress,
 		},
 		Destination: otlpConfig{
 			Headers:    map[string]string{},
 			Attributes: map[string]string{},
+		},
+		StartupDelay: durationConfig{
+			defaultStartupDelay,
 		},
 	}
 
@@ -225,6 +231,10 @@ func main() {
 
 	a.HelpFlag.Short('h')
 
+	// Note: Do not use the kindpin `Default()` mechanism so that
+	// file config overrides default config and flag config
+	// overrides file config.
+
 	a.Flag("config-file", "A configuration file.").
 		StringVar(&cfg.ConfigFilename)
 
@@ -234,13 +244,13 @@ func main() {
 	a.Flag("opentelemetry.metrics-prefix", "Customized prefix for exporter metrics. If not set, none will be used").
 		StringVar(&cfg.OpenTelemetry.MetricsPrefix)
 
-	a.Flag("prometheus.wal", "Directory from where to read the Prometheus TSDB WAL.").
+	a.Flag("prometheus.wal", "Directory from where to read the Prometheus TSDB WAL. Default: "+defaultWALDirectory).
 		StringVar(&cfg.Prometheus.WAL)
 
-	a.Flag("prometheus.endpoint", "Endpoint where Prometheus hosts its  UI, API, and serves its own metrics.").
+	a.Flag("prometheus.endpoint", "Endpoint where Prometheus hosts its  UI, API, and serves its own metrics. Default: "+defaultPrometheusEndpoint).
 		StringVar(&cfg.Prometheus.Endpoint)
 
-	a.Flag("admin.listen-address", "Administrative HTTP address this process listens on.").
+	a.Flag("admin.listen-address", "Administrative HTTP address this process listens on. Default: "+defaultAdminListenAddress).
 		StringVar(&cfg.Admin.ListenAddress)
 
 	a.Flag("include", "PromQL metric and label matcher which must pass for a series to be forwarded to OpenTelemetry. If repeated, the series must pass any of the filter sets to be forwarded.").
@@ -258,8 +268,8 @@ func main() {
 	a.Flag("resource.use-meta-labels", "Prometheus target labels prefixed with __meta_ map into labels.").
 		BoolVar(&cfg.UseMetaLabels)
 
-	a.Flag("startup.delay", "Delay at startup to allow Prometheus its initial scrape").
-		Default(defaultStartupDelay.String()).DurationVar(&cfg.StartupDelay.Duration)
+	a.Flag("startup.delay", "Delay at startup to allow Prometheus its initial scrape. Default: "+defaultStartupDelay.String()).
+		DurationVar(&cfg.StartupDelay.Duration)
 
 	var plc promlog.Config
 	promlogflag.AddFlags(a, &plc)
