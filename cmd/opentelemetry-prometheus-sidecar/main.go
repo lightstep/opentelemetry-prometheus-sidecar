@@ -194,7 +194,16 @@ type mainConfig struct {
 }
 
 func main() {
-	var cfg mainConfig
+	cfg := mainConfig{
+		Prometheus: promConfig{
+			WAL:      "data/wal",
+			Endpoint: "http://127.0.0.1:9090/",
+		},
+		Destination: otlpConfig{
+			Headers:    map[string]string{},
+			Attributes: map[string]string{},
+		},
+	}
 
 	if os.Getenv("DEBUG") != "" {
 		runtime.SetBlockProfileRate(20)
@@ -208,19 +217,19 @@ func main() {
 	a.HelpFlag.Short('h')
 
 	a.Flag("config-file", "A configuration file.").
-		Default("").StringVar(&cfg.ConfigFilename)
+		StringVar(&cfg.ConfigFilename)
 
 	a.Flag("destination.endpoint", "Address of the OpenTelemetry Metrics protocol (gRPC) endpoint (e.g., https://host:port).  Use \"http\" (not \"https\") for an insecure connection.").
-		Default("").StringVar(&cfg.Destination.Endpoint)
+		StringVar(&cfg.Destination.Endpoint)
 
 	a.Flag("opentelemetry.metrics-prefix", "Customized prefix for exporter metrics. If not set, none will be used").
-		Default("").StringVar(&cfg.OpenTelemetry.MetricsPrefix)
+		StringVar(&cfg.OpenTelemetry.MetricsPrefix)
 
 	a.Flag("prometheus.wal", "Directory from where to read the Prometheus TSDB WAL.").
-		Default("data/wal").StringVar(&cfg.Prometheus.WAL)
+		StringVar(&cfg.Prometheus.WAL)
 
 	a.Flag("prometheus.endpoint", "Endpoint where Prometheus hosts its  UI, API, and serves its own metrics.").
-		Default("http://127.0.0.1:9090/").StringVar(&cfg.Prometheus.Endpoint)
+		StringVar(&cfg.Prometheus.Endpoint)
 
 	a.Flag("web.listen-address", "Address this process listens on.  Note: there is nothing to see here. TODO(healthcheck)").
 		Default("0.0.0.0:9091").StringVar(&cfg.ListenAddress)
@@ -229,7 +238,7 @@ func main() {
 		StringsVar(&cfg.Filtersets)
 
 	a.Flag("security.root-certificate", "Root CA certificate to use for TLS connections, in PEM format (e.g., root.crt).").
-		Default("").StringVar(&cfg.Security.RootCertificate)
+		StringVar(&cfg.Security.RootCertificate)
 
 	a.Flag("destination.header", "Headers for gRPC connection (e.g., MyHeader=Value1). May be repeated.").
 		StringMapVar(&cfg.Destination.Headers)
@@ -261,27 +270,19 @@ func main() {
 	)
 
 	if cfg.ConfigFilename != "" {
-		var fromFile mainConfig
-		metricRenames, staticMetadata, err = parseConfigFile(cfg.ConfigFilename, &fromFile)
+		metricRenames, staticMetadata, err = parseConfigFile(cfg.ConfigFilename, &cfg)
 		if err != nil {
 			usage("error parsing configuration file", err)
 			os.Exit(2)
 		}
-		fmt.Println("BEFORE", cfg)
-		fmt.Println("READ url", fromFile.Prometheus.Endpoint)
-
-		cfg = fromFile
 
 		// Re-parse the command-line flags to let the
 		// command-line have precedence.
-		fmt.Println("Re-parsing:", os.Args[1:])
 		_, err := a.Parse(os.Args[1:])
 		if err != nil {
 			usage("error re-parsing command-line arguments", err)
 			os.Exit(2)
 		}
-
-		fmt.Println("AFTER", cfg)
 	}
 
 	plc.Level.Set(cfg.LogConfig.Level)
