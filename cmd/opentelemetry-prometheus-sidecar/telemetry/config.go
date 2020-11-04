@@ -21,7 +21,7 @@ import (
 	"os"
 	"time"
 
-	kitlog "github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	hostMetrics "go.opentelemetry.io/contrib/instrumentation/host"
 	runtimeMetrics "go.opentelemetry.io/contrib/instrumentation/runtime"
@@ -86,7 +86,7 @@ func WithMetricReportingPeriod(p time.Duration) Option {
 	}
 }
 
-func WithLogger(logger kitlog.Logger) Option {
+func WithLogger(logger log.Logger) Option {
 	return func(c *Config) {
 		c.logger = logger
 	}
@@ -99,7 +99,7 @@ func WithHeaders(headers map[string]string) Option {
 }
 
 type defaultHandler struct {
-	logger kitlog.Logger
+	logger log.Logger
 }
 
 func (l *defaultHandler) Handle(err error) {
@@ -114,13 +114,13 @@ type Config struct {
 	ResourceAttributes       map[string]string
 	Headers                  map[string]string
 	resource                 *resource.Resource
-	logger                   kitlog.Logger
+	logger                   log.Logger
 	errorHandler             otel.ErrorHandler
 }
 
 func newConfig(opts ...Option) Config {
 	var c Config
-	logWriter := kitlog.NewLogfmtLogger(kitlog.NewSyncWriter(os.Stdout))
+	logWriter := log.NewLogfmtLogger(log.NewSyncWriter(os.Stdout))
 	c.Propagators = []string{"b3"}
 	c.logger = level.NewFilter(logWriter, level.AllowInfo())
 	c.errorHandler = &defaultHandler{logger: c.logger}

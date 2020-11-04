@@ -32,7 +32,7 @@ import (
 	"time"
 
 	"github.com/ghodss/yaml"
-	kitlog "github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/cmd/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
@@ -239,7 +239,6 @@ func main() {
 	}
 
 	logger := promlog.New(&cfg.PromlogConfig)
-	mainLogger := kitlog.With(logger, "component", "main")
 
 	telemetry.StaticSetup(logger)
 
@@ -263,14 +262,14 @@ func main() {
 		case "http", "https":
 			// Good!
 		default:
-			level.Error(mainLogger).Log("msg", "endpoints must use http or https", "endpoint", e)
+			level.Error(logger).Log("msg", "endpoints must use http or https", "endpoint", e)
 			os.Exit(2)
 		}
 	}
 
 	_, grpcHeaders, err := buildGRPCHeaders(cfg.Output.Headers)
 	if err != nil {
-		level.Error(mainLogger).Log("msg", "could not parse --grpc.header", "err", err)
+		level.Error(logger).Log("msg", "could not parse --grpc.header", "err", err)
 		os.Exit(2)
 	}
 
@@ -283,18 +282,18 @@ func main() {
 
 		diagnosticsHeadersMap, _, err := buildGRPCHeaders(cfg.Diagnostics.Headers)
 		if err != nil {
-			level.Error(mainLogger).Log("msg", "could not parse --grpc.diagnostics-header", "err", err)
+			level.Error(logger).Log("msg", "could not parse --grpc.diagnostics-header", "err", err)
 			os.Exit(2)
 		}
 
 		diagnosticsAttrs, err := parseResourceAttributes(cfg.Diagnostics.Attributes)
 		if err != nil {
-			level.Error(mainLogger).Log("msg", "could not parse --resource.diagnostics-attribute", "err", err)
+			level.Error(logger).Log("msg", "could not parse --resource.diagnostics-attribute", "err", err)
 			os.Exit(2)
 		}
 		defer telemetry.ConfigureOpentelemetry(
 			telemetry.WithExporterEndpoint(hostport),
-			telemetry.WithLogger(kitlog.With(logger, "component", "telemetry")),
+			telemetry.WithLogger(log.With(logger, "component", "telemetry")),
 			telemetry.WithHeaders(diagnosticsHeadersMap),
 			telemetry.WithResourceAttributes(diagnosticsAttrs),
 		).Shutdown()
@@ -304,7 +303,7 @@ func main() {
 		cfg.MetricRenames, cfg.StaticMetadata, err = parseConfigFile(cfg.ConfigFilename)
 		if err != nil {
 			msg := fmt.Sprintf("Parse config file %s", cfg.ConfigFilename)
-			level.Error(mainLogger).Log("msg", msg, "err", err)
+			level.Error(logger).Log("msg", msg, "err", err)
 			os.Exit(2)
 		}
 	}
@@ -335,31 +334,31 @@ func main() {
 	// 			Registry: prometheus.DefaultRegisterer.(*prometheus.Registry),
 	// 		})
 	// 		if err != nil {
-	// 			level.Error(mainLogger).Log("msg", "Creating Prometheus exporter failed", "err", err)
+	// 			level.Error(logger).Log("msg", "Creating Prometheus exporter failed", "err", err)
 	// 			os.Exit(1)
 	// 		}
 	// 		view.RegisterExporter(promExporter)
 	// 	default:
-	// 		level.Error(mainLogger).Log("msg", "Unknown monitoring backend", "backend", backend)
+	// 		level.Error(logger).Log("msg", "Unknown monitoring backend", "backend", backend)
 	// 		os.Exit(1)
 	// 	}
 	// }
 
-	filtersets, err := parseFiltersets(mainLogger, cfg.Filtersets)
+	filtersets, err := parseFiltersets(logger, cfg.Filtersets)
 	if err != nil {
-		level.Error(mainLogger).Log("msg", "error parsing --include", "err", err)
+		level.Error(logger).Log("msg", "error parsing --include", "err", err)
 		os.Exit(2)
 	}
 
 	targetsURL, err := cfg.PrometheusURL.Parse(targets.DefaultAPIEndpoint)
 	if err != nil {
-		level.Error(mainLogger).Log("msg", "error parsing --prometheus.endpoint", "err", err)
+		level.Error(logger).Log("msg", "error parsing --prometheus.endpoint", "err", err)
 		os.Exit(2)
 	}
 
 	outputAttrs, err := parseResourceAttributes(cfg.Output.Attributes)
 	if err != nil {
-		level.Error(mainLogger).Log("msg", "error parsing --resource.attribute", "err", err)
+		level.Error(logger).Log("msg", "error parsing --resource.attribute", "err", err)
 		os.Exit(2)
 	}
 
@@ -379,7 +378,7 @@ func main() {
 
 	tailer, err := tail.Tail(ctx, cfg.WALDirectory)
 	if err != nil {
-		level.Error(mainLogger).Log("msg", "Tailing WAL failed", "err", err)
+		level.Error(logger).Log("msg", "Tailing WAL failed", "err", err)
 		os.Exit(1)
 	}
 	config.DefaultQueueConfig.MaxSamplesPerSend = otlp.MaxTimeseriesesPerRequest
@@ -390,7 +389,7 @@ func main() {
 	config.DefaultQueueConfig.Capacity = 3 * otlp.MaxTimeseriesesPerRequest
 
 	var scf otlp.StorageClientFactory = &otlpClientFactory{
-		logger:   kitlog.With(logger, "component", "storage"),
+		logger:   log.With(logger, "component", "storage"),
 		url:      cfg.Output.Endpoint,
 		timeout:  10 * time.Second,
 		security: cfg.Security,
@@ -398,18 +397,18 @@ func main() {
 	}
 
 	queueManager, err := otlp.NewQueueManager(
-		kitlog.With(logger, "component", "queue_manager"),
+		log.With(logger, "component", "queue_manager"),
 		config.DefaultQueueConfig,
 		scf,
 		tailer,
 	)
 	if err != nil {
-		level.Error(mainLogger).Log("msg", "Creating queue manager failed", "err", err)
+		level.Error(logger).Log("msg", "Creating queue manager failed", "err", err)
 		os.Exit(1)
 	}
 
 	prometheusReader := retrieval.NewPrometheusReader(
-		kitlog.With(logger, "component", "Prometheus reader"),
+		log.With(logger, "component", "Prometheus reader"),
 		cfg.WALDirectory,
 		tailer,
 		filtersets,
@@ -456,7 +455,7 @@ func main() {
 				// Don't forget to release the reloadReady channel so that waiting blocks can exit normally.
 				select {
 				case <-term:
-					level.Warn(mainLogger).Log("msg", "Received SIGTERM, exiting gracefully...")
+					level.Warn(logger).Log("msg", "Received SIGTERM, exiting gracefully...")
 				case <-cancel:
 					break
 				}
@@ -475,14 +474,14 @@ func main() {
 			func() error {
 				startOffset, err := retrieval.ReadProgressFile(cfg.WALDirectory)
 				if err != nil {
-					level.Warn(mainLogger).Log("msg", "reading progress file failed", "err", err)
+					level.Warn(logger).Log("msg", "reading progress file failed", "err", err)
 					startOffset = 0
 				}
 				// Write the file again once to ensure we have write permission on startup.
 				if err := retrieval.SaveProgressFile(cfg.WALDirectory, startOffset); err != nil {
 					return err
 				}
-				waitForPrometheus(ctx, mainLogger, cfg.PrometheusURL)
+				waitForPrometheus(ctx, logger, cfg.PrometheusURL)
 				// Sleep a fixed amount of time to allow the first scrapes to complete.
 				select {
 				case <-time.After(cfg.StartupDelay):
@@ -490,13 +489,13 @@ func main() {
 					return nil
 				}
 				err = prometheusReader.Run(ctx, startOffset)
-				level.Info(mainLogger).Log("msg", "Prometheus reader stopped")
+				level.Info(logger).Log("msg", "Prometheus reader stopped")
 				return err
 			},
 			func(err error) {
 				// Prometheus reader needs to be stopped before closing the TSDB
 				// so that it doesn't try to write samples to a closed storage.
-				level.Info(mainLogger).Log("msg", "Stopping Prometheus reader...")
+				level.Info(logger).Log("msg", "Stopping Prometheus reader...")
 				cancel()
 			},
 		)
@@ -508,13 +507,13 @@ func main() {
 				if err := queueManager.Start(); err != nil {
 					return err
 				}
-				level.Info(mainLogger).Log("msg", "OpenTelemetry client started")
+				level.Info(logger).Log("msg", "OpenTelemetry client started")
 				<-cancel
 				return nil
 			},
 			func(err error) {
 				if err := queueManager.Stop(); err != nil {
-					level.Error(mainLogger).Log("msg", "Error stopping OpenTelemetry writer", "err", err)
+					level.Error(logger).Log("msg", "Error stopping OpenTelemetry writer", "err", err)
 				}
 				close(cancel)
 			},
@@ -527,7 +526,7 @@ func main() {
 		}
 		g.Add(
 			func() error {
-				level.Info(mainLogger).Log("msg", "Web server started")
+				level.Info(logger).Log("msg", "Web server started")
 				err := server.ListenAndServe()
 				if err != http.ErrServerClosed {
 					return err
@@ -537,16 +536,16 @@ func main() {
 			},
 			func(err error) {
 				if err := server.Shutdown(context.Background()); err != nil {
-					level.Error(mainLogger).Log("msg", "Error stopping web server", "err", err)
+					level.Error(logger).Log("msg", "Error stopping web server", "err", err)
 				}
 				close(cancel)
 			},
 		)
 	}
 	if err := g.Run(); err != nil {
-		level.Error(mainLogger).Log("err", err)
+		level.Error(logger).Log("err", err)
 	}
-	level.Info(mainLogger).Log("msg", "See you next time!")
+	level.Info(logger).Log("msg", "See you next time!")
 }
 
 func buildGRPCHeaders(values []string) (map[string]string, grpcMetadata.MD, error) {
@@ -567,7 +566,7 @@ func parseResourceAttributes(values []string) (map[string]string, error) {
 }
 
 type otlpClientFactory struct {
-	logger   kitlog.Logger
+	logger   log.Logger
 	url      *url.URL
 	timeout  time.Duration
 	security securityConfig
@@ -588,7 +587,7 @@ func (s *otlpClientFactory) Name() string {
 	return s.url.String()
 }
 
-func waitForPrometheus(ctx context.Context, logger kitlog.Logger, promURL *url.URL) {
+func waitForPrometheus(ctx context.Context, logger log.Logger, promURL *url.URL) {
 	tick := time.NewTicker(3 * time.Second)
 	defer tick.Stop()
 
@@ -615,7 +614,7 @@ func waitForPrometheus(ctx context.Context, logger kitlog.Logger, promURL *url.U
 
 // parseFiltersets parses two flags that contain PromQL-style metric/label selectors and
 // returns a list of the resulting matchers.
-func parseFiltersets(logger kitlog.Logger, filtersets []string) ([][]*labels.Matcher, error) {
+func parseFiltersets(logger log.Logger, filtersets []string) ([][]*labels.Matcher, error) {
 	var matchers [][]*labels.Matcher
 	for _, f := range filtersets {
 		m, err := parser.ParseMetricSelector(f)

@@ -22,7 +22,7 @@ import (
 	"testing"
 	"time"
 
-	kitlog "github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/go-logfmt/logfmt"
 	"github.com/stretchr/testify/assert"
@@ -138,7 +138,7 @@ func TestValidConfig2(t *testing.T) {
 	}
 }
 
-func filterDebugLogs() (*testLogger, kitlog.Logger) {
+func filterDebugLogs() (*testLogger, log.Logger) {
 	tl := &testLogger{}
 	return tl, level.NewFilter(tl, level.AllowInfo())
 }

@@ -19,7 +19,7 @@ import (
 	stdlog "log"
 	"os"
 
-	kitlog "github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"go.opentelemetry.io/otel/api/global"
 	"google.golang.org/grpc/grpclog"
@@ -29,8 +29,8 @@ import (
 // - "log" logger
 // - "google.golang.org/grpc/grpclog" log handler
 // - "go.opentelemetry.io/otel/api/global" error handler
-func StaticSetup(logger kitlog.Logger) {
-	stdlog.SetOutput(kitlog.NewStdlibAdapter(kitlog.With(logger, "component", "stdlog")))
+func StaticSetup(logger log.Logger) {
+	stdlog.SetOutput(log.NewStdlibAdapter(log.With(logger, "component", "stdlog")))
 
 	global.SetErrorHandler(newForOTel(logger))
 
@@ -38,12 +38,12 @@ func StaticSetup(logger kitlog.Logger) {
 }
 
 type forOTel struct {
-	logger kitlog.Logger
+	logger log.Logger
 }
 
-func newForOTel(l kitlog.Logger) forOTel {
+func newForOTel(l log.Logger) forOTel {
 	return forOTel{
-		logger: level.Error(kitlog.With(l, "component", "otel")),
+		logger: level.Error(log.With(l, "component", "otel")),
 	}
 }
 
@@ -52,16 +52,16 @@ func (l forOTel) Handle(err error) {
 }
 
 type forGRPC struct {
-	loggers [4]kitlog.Logger
+	loggers [4]log.Logger
 }
 
-func newForGRPC(l kitlog.Logger) forGRPC {
-	l = kitlog.With(l, "component", "grpc")
+func newForGRPC(l log.Logger) forGRPC {
+	l = log.With(l, "component", "grpc")
 	// The gRPC logger here could be extended with configurable
 	// verbosity. As it stands I generally turn off gRPC Info and
 	// Verbose logs, and you see that -coded here.
 	return forGRPC{
-		loggers: [4]kitlog.Logger{
+		loggers: [4]log.Logger{
 			nil, // level.Debug(l),
 			nil, // level.Info(l),
 			level.Warn(l),
