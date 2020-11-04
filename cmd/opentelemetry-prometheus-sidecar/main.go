@@ -144,8 +144,7 @@ type staticMetadataConfig struct {
 }
 
 type securityConfig struct {
-	// @@@ TODO should be []string
-	RootCertificate string `json:"root_certificate"`
+	RootCertificates []string `json:"root_certificates"`
 }
 
 type durationConfig struct {
@@ -256,8 +255,8 @@ func main() {
 	a.Flag("include", "PromQL metric and label matcher which must pass for a series to be forwarded to OpenTelemetry. If repeated, the series must pass any of the filter sets to be forwarded.").
 		StringsVar(&cfg.Filtersets)
 
-	a.Flag("security.root-certificate", "Root CA certificate to use for TLS connections, in PEM format (e.g., root.crt).").
-		StringVar(&cfg.Security.RootCertificate)
+	a.Flag("security.root-certificate", "Root CA certificate to use for TLS connections, in PEM format (e.g., root.crt). May be repeated.").
+		StringsVar(&cfg.Security.RootCertificates)
 
 	a.Flag("destination.header", "Headers for gRPC connection (e.g., MyHeader=Value1). May be repeated.").
 		StringMapVar(&cfg.Destination.Headers)
@@ -623,11 +622,11 @@ type otlpClientFactory struct {
 
 func (s *otlpClientFactory) New() otlp.StorageClient {
 	return otlp.NewClient(&otlp.ClientConfig{
-		Logger:          s.logger,
-		URL:             s.url,
-		Timeout:         s.timeout,
-		RootCertificate: s.security.RootCertificate,
-		Headers:         s.headers,
+		Logger:           s.logger,
+		URL:              s.url,
+		Timeout:          s.timeout,
+		RootCertificates: s.security.RootCertificates,
+		Headers:          s.headers,
 	})
 }
 
