@@ -222,14 +222,14 @@ func TestConfiguration(t *testing.T) {
 		name       string
 		yaml       string
 		args       []string
-		mainConfig mainConfig
+		MainConfig MainConfig
 		errText    string
 	}{
 		{
 			"empty",
 			"",
 			nil,
-			defaultMainConfig(),
+			DefaultMainConfig(),
 			"",
 		},
 		{
@@ -250,15 +250,15 @@ startup_delay: 1333s
 
 `,
 			nil,
-			mainConfig{
-				Prometheus: promConfig{
+			MainConfig{
+				Prometheus: PromConfig{
 					WAL:      "wal-eeee",
-					Endpoint: defaultPrometheusEndpoint,
+					Endpoint: DefaultPrometheusEndpoint,
 				},
-				Admin: adminConfig{
-					ListenAddress: defaultAdminListenAddress,
+				Admin: AdminConfig{
+					ListenAddress: DefaultAdminListenAddress,
 				},
-				Destination: otlpConfig{
+				Destination: OTLPConfig{
 					Endpoint: "http://womp.womp",
 					Attributes: map[string]string{
 						"a": "b",
@@ -269,11 +269,11 @@ startup_delay: 1333s
 						"g": "h",
 					},
 				},
-				LogConfig: logConfig{
+				LogConfig: LogConfig{
 					Level:  "info",
 					Format: "logfmt",
 				},
-				StartupDelay: durationConfig{
+				StartupDelay: DurationConfig{
 					1333 * time.Second,
 				},
 			},
@@ -285,19 +285,19 @@ startup_delay: 1333s
   x: y
 `,
 			nil,
-			mainConfig{},
+			MainConfig{},
 			"invalid YAML",
 		},
 		{
 			"empty_resource_key", ``,
 			[]string{"--destination.attribute==value"},
-			mainConfig{},
+			MainConfig{},
 			"empty destination attribute key",
 		},
 		{
 			"empty_header_key", ``,
 			[]string{"--destination.header==value"},
-			mainConfig{},
+			MainConfig{},
 			"empty destination header key",
 		},
 		{
@@ -325,15 +325,15 @@ log_config:
 				"--prometheus.wal", "wal-eeee",
 				"--log.level=warning",
 			},
-			mainConfig{
-				Prometheus: promConfig{
+			MainConfig{
+				Prometheus: PromConfig{
 					WAL:      "wal-eeee",
-					Endpoint: defaultPrometheusEndpoint,
+					Endpoint: DefaultPrometheusEndpoint,
 				},
-				Admin: adminConfig{
-					ListenAddress: defaultAdminListenAddress,
+				Admin: AdminConfig{
+					ListenAddress: DefaultAdminListenAddress,
 				},
-				Destination: otlpConfig{
+				Destination: OTLPConfig{
 					Endpoint: "http://womp.womp",
 					Attributes: map[string]string{
 						"a": "b",
@@ -344,11 +344,11 @@ log_config:
 						"g": "h",
 					},
 				},
-				LogConfig: logConfig{
+				LogConfig: LogConfig{
 					Level:  "warning",
 					Format: "json",
 				},
-				StartupDelay: durationConfig{
+				StartupDelay: DurationConfig{
 					1333 * time.Second,
 				},
 			},
@@ -405,28 +405,28 @@ static_metadata:
 
 `,
 			nil,
-			mainConfig{
-				Security: securityConfig{
+			MainConfig{
+				Security: SecurityConfig{
 					RootCertificates: []string{
 						"/certs/root1.crt",
 						"/certs/root2.crt",
 					},
 				},
-				Admin: adminConfig{
+				Admin: AdminConfig{
 					ListenAddress: "0.0.0.0:10000",
 				},
-				StartupDelay: durationConfig{
+				StartupDelay: DurationConfig{
 					30 * time.Second,
 				},
-				Prometheus: promConfig{
+				Prometheus: PromConfig{
 					WAL:      "/volume/wal",
 					Endpoint: "http://127.0.0.1:19090/",
 				},
-				OpenTelemetry: otelConfig{
+				OpenTelemetry: OTelConfig{
 					MetricsPrefix: "prefix.",
 					UseMetaLabels: true,
 				},
-				Destination: otlpConfig{
+				Destination: OTLPConfig{
 					Endpoint: "https://ingest.staging.lightstep.com:443",
 					Attributes: map[string]string{
 						"service.name": "demo",
@@ -435,7 +435,7 @@ static_metadata:
 						"Lightstep-Access-Token": "aabbccdd...wwxxyyzz",
 					},
 				},
-				LogConfig: logConfig{
+				LogConfig: LogConfig{
 					Level:  "warn",
 					Format: "json",
 				},
@@ -443,11 +443,11 @@ static_metadata:
 					"metric{label=value}",
 					"other{l1=v1,l2=v2}",
 				},
-				MetricRenames: []metricRenamesConfig{
+				MetricRenames: []MetricRenamesConfig{
 					{From: "old_metric", To: "new_metric"},
 					{From: "mistake", To: "correct"},
 				},
-				StaticMetadata: []staticMetadataConfig{
+				StaticMetadata: []StaticMetadataConfig{
 					{
 						Metric:    "network_bps",
 						Type:      "counter",
@@ -474,8 +474,8 @@ static_metadata:
 			cfg.ConfigFilename = ""
 
 			if tt.errText == "" {
-				if diff := cmp.Diff(tt.mainConfig, cfg); diff != "" {
-					t.Errorf("mainConfig mismatch: %v", diff)
+				if diff := cmp.Diff(tt.MainConfig, cfg); diff != "" {
+					t.Errorf("MainConfig mismatch: %v", diff)
 				}
 				require.NoError(t, err)
 			} else {

@@ -54,19 +54,6 @@ import (
 
 // TODO(jmacd): Define a path for healthchecks.
 
-const (
-	defaultStartupDelay       = time.Minute
-	defaultWALDirectory       = "data/wal"
-	defaultAdminListenAddress = "0.0.0.0:9091"
-	defaultPrometheusEndpoint = "http://127.0.0.1:9090/"
-
-	briefDescription = `
-The OpenTelemetry Prometheus sidecar runs alongside the
-Prometheus (https://prometheus.io/) Server and sends metrics data to
-an OpenTelemetry (https://opentelemetry.io) Protocol endpoint.
-`
-)
-
 // var (
 // 	sizeDistribution    = view.Distribution(0, 1024, 2048, 4096, 16384, 65536, 262144, 1048576, 4194304, 33554432)
 // 	latencyDistribution = view.Distribution(0, 1, 2, 5, 10, 15, 25, 50, 100, 200, 400, 800, 1500, 3000, 6000)
@@ -131,104 +118,117 @@ an OpenTelemetry (https://opentelemetry.io) Protocol endpoint.
 // 	}
 // }
 
-type metricRenamesConfig struct {
+const (
+	DefaultStartupDelay       = time.Minute
+	DefaultWALDirectory       = "data/wal"
+	DefaultAdminListenAddress = "0.0.0.0:9091"
+	DefaultPrometheusEndpoint = "http://127.0.0.1:9090/"
+
+	briefDescription = `
+The OpenTelemetry Prometheus sidecar runs alongside the
+Prometheus (https://prometheus.io/) Server and sends metrics data to
+an OpenTelemetry (https://opentelemetry.io) Protocol endpoint.
+`
+)
+
+type MetricRenamesConfig struct {
 	From string `json:"from"`
 	To   string `json:"to"`
 }
 
-type staticMetadataConfig struct {
+type StaticMetadataConfig struct {
 	Metric    string `json:"metric"`
 	Type      string `json:"type"`
 	ValueType string `json:"value_type"`
 	Help      string `json:"help"`
 }
 
-type securityConfig struct {
+type SecurityConfig struct {
 	RootCertificates []string `json:"root_certificates"`
 }
 
-type durationConfig struct {
+type DurationConfig struct {
 	time.Duration `json:"duration" yaml:"-,inline"`
 }
 
-type otlpConfig struct {
+type OTLPConfig struct {
 	Attributes map[string]string `json:"attributes"`
 	Endpoint   string            `json:"endpoint"`
 	Headers    map[string]string `json:"headers"`
 }
 
-type logConfig struct {
+type LogConfig struct {
 	Level  string `json:"level"`
 	Format string `json:"format"`
 }
 
-type promConfig struct {
+type PromConfig struct {
 	WAL      string `json:"wal"`
 	Endpoint string `json:"endpoint"`
 }
 
-type otelConfig struct {
+type OTelConfig struct {
 	MetricsPrefix string `json:"metrics_prefix"`
 	UseMetaLabels bool   `json:"use_meta_labels"`
 }
 
-type adminConfig struct {
+type AdminConfig struct {
 	ListenAddress string `json:"listen_address"`
 }
 
-type mainConfig struct {
+type MainConfig struct {
 	// General
 	ConfigFilename string         `json:"-"`
-	Security       securityConfig `json:"security"`
-	Admin          adminConfig    `json:"admin"`
-	StartupDelay   durationConfig `json:"startup_delay"`
+	Security       SecurityConfig `json:"security"`
+	Admin          AdminConfig    `json:"admin"`
+	StartupDelay   DurationConfig `json:"startup_delay"`
 
 	// Prometheus input
-	Prometheus promConfig `json:"prometheus"`
+	Prometheus PromConfig `json:"prometheus"`
 
 	// Opentelemetry setup
-	OpenTelemetry otelConfig `json:"opentelemetry"`
+	OpenTelemetry OTelConfig `json:"opentelemetry"`
 
 	// Primary output
-	Destination otlpConfig `json:"destination"`
+	Destination OTLPConfig `json:"destination"`
 
 	// Diagnostic output
-	LogConfig logConfig `json:"log_config"`
+	LogConfig LogConfig `json:"log_config"`
 
 	// Sidecar customization
 	Filtersets     []string               `json:"filter_sets"`
-	MetricRenames  []metricRenamesConfig  `json:"metric_renames"`
-	StaticMetadata []staticMetadataConfig `json:"static_metadata"`
+	MetricRenames  []MetricRenamesConfig  `json:"metric_renames"`
+	StaticMetadata []StaticMetadataConfig `json:"static_metadata"`
 }
 
 type fileReadFunc func(filename string) ([]byte, error)
 
-func defaultMainConfig() mainConfig {
-	return mainConfig{
-		Prometheus: promConfig{
-			WAL:      defaultWALDirectory,
-			Endpoint: defaultPrometheusEndpoint,
+func DefaultMainConfig() MainConfig {
+	return MainConfig{
+		Prometheus: PromConfig{
+			WAL:      DefaultWALDirectory,
+			Endpoint: DefaultPrometheusEndpoint,
 		},
-		Admin: adminConfig{
-			ListenAddress: defaultAdminListenAddress,
+		Admin: AdminConfig{
+			ListenAddress: DefaultAdminListenAddress,
 		},
-		Destination: otlpConfig{
+		Destination: OTLPConfig{
 			Headers:    map[string]string{},
 			Attributes: map[string]string{},
 		},
-		LogConfig: logConfig{
+		LogConfig: LogConfig{
 			Level:  "info",
 			Format: "logfmt",
 		},
-		StartupDelay: durationConfig{
-			defaultStartupDelay,
+		StartupDelay: DurationConfig{
+			DefaultStartupDelay,
 		},
 	}
 }
 
 // Configure is a separate unit of code for testing purposes.
-func Configure(args []string, readFunc fileReadFunc) (mainConfig, map[string]string, []*metadata.Entry, error) {
-	cfg := defaultMainConfig()
+func Configure(args []string, readFunc fileReadFunc) (MainConfig, map[string]string, []*metadata.Entry, error) {
+	cfg := DefaultMainConfig()
 
 	a := kingpin.New(filepath.Base(args[0]), briefDescription)
 
@@ -252,13 +252,13 @@ func Configure(args []string, readFunc fileReadFunc) (mainConfig, map[string]str
 	a.Flag("destination.header", "Headers for gRPC connection (e.g., MyHeader=Value1). May be repeated.").
 		StringMapVar(&cfg.Destination.Headers)
 
-	a.Flag("prometheus.wal", "Directory from where to read the Prometheus TSDB WAL. Default: "+defaultWALDirectory).
+	a.Flag("prometheus.wal", "Directory from where to read the Prometheus TSDB WAL. Default: "+DefaultWALDirectory).
 		StringVar(&cfg.Prometheus.WAL)
 
-	a.Flag("prometheus.endpoint", "Endpoint where Prometheus hosts its  UI, API, and serves its own metrics. Default: "+defaultPrometheusEndpoint).
+	a.Flag("prometheus.endpoint", "Endpoint where Prometheus hosts its  UI, API, and serves its own metrics. Default: "+DefaultPrometheusEndpoint).
 		StringVar(&cfg.Prometheus.Endpoint)
 
-	a.Flag("admin.listen-address", "Administrative HTTP address this process listens on. Default: "+defaultAdminListenAddress).
+	a.Flag("admin.listen-address", "Administrative HTTP address this process listens on. Default: "+DefaultAdminListenAddress).
 		StringVar(&cfg.Admin.ListenAddress)
 
 	a.Flag("security.root-certificate", "Root CA certificate to use for TLS connections, in PEM format (e.g., root.crt). May be repeated.").
@@ -273,7 +273,7 @@ func Configure(args []string, readFunc fileReadFunc) (mainConfig, map[string]str
 	a.Flag("include", "PromQL metric and label matcher which must pass for a series to be forwarded to OpenTelemetry. If repeated, the series must pass any of the filter sets to be forwarded.").
 		StringsVar(&cfg.Filtersets)
 
-	a.Flag("startup.delay", "Delay at startup to allow Prometheus its initial scrape. Default: "+defaultStartupDelay.String()).
+	a.Flag("startup.delay", "Delay at startup to allow Prometheus its initial scrape. Default: "+DefaultStartupDelay.String()).
 		DurationVar(&cfg.StartupDelay.Duration)
 
 	a.Flag(promlogflag.LevelFlagName, promlogflag.LevelFlagHelp).StringVar(&cfg.LogConfig.Level)
@@ -281,7 +281,7 @@ func Configure(args []string, readFunc fileReadFunc) (mainConfig, map[string]str
 
 	_, err := a.Parse(args[1:])
 	if err != nil {
-		return mainConfig{}, nil, nil,
+		return MainConfig{}, nil, nil,
 			errors.Wrap(err, "error parsing command-line arguments")
 	}
 
@@ -293,13 +293,13 @@ func Configure(args []string, readFunc fileReadFunc) (mainConfig, map[string]str
 	if cfg.ConfigFilename != "" {
 		data, err := readFunc(cfg.ConfigFilename)
 		if err != nil {
-			return mainConfig{}, nil, nil,
+			return MainConfig{}, nil, nil,
 				errors.Wrap(err, "reading file")
 		}
 
 		metricRenames, staticMetadata, err = parseConfigFile(data, &cfg)
 		if err != nil {
-			return mainConfig{}, nil, nil,
+			return MainConfig{}, nil, nil,
 				errors.Wrap(err, "error parsing configuration file")
 		}
 
@@ -307,16 +307,16 @@ func Configure(args []string, readFunc fileReadFunc) (mainConfig, map[string]str
 		// command-line arguments take precedence.
 		_, err = a.Parse(args[1:])
 		if err != nil {
-			return mainConfig{}, nil, nil,
+			return MainConfig{}, nil, nil,
 				errors.Wrap(err, "error re-parsing command-line arguments")
 		}
 	}
 
 	if err := checkEmptyKeys("destination attribute", cfg.Destination.Attributes); err != nil {
-		return mainConfig{}, nil, nil, err
+		return MainConfig{}, nil, nil, err
 	}
 	if err := checkEmptyKeys("destination header", cfg.Destination.Headers); err != nil {
-		return mainConfig{}, nil, nil, err
+		return MainConfig{}, nil, nil, err
 	}
 
 	return cfg, metricRenames, staticMetadata, nil
@@ -635,7 +635,7 @@ type otlpClientFactory struct {
 	logger   log.Logger
 	url      *url.URL
 	timeout  time.Duration
-	security securityConfig
+	security SecurityConfig
 	headers  grpcMetadata.MD
 }
 
@@ -692,14 +692,14 @@ func parseFiltersets(logger log.Logger, filtersets []string) ([][]*labels.Matche
 	return matchers, nil
 }
 
-func parseConfigFile(data []byte, cfg *mainConfig) (map[string]string, []*metadata.Entry, error) {
+func parseConfigFile(data []byte, cfg *MainConfig) (map[string]string, []*metadata.Entry, error) {
 	if err := yaml.Unmarshal(data, cfg); err != nil {
 		return nil, nil, errors.Wrap(err, "invalid YAML")
 	}
 	return processMainConfig(cfg)
 }
 
-func processMainConfig(cfg *mainConfig) (map[string]string, []*metadata.Entry, error) {
+func processMainConfig(cfg *MainConfig) (map[string]string, []*metadata.Entry, error) {
 	renameMapping := map[string]string{}
 	for _, r := range cfg.MetricRenames {
 		renameMapping[r.From] = r.To
@@ -746,7 +746,7 @@ func usage(err error) {
 	)
 }
 
-func (d *durationConfig) UnmarshalJSON(data []byte) error {
+func (d *DurationConfig) UnmarshalJSON(data []byte) error {
 	if d == nil {
 		return nil
 	}
@@ -762,6 +762,6 @@ func (d *durationConfig) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (d durationConfig) MarshalJSON() ([]byte, error) {
+func (d DurationConfig) MarshalJSON() ([]byte, error) {
 	return json.Marshal(d.Duration.String())
 }
