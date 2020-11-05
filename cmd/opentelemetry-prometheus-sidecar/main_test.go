@@ -289,6 +289,18 @@ startup_delay: 1333s
 			"invalid YAML",
 		},
 		{
+			"empty_resource_key", ``,
+			[]string{"--destination.attribute==value"},
+			mainConfig{},
+			"empty destination attribute key",
+		},
+		{
+			"empty_header_key", ``,
+			[]string{"--destination.header==value"},
+			mainConfig{},
+			"empty destination header key",
+		},
+		{
 			// Note that attributes and headers are merged, while
 			// for other fields flags overwrite file-config.
 			"file_and_flag", `

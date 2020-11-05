@@ -312,6 +312,13 @@ func Configure(args []string, readFunc fileReadFunc) (mainConfig, map[string]str
 		}
 	}
 
+	if err := checkEmptyKeys("destination attribute", cfg.Destination.Attributes); err != nil {
+		return mainConfig{}, nil, nil, err
+	}
+	if err := checkEmptyKeys("destination header", cfg.Destination.Headers); err != nil {
+		return mainConfig{}, nil, nil, err
+	}
+
 	return cfg, metricRenames, staticMetadata, nil
 }
 
@@ -432,11 +439,6 @@ func main() {
 	targetsURL, err := promURL.Parse(targets.DefaultAPIEndpoint)
 	if err != nil {
 		level.Error(logger).Log("msg", "error parsing --prometheus.endpoint", "err", err)
-		os.Exit(2)
-	}
-
-	if err := parseResourceAttributes(cfg.Destination.Attributes); err != nil {
-		level.Error(logger).Log("msg", "error parsing --resource.attribute", "err", err)
 		os.Exit(2)
 	}
 
@@ -617,12 +619,15 @@ func main() {
 }
 
 func buildGRPCHeaders(values map[string]string) (grpcMetadata.MD, error) {
-	// TODO: sanitize key names?
 	return grpcMetadata.New(values), nil
 }
 
-func parseResourceAttributes(values map[string]string) error {
-	// TODO: sanitize key names?
+func checkEmptyKeys(kind string, values map[string]string) error {
+	for key, _ := range values {
+		if key == "" {
+			return fmt.Errorf("empty %s key(s)", kind)
+		}
+	}
 	return nil
 }
 
