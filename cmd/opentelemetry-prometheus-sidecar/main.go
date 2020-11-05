@@ -227,7 +227,7 @@ func defaultMainConfig() mainConfig {
 }
 
 // Configure is a separate unit of code for testing purposes.
-func Configure(args []string, readFunc fileReadFunc) (mainConfig, map[string]string, []*metadata.Entry, promlog.Config, error) {
+func Configure(args []string, readFunc fileReadFunc) (mainConfig, map[string]string, []*metadata.Entry, error) {
 	cfg := defaultMainConfig()
 
 	a := kingpin.New(filepath.Base(args[0]), briefDescription)
@@ -276,19 +276,14 @@ func Configure(args []string, readFunc fileReadFunc) (mainConfig, map[string]str
 	a.Flag("startup.delay", "Delay at startup to allow Prometheus its initial scrape. Default: "+defaultStartupDelay.String()).
 		DurationVar(&cfg.StartupDelay.Duration)
 
-	var plc promlog.Config
-	promlogflag.AddFlags(a, &plc)
+	a.Flag(promlogflag.LevelFlagName, promlogflag.LevelFlagHelp).StringVar(&cfg.LogConfig.Level)
+	a.Flag(promlogflag.FormatFlagName, promlogflag.FormatFlagHelp).StringVar(&cfg.LogConfig.Format)
 
 	_, err := a.Parse(args[1:])
 	if err != nil {
-		return mainConfig{}, nil, nil, promlog.Config{},
+		return mainConfig{}, nil, nil,
 			errors.Wrap(err, "error parsing command-line arguments")
 	}
-
-	// Copy log-config values into config struct, copy back after
-	// reading the config file.  TODO: remove promlog dependency, D.I.Y. instead
-	cfg.LogConfig.Level = plc.Level.String()
-	cfg.LogConfig.Format = plc.Format.String()
 
 	var (
 		metricRenames  map[string]string
@@ -298,13 +293,13 @@ func Configure(args []string, readFunc fileReadFunc) (mainConfig, map[string]str
 	if cfg.ConfigFilename != "" {
 		data, err := readFunc(cfg.ConfigFilename)
 		if err != nil {
-			return mainConfig{}, nil, nil, promlog.Config{},
+			return mainConfig{}, nil, nil,
 				errors.Wrap(err, "reading file")
 		}
 
 		metricRenames, staticMetadata, err = parseConfigFile(data, &cfg)
 		if err != nil {
-			return mainConfig{}, nil, nil, promlog.Config{},
+			return mainConfig{}, nil, nil,
 				errors.Wrap(err, "error parsing configuration file")
 		}
 
@@ -312,15 +307,12 @@ func Configure(args []string, readFunc fileReadFunc) (mainConfig, map[string]str
 		// command-line arguments take precedence.
 		_, err = a.Parse(args[1:])
 		if err != nil {
-			return mainConfig{}, nil, nil, promlog.Config{},
+			return mainConfig{}, nil, nil,
 				errors.Wrap(err, "error re-parsing command-line arguments")
 		}
 	}
 
-	plc.Level.Set(cfg.LogConfig.Level)
-	plc.Format.Set(cfg.LogConfig.Format)
-
-	return cfg, metricRenames, staticMetadata, plc, nil
+	return cfg, metricRenames, staticMetadata, nil
 }
 
 func main() {
@@ -329,12 +321,17 @@ func main() {
 		runtime.SetMutexProfileFraction(20)
 	}
 
-	cfg, metricRenames, staticMetadata, plc, err := Configure(os.Args, ioutil.ReadFile)
+	cfg, metricRenames, staticMetadata, err := Configure(os.Args, ioutil.ReadFile)
 	if err != nil {
 		usage(err)
 		os.Exit(2)
 	}
 
+	var plc promlog.Config
+	plc.Level = &promlog.AllowedLevel{}
+	plc.Format = &promlog.AllowedFormat{}
+	plc.Level.Set(cfg.LogConfig.Level)
+	plc.Format.Set(cfg.LogConfig.Format)
 	logger := promlog.New(&plc)
 
 	level.Info(logger).Log(

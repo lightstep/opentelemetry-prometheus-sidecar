@@ -196,7 +196,7 @@ static_metadata:
 				require.Equal(t, fn, cfgFile)
 				return []byte(tt.yaml), nil
 			}
-			_, metricRenames, staticMetadata, _, err := Configure([]string{
+			_, metricRenames, staticMetadata, err := Configure([]string{
 				"program",
 				"--config-file=" + cfgFile,
 			}, readFunc)
@@ -289,6 +289,8 @@ startup_delay: 1333s
 			"invalid YAML",
 		},
 		{
+			// Note that attributes and headers are merged, while
+			// for other fields flags overwrite file-config.
 			"file_and_flag", `
 destination:
   endpoint: http://womp.womp
@@ -300,12 +302,16 @@ destination:
 prometheus:
   wal: bad-guy
 
+log_config:
+  format: json
+  level: error
 `,
 			[]string{
 				"--startup.delay=1333s",
 				"--destination.attribute", "c=d",
 				"--destination.header", "g=h",
 				"--prometheus.wal", "wal-eeee",
+				"--log.level=warning",
 			},
 			mainConfig{
 				Prometheus: promConfig{
@@ -327,8 +333,8 @@ prometheus:
 					},
 				},
 				LogConfig: logConfig{
-					Level:  "info",
-					Format: "logfmt",
+					Level:  "warning",
+					Format: "json",
 				},
 				StartupDelay: durationConfig{
 					1333 * time.Second,
@@ -348,13 +354,8 @@ prometheus:
 				args = append(args, "--config-file="+cfgFile)
 			}
 			args = append(args, tt.args...)
-			cfg, _, _, _, err := Configure(args, readFunc)
+			cfg, _, _, err := Configure(args, readFunc)
 			cfg.ConfigFilename = ""
-
-			// @@@
-			// if diff := cmp.Diff(tt.promlogConfig, plc); diff != "" {
-			// 	t.Errorf("promlogConfig mismatch: %v", diff)
-			// }
 
 			if tt.errText == "" {
 				if diff := cmp.Diff(tt.mainConfig, cfg); diff != "" {
