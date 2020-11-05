@@ -201,7 +201,10 @@ type mainConfig struct {
 	UseMetaLabels  bool                   `json:"use_meta_labels"`
 }
 
-func main() {
+type fileReadFunc func(filename string) ([]byte, error)
+
+// Configure is a separate unit of code for testing purposes.
+func Configure(args []string, readFunc fileReadFunc) (mainConfig, map[string]string, []*metadata.Entry, promlog.Config, error) {
 	cfg := mainConfig{
 		Prometheus: promConfig{
 			WAL:      defaultWALDirectory,
@@ -219,12 +222,7 @@ func main() {
 		},
 	}
 
-	if os.Getenv("DEBUG") != "" {
-		runtime.SetBlockProfileRate(20)
-		runtime.SetMutexProfileFraction(20)
-	}
-
-	a := kingpin.New(filepath.Base(os.Args[0]), briefDescription)
+	a := kingpin.New(filepath.Base(args[0]), briefDescription)
 
 	a.Version(version.Print("opentelemetry-prometheus-sidecar"))
 
@@ -273,12 +271,14 @@ func main() {
 	var plc promlog.Config
 	promlogflag.AddFlags(a, &plc)
 
-	_, err := a.Parse(os.Args[1:])
+	_, err := a.Parse(args[1:])
 	if err != nil {
-		usage("error parsing command-line arguments", err)
-		os.Exit(2)
+		return mainConfig{}, nil, nil, promlog.Config{},
+			errors.Wrap(err, "error parsing command-line arguments")
 	}
 
+	// Copy log-config values into config struct, copy back after
+	// reading the config file.  TODO: remove promlog dependency, D.I.Y. instead
 	cfg.LogConfig.Level = plc.Level.String()
 	cfg.LogConfig.Format = plc.Format.String()
 
@@ -288,23 +288,44 @@ func main() {
 	)
 
 	if cfg.ConfigFilename != "" {
-		metricRenames, staticMetadata, err = parseConfigFile(cfg.ConfigFilename, &cfg)
+		data, err := readFunc(cfg.ConfigFilename)
 		if err != nil {
-			usage("error parsing configuration file", err)
-			os.Exit(2)
+			return mainConfig{}, nil, nil, promlog.Config{},
+				errors.Wrap(err, "reading file")
+		}
+
+		metricRenames, staticMetadata, err = parseConfigFile(data, &cfg)
+		if err != nil {
+			return mainConfig{}, nil, nil, promlog.Config{},
+				errors.Wrap(err, "error parsing configuration file")
 		}
 
 		// Re-parse the command-line flags to let the
-		// command-line have precedence.
-		_, err := a.Parse(os.Args[1:])
+		// command-line arguments take precedence.
+		_, err = a.Parse(args[1:])
 		if err != nil {
-			usage("error re-parsing command-line arguments", err)
-			os.Exit(2)
+			return mainConfig{}, nil, nil, promlog.Config{},
+				errors.Wrap(err, "error re-parsing command-line arguments")
 		}
 	}
 
 	plc.Level.Set(cfg.LogConfig.Level)
 	plc.Format.Set(cfg.LogConfig.Format)
+
+	return cfg, metricRenames, staticMetadata, plc, nil
+}
+
+func main() {
+	if os.Getenv("DEBUG") != "" {
+		runtime.SetBlockProfileRate(20)
+		runtime.SetMutexProfileFraction(20)
+	}
+
+	cfg, metricRenames, staticMetadata, plc, err := Configure(os.Args, ioutil.ReadFile)
+	if err != nil {
+		usage(err)
+		os.Exit(2)
+	}
 
 	logger := promlog.New(&plc)
 
@@ -472,15 +493,6 @@ func main() {
 		queueManager,
 		cfg.OpenTelemetry.MetricsPrefix,
 	)
-
-	// Exclude kingpin default flags to expose only Prometheus ones.
-	boilerplateFlags := kingpin.New("", "").Version("")
-	for _, f := range a.Model().Flags {
-		if boilerplateFlags.GetFlag(f.Name) != nil {
-			continue
-		}
-
-	}
 
 	// Monitor outgoing connections on default transport with conntrack.
 	http.DefaultTransport.(*http.Transport).DialContext = conntrack.NewDialContextFunc(
@@ -673,12 +685,8 @@ func parseFiltersets(logger log.Logger, filtersets []string) ([][]*labels.Matche
 	return matchers, nil
 }
 
-func parseConfigFile(filename string, cfg *mainConfig) (map[string]string, []*metadata.Entry, error) {
-	b, err := ioutil.ReadFile(filename)
-	if err != nil {
-		return nil, nil, errors.Wrap(err, "reading file")
-	}
-	if err := yaml.Unmarshal(b, cfg); err != nil {
+func parseConfigFile(data []byte, cfg *mainConfig) (map[string]string, []*metadata.Entry, error) {
+	if err := yaml.Unmarshal(data, cfg); err != nil {
 		return nil, nil, errors.Wrap(err, "invalid YAML")
 	}
 	return processMainConfig(cfg)
@@ -722,11 +730,10 @@ func processMainConfig(cfg *mainConfig) (map[string]string, []*metadata.Entry, e
 	return renameMapping, staticMetadata, nil
 }
 
-func usage(desc string, err error) {
+func usage(err error) {
 	fmt.Fprintf(
 		os.Stderr,
-		"%s: run '%s --help' for usage and configuration syntax: %v\n",
-		desc,
+		"run '%s --help' for usage and configuration syntax: %v\n",
 		os.Args[0],
 		err,
 	)

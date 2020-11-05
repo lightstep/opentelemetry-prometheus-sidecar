@@ -15,7 +15,6 @@ package main
 
 import (
 	"bytes"
-	"errors"
 	"net/http"
 	"os"
 	"os/exec"
@@ -26,6 +25,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
 	"github.com/prometheus/prometheus/pkg/textparse"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMain(m *testing.M) {
@@ -142,59 +142,81 @@ func TestParseFiltersets(t *testing.T) {
 func TestProcessFileConfig(t *testing.T) {
 	for _, tt := range []struct {
 		name           string
-		config         mainConfig
+		yaml           string
 		renameMappings map[string]string
 		staticMetadata []*metadata.Entry
-		err            error
+		errText        string
 	}{
 		{
 			"empty",
-			mainConfig{},
+			"",
 			map[string]string{},
 			[]*metadata.Entry{},
-			nil,
+			"",
 		},
 		{
-			"smoke",
-			mainConfig{
-				MetricRenames: []metricRenamesConfig{
-					{From: "from", To: "to"},
-				},
-				StaticMetadata: []staticMetadataConfig{
-					{Metric: "int64_counter", Type: "counter", ValueType: "int64", Help: "help1"},
-					{Metric: "double_gauge", Type: "gauge", ValueType: "double", Help: "help2"},
-					{Metric: "default_gauge", Type: "gauge"},
-				},
-			},
+			"smoke", `
+metric_renames:
+- from: from
+  to:   to
+static_metadata:
+- metric:     int64_counter
+  type:       counter
+  value_type: int64
+  help:       help1
+- metric:     double_gauge
+  type:       gauge
+  value_type: double
+  help:       help2
+- metric:     default_gauge
+  type:       gauge
+  value_type: double
+`,
 			map[string]string{"from": "to"},
 			[]*metadata.Entry{
 				&metadata.Entry{Metric: "int64_counter", MetricType: textparse.MetricTypeCounter, ValueType: metadata.INT64, Help: "help1"},
 				&metadata.Entry{Metric: "double_gauge", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE, Help: "help2"},
 				&metadata.Entry{Metric: "default_gauge", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
 			},
-			nil,
+			"",
 		},
 		{
-			"missing_metric_type",
-			mainConfig{
-				StaticMetadata: []staticMetadataConfig{{Metric: "int64_default", ValueType: "int64"}},
-			},
+			"missing_metric_type", `
+static_metadata:
+- metric:     int64_default
+  value_type: int64
+`,
 			nil, nil,
-			errors.New("invalid metric type \"\""),
+			"invalid metric type \"\"",
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			metricRenames, staticMetadata, err := processMainConfig(&tt.config)
+			const cfgFile = "testFileDotYaml"
+			readFunc := func(fn string) ([]byte, error) {
+				require.Equal(t, fn, cfgFile)
+				return []byte(tt.yaml), nil
+			}
+			_, metricRenames, staticMetadata, _, err := Configure([]string{
+				"program",
+				"--config-file=" + cfgFile,
+			}, readFunc)
+
 			if diff := cmp.Diff(tt.renameMappings, metricRenames); diff != "" {
 				t.Errorf("renameMappings mismatch: %v", diff)
 			}
 			if diff := cmp.Diff(tt.staticMetadata, staticMetadata); diff != "" {
 				t.Errorf("staticMetadata mismatch: %v", diff)
 			}
-			if (tt.err != nil && err != nil && tt.err.Error() != err.Error()) ||
-				(tt.err == nil && err != nil) || (tt.err != nil && err == nil) {
-				t.Errorf("error mismatch: got %v, expected %v", err, tt.err)
+			if tt.errText == "" {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.errText)
 			}
 		})
 	}
+}
+
+func TestConfig(t *testing.T) {
+	// @@@
 }

@@ -168,9 +168,9 @@ TODO: Document and test the configuration file format mechanism.
 
 #### Resources
 
-Use the `--resource.attribute=KEY=VALUE` flag to add additional resource attributes to all exported timeseries.
+Use the `--destination.attribute=KEY=VALUE` flag to add additional resource attributes to all exported timeseries.
 
-Use the `--resource.use-meta-labels` flag to add discovery meta-labels to all exported timeseries.
+Use the `--destination.use-meta-labels` flag to add discovery meta-labels to all exported timeseries.
 
 #### Filters
 
