@@ -20,11 +20,21 @@ destination:
 
 # Promehteus configuration:
 prometheus:
+  # The primary HTTP endpoint:
+  endpoint: http://127.0.0.1:19090
+
   # Location of the write-ahead-log directory.
   wal: /volume/wal
 
-  # The primary HTTP endpoint:
-  endpoint: http://127.0.0.1:19090
+# OpenTelemetry settings:
+opentelemetry:
+  # Metrics prefix is prepended to all exported metric names:
+  metrics_prefix: prefix.
+
+  # This option tells the sidecar to apply all "__meta_"-prefixed
+  # target labels returned by Prometheus discovered as resource
+  # attributes in the exported metric data:
+  use_meta_labels: true
 
 # Administrative settings:
 admin:
@@ -37,11 +47,6 @@ security:
   root_certificates:
   - /certs/root1.crt
   - /certs/root2.crt
-
-# OpenTelemetry settings:
-opentelemetry:
-  # Metrics prefix is prepended to all exported metric names:
-  metrics_prefix: prefix.
 
 # Filters expressed as Prometheus series expressions.  If any of these
 # are configured, at least one must match for the timeseries be
@@ -66,11 +71,6 @@ static_metadata:
   type:       counter
   value_type: int64
   help:       Number of bits transferred by this process.
-
-# This option tells the sidecar to apply all "__meta_"-prefixed
-# target labels returned by Prometheus discovered as resource
-# attributes in the exported metric data:
-use_meta_labels: true
 
 # Startup delay determines how long to wait before processing new
 # write-ahead-log entries after startup:
