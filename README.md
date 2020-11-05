@@ -120,48 +120,7 @@ can be used as a reference for setup.
 The majority of configuration options for the sidecar are set through flags. To see all available flags, run `opentelemetry-prometheus-sidecar --help`.  The printed usage is shown below:
 
 ```
-usage: opentelemetry-prometheus-sidecar [<flags>]
-
-The OpenTelemetry Prometheus sidecar runs alongside the Prometheus (https://prometheus.io/) Server and
-sends metrics data to an OpenTelemetry (https://opentelemetry.io) Protocol endpoint.
-
-Flags:
-  -h, --help                     Show context-sensitive help (also try --help-long and --help-man).
-      --version                  Show application version.
-      --config-file=CONFIG-FILE  A configuration file.
-      --destination.endpoint=DESTINATION.ENDPOINT
-                                 Address of the OpenTelemetry Metrics protocol (gRPC) endpoint (e.g.,
-                                 https://host:port). Use "http" (not "https") for an insecure
-                                 connection.
-      --opentelemetry.metrics-prefix=OPENTELEMETRY.METRICS-PREFIX
-                                 Customized prefix for exporter metrics. If not set, none will be used
-      --prometheus.wal=PROMETHEUS.WAL
-                                 Directory from where to read the Prometheus TSDB WAL. Default:
-                                 data/wal
-      --prometheus.endpoint=PROMETHEUS.ENDPOINT
-                                 Endpoint where Prometheus hosts its UI, API, and serves its own
-                                 metrics. Default: http://127.0.0.1:9090/
-      --admin.listen-address=ADMIN.LISTEN-ADDRESS
-                                 Administrative HTTP address this process listens on. Default:
-                                 0.0.0.0:9091
-      --include=INCLUDE ...      PromQL metric and label matcher which must pass for a series to be
-                                 forwarded to OpenTelemetry. If repeated, the series must pass any of
-                                 the filter sets to be forwarded.
-      --security.root-certificate=SECURITY.ROOT-CERTIFICATE ...
-                                 Root CA certificate to use for TLS connections, in PEM format (e.g.,
-                                 root.crt). May be repeated.
-      --destination.header=DESTINATION.HEADER ...
-                                 Headers for gRPC connection (e.g., MyHeader=Value1). May be repeated.
-      --destination.attribute=DESTINATION.ATTRIBUTE ...
-                                 Attributes for exported metrics (e.g., MyResource=Value1). May be
-                                 repeated.
-      --resource.use-meta-labels
-                                 Prometheus target labels prefixed with __meta_ map into labels.
-      --startup.delay=STARTUP.DELAY
-                                 Delay at startup to allow Prometheus its initial scrape. Default: 1m0s
-      --log.level=info           Only log messages with the given severity or above. One of: [debug,
-                                 info, warn, error]
-      --log.format=logfmt        Output format of log messages. One of: [logfmt, json]
+TODO
 ```
 
 TODO: Document and test the configuration file format mechanism.

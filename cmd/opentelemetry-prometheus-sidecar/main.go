@@ -169,6 +169,7 @@ type promConfig struct {
 
 type otelConfig struct {
 	MetricsPrefix string `json:"metrics_prefix"`
+	UseMetaLabels bool   `json:"use_meta_labels"`
 }
 
 type adminConfig struct {
@@ -198,7 +199,6 @@ type mainConfig struct {
 	Filtersets     []string               `json:"filter_sets"`
 	MetricRenames  []metricRenamesConfig  `json:"metric_renames"`
 	StaticMetadata []staticMetadataConfig `json:"static_metadata"`
-	UseMetaLabels  bool                   `json:"use_meta_labels"`
 }
 
 type fileReadFunc func(filename string) ([]byte, error)
@@ -236,9 +236,9 @@ func Configure(args []string, readFunc fileReadFunc) (mainConfig, map[string]str
 
 	a.HelpFlag.Short('h')
 
-	// Note: Do not use the kindpin `Default()` mechanism so that
-	// file config overrides default config and flag config
-	// overrides file config.
+	// Below we avoid using the kingpin.v2 `Default()` mechanism
+	// so that file config overrides default config and flag
+	// config overrides file config.
 
 	a.Flag("config-file", "A configuration file.").
 		StringVar(&cfg.ConfigFilename)
@@ -246,8 +246,11 @@ func Configure(args []string, readFunc fileReadFunc) (mainConfig, map[string]str
 	a.Flag("destination.endpoint", "Address of the OpenTelemetry Metrics protocol (gRPC) endpoint (e.g., https://host:port).  Use \"http\" (not \"https\") for an insecure connection.").
 		StringVar(&cfg.Destination.Endpoint)
 
-	a.Flag("opentelemetry.metrics-prefix", "Customized prefix for exporter metrics. If not set, none will be used").
-		StringVar(&cfg.OpenTelemetry.MetricsPrefix)
+	a.Flag("destination.attribute", "Attributes for exported metrics (e.g., MyResource=Value1). May be repeated.").
+		StringMapVar(&cfg.Destination.Attributes)
+
+	a.Flag("destination.header", "Headers for gRPC connection (e.g., MyHeader=Value1). May be repeated.").
+		StringMapVar(&cfg.Destination.Headers)
 
 	a.Flag("prometheus.wal", "Directory from where to read the Prometheus TSDB WAL. Default: "+defaultWALDirectory).
 		StringVar(&cfg.Prometheus.WAL)
@@ -258,20 +261,17 @@ func Configure(args []string, readFunc fileReadFunc) (mainConfig, map[string]str
 	a.Flag("admin.listen-address", "Administrative HTTP address this process listens on. Default: "+defaultAdminListenAddress).
 		StringVar(&cfg.Admin.ListenAddress)
 
-	a.Flag("include", "PromQL metric and label matcher which must pass for a series to be forwarded to OpenTelemetry. If repeated, the series must pass any of the filter sets to be forwarded.").
-		StringsVar(&cfg.Filtersets)
-
 	a.Flag("security.root-certificate", "Root CA certificate to use for TLS connections, in PEM format (e.g., root.crt). May be repeated.").
 		StringsVar(&cfg.Security.RootCertificates)
 
-	a.Flag("destination.header", "Headers for gRPC connection (e.g., MyHeader=Value1). May be repeated.").
-		StringMapVar(&cfg.Destination.Headers)
+	a.Flag("opentelemetry.metrics-prefix", "Customized prefix for exporter metrics. If not set, none will be used").
+		StringVar(&cfg.OpenTelemetry.MetricsPrefix)
 
-	a.Flag("destination.attribute", "Attributes for exported metrics (e.g., MyResource=Value1). May be repeated.").
-		StringMapVar(&cfg.Destination.Attributes)
+	a.Flag("opentelemetry.use-meta-labels", "Prometheus target labels prefixed with __meta_ map into labels.").
+		BoolVar(&cfg.OpenTelemetry.UseMetaLabels)
 
-	a.Flag("resource.use-meta-labels", "Prometheus target labels prefixed with __meta_ map into labels.").
-		BoolVar(&cfg.UseMetaLabels)
+	a.Flag("include", "PromQL metric and label matcher which must pass for a series to be forwarded to OpenTelemetry. If repeated, the series must pass any of the filter sets to be forwarded.").
+		StringsVar(&cfg.Filtersets)
 
 	a.Flag("startup.delay", "Delay at startup to allow Prometheus its initial scrape. Default: "+defaultStartupDelay.String()).
 		DurationVar(&cfg.StartupDelay.Duration)
@@ -447,7 +447,7 @@ func main() {
 		httpClient,
 		targetsURL,
 		labels.FromMap(cfg.Destination.Attributes),
-		cfg.UseMetaLabels,
+		cfg.OpenTelemetry.UseMetaLabels,
 	)
 
 	metadataURL, err := promURL.Parse(metadata.DefaultEndpointPath)
