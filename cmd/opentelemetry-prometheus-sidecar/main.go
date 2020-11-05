@@ -202,23 +202,6 @@ func main() {
 		// Transport: otelhttp.NewTransport(http.DefaultTransport),
 	}
 
-	// for _, backend := range cfg.MonitoringBackends {
-	// 	switch backend {
-	// 	case "prometheus":
-	// 		promExporter, err := oc_prometheus.NewExporter(oc_prometheus.Options{
-	// 			Registry: prometheus.DefaultRegisterer.(*prometheus.Registry),
-	// 		})
-	// 		if err != nil {
-	// 			level.Error(logger).Log("msg", "Creating Prometheus exporter failed", "err", err)
-	// 			os.Exit(1)
-	// 		}
-	// 		view.RegisterExporter(promExporter)
-	// 	default:
-	// 		level.Error(logger).Log("msg", "Unknown monitoring backend", "backend", backend)
-	// 		os.Exit(1)
-	// 	}
-	// }
-
 	filtersets, err := parseFiltersets(logger, cfg.Filtersets)
 	if err != nil {
 		level.Error(logger).Log("msg", "error parsing --include", "err", err)
