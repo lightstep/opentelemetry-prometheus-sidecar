@@ -15,26 +15,58 @@
 package telemetry
 
 import (
+	"bytes"
 	"fmt"
 	stdlog "log"
 	"os"
+	"sync"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/go-logfmt/logfmt"
 	"go.opentelemetry.io/otel/api/global"
 	"google.golang.org/grpc/grpclog"
 )
 
-// staticSetup adds logging configurations for:
+// This file adds logging configurations for:
 // - "log" logger
 // - "google.golang.org/grpc/grpclog" log handler
 // - "go.opentelemetry.io/otel/api/global" error handler
+
+type deferLogger struct {
+	lock     sync.Mutex
+	delegate log.Logger
+}
+
+var staticLogger deferLogger
+
+func (dl *deferLogger) Log(kvs ...interface{}) error {
+	staticLogger.lock.Lock()
+	delegate := dl.delegate
+	staticLogger.lock.Unlock()
+
+	if delegate == nil {
+		var buf bytes.Buffer
+		enc := logfmt.NewEncoder(&buf)
+		_ = enc.EncodeKeyvals(kvs...)
+		_, _ = fmt.Fprintln(os.Stderr, buf.String())
+		return nil
+	}
+	return delegate.Log(kvs...)
+}
+
+func init() {
+	stdlog.SetOutput(log.NewStdlibAdapter(log.With(&staticLogger, "component", "stdlog")))
+
+	global.SetErrorHandler(newForOTel(&staticLogger))
+
+	grpclog.SetLoggerV2(newForGRPC(&staticLogger))
+}
+
 func staticSetup(logger log.Logger) {
-	stdlog.SetOutput(log.NewStdlibAdapter(log.With(logger, "component", "stdlog")))
-
-	global.SetErrorHandler(newForOTel(logger))
-
-	grpclog.SetLoggerV2(newForGRPC(logger))
+	staticLogger.lock.Lock()
+	defer staticLogger.lock.Unlock()
+	staticLogger.delegate = logger
 }
 
 type forOTel struct {

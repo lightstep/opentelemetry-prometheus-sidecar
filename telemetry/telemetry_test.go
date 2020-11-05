@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -29,16 +30,25 @@ import (
 )
 
 const (
-	expectedTracingDisabledMessage = "tracing is disabled by configuration: no endpoint set"
-	expectedMetricsDisabledMessage = "metrics are disabled by configuration: no endpoint set"
+	expectedTracingDisabledMessage = "tracing is disabled: no endpoint set"
+	expectedMetricsDisabledMessage = "metrics are disabled: no endpoint set"
 )
 
 type testLogger struct {
-	output []string
+	lock    sync.Mutex
+	outputX []string
 }
 
 func (logger *testLogger) addOutput(output string) {
-	logger.output = append(logger.output, output)
+	logger.lock.Lock()
+	defer logger.lock.Unlock()
+	logger.outputX = append(logger.outputX, output)
+}
+
+func (logger *testLogger) Output() []string {
+	logger.lock.Lock()
+	defer logger.lock.Unlock()
+	return logger.outputX
 }
 
 func (logger *testLogger) Log(kvs ...interface{}) error {
@@ -54,27 +64,29 @@ func (logger *testLogger) Log(kvs ...interface{}) error {
 
 func (logger *testLogger) requireContains(t *testing.T, expected string) {
 	t.Helper()
-	for _, output := range logger.output {
+	for _, output := range logger.Output() {
 		if strings.Contains(output, expected) {
 			return
 		}
 	}
 
-	t.Errorf("\nString unexpectedly not found: %v\nIn: %v", expected, logger.output)
+	t.Errorf("\nString unexpectedly not found: %v\nIn: %v", expected, logger.Output())
 }
 
 func (logger *testLogger) requireNotContains(t *testing.T, expected string) {
 	t.Helper()
-	for _, output := range logger.output {
+	for _, output := range logger.Output() {
 		if strings.Contains(output, expected) {
-			t.Errorf("\nString unexpectedly found: %v\nIn: %v", expected, logger.output)
+			t.Errorf("\nString unexpectedly found: %v\nIn: %v", expected, logger.Output())
 			return
 		}
 	}
 }
 
 func (logger *testLogger) reset() {
-	logger.output = nil
+	logger.lock.Lock()
+	defer logger.lock.Unlock()
+	logger.outputX = nil
 }
 
 type testErrorHandler struct {
@@ -152,7 +164,7 @@ func TestDebugEnabled(t *testing.T) {
 		}),
 	)
 	defer lsOtel.Shutdown()
-	output := strings.Join(logger.output[:], ",")
+	output := strings.Join(logger.Output(), ",")
 	assert.Contains(t, output, "debug logging enabled")
 	assert.Contains(t, output, "localhost:443")
 }

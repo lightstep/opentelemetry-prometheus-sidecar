@@ -23,6 +23,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	hostMetrics "go.opentelemetry.io/contrib/instrumentation/host"
 	runtimeMetrics "go.opentelemetry.io/contrib/instrumentation/runtime"
 	"go.opentelemetry.io/contrib/propagators/b3"
@@ -39,7 +40,27 @@ import (
 	"google.golang.org/grpc/credentials"
 )
 
-type Option func(*Config)
+type (
+	Telemetry struct {
+		config        Config
+		shutdownFuncs []func() error
+	}
+
+	Option func(*Config)
+
+	Config struct {
+		ExporterEndpoint         string
+		ExporterEndpointInsecure bool
+		Propagators              []string
+		MetricReportingPeriod    string
+		ResourceAttributes       map[string]string
+		Headers                  map[string]string
+		resource                 *resource.Resource
+		logger                   log.Logger
+	}
+
+	setupFunc func() (start, stop func() error, err error)
+)
 
 // WithExporterEndpoint configures the endpoint for sending metrics via OTLP
 func WithExporterEndpoint(url string) Option {
@@ -90,17 +111,6 @@ func WithHeaders(headers map[string]string) Option {
 	}
 }
 
-type Config struct {
-	ExporterEndpoint         string
-	ExporterEndpointInsecure bool
-	Propagators              []string
-	MetricReportingPeriod    string
-	ResourceAttributes       map[string]string
-	Headers                  map[string]string
-	resource                 *resource.Resource
-	logger                   log.Logger
-}
-
 func newConfig(opts ...Option) Config {
 	var c Config
 	logWriter := log.NewLogfmtLogger(log.NewSyncWriter(os.Stdout))
@@ -114,11 +124,6 @@ func newConfig(opts ...Option) Config {
 	}
 	c.resource = newResource(&c)
 	return c
-}
-
-type Launcher struct {
-	config        Config
-	shutdownFuncs []func() error
 }
 
 // configurePropagators configures B3 propagation by default
@@ -153,27 +158,24 @@ func newResource(c *Config) *resource.Resource {
 	return resource.New(kv...)
 }
 
-func newExporter(endpoint string, insecure bool, headers map[string]string) (*otlp.Exporter, error) {
+func newExporter(endpoint string, insecure bool, headers map[string]string) *otlp.Exporter {
 	secureOption := otlp.WithTLSCredentials(credentials.NewClientTLSFromCert(nil, ""))
 	if insecure {
 		secureOption = otlp.WithInsecure()
 	}
-	return otlp.NewExporter(
+	return otlp.NewUnstartedExporter(
 		secureOption,
 		otlp.WithAddress(endpoint),
 		otlp.WithHeaders(headers),
 	)
 }
 
-func setupTracing(c Config) (func() error, error) {
+func (c *Config) setupTracing() (start, stop func() error, err error) {
 	if c.ExporterEndpoint == "" {
-		level.Debug(c.logger).Log("msg", "tracing is disabled by configuration: no endpoint set")
-		return nil, nil
+		level.Debug(c.logger).Log("msg", "tracing is disabled: no endpoint set")
+		return nil, nil, nil
 	}
-	spanExporter, err := newExporter(c.ExporterEndpoint, c.ExporterEndpointInsecure, c.Headers)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create span exporter: %v", err)
-	}
+	spanExporter := newExporter(c.ExporterEndpoint, c.ExporterEndpointInsecure, c.Headers)
 
 	tp := trace.NewTracerProvider(
 		trace.WithConfig(trace.Config{DefaultSampler: trace.AlwaysSample()}),
@@ -181,38 +183,35 @@ func setupTracing(c Config) (func() error, error) {
 		trace.WithResource(c.resource),
 	)
 
-	if err = configurePropagators(&c); err != nil {
-		return nil, err
+	if err := configurePropagators(c); err != nil {
+		return nil, nil, errors.Wrap(err, "failed to configure propagators")
 	}
 
 	global.SetTracerProvider(tp)
 
 	return func() error {
-		return spanExporter.Shutdown(context.Background())
-	}, nil
+			return spanExporter.Start()
+		}, func() error {
+			return spanExporter.Shutdown(context.Background())
+		}, nil
 }
 
-type setupFunc func(Config) (func() error, error)
-
-func setupMetrics(c Config) (func() error, error) {
+func (c *Config) setupMetrics() (func() error, func() error, error) {
 	if c.ExporterEndpoint == "" {
-		level.Debug(c.logger).Log("msg", "metrics are disabled by configuration: no endpoint set")
-		return nil, nil
+		level.Debug(c.logger).Log("msg", "metrics are disabled: no endpoint set")
+		return nil, nil, nil
 	}
-	metricExporter, err := newExporter(c.ExporterEndpoint, c.ExporterEndpointInsecure, c.Headers)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create metric exporter: %v", err)
-	}
+	metricExporter := newExporter(c.ExporterEndpoint, c.ExporterEndpointInsecure, c.Headers)
 
 	period := controller.DefaultPushPeriod
 	if c.MetricReportingPeriod != "" {
+		var err error
 		period, err = time.ParseDuration(c.MetricReportingPeriod)
 		if err != nil {
-			return nil, fmt.Errorf("invalid metric reporting period: %v", err)
+			return nil, nil, errors.Wrap(err, "invalid metric reporting period")
 		}
 		if period <= 0 {
-
-			return nil, fmt.Errorf("invalid metric reporting period: %v", c.MetricReportingPeriod)
+			return nil, nil, fmt.Errorf("invalid metric reporting period")
 		}
 	}
 	pusher := controller.New(
@@ -225,54 +224,70 @@ func setupMetrics(c Config) (func() error, error) {
 		controller.WithPeriod(period),
 	)
 
-	pusher.Start()
-
 	provider := pusher.MeterProvider()
 
-	if err = runtimeMetrics.Start(runtimeMetrics.WithMeterProvider(provider)); err != nil {
-		return nil, fmt.Errorf("failed to start runtime metrics: %v", err)
-	}
-
-	if err = hostMetrics.Start(hostMetrics.WithMeterProvider(provider)); err != nil {
-		return nil, fmt.Errorf("failed to start host metrics: %v", err)
-	}
-
 	global.SetMeterProvider(provider)
+
 	return func() error {
-		pusher.Stop()
-		return metricExporter.Shutdown(context.Background())
-	}, nil
+			if err := metricExporter.Start(); err != nil {
+				return errors.Wrap(err, "failed to start OTLP exporter")
+			}
+
+			if err := runtimeMetrics.Start(runtimeMetrics.WithMeterProvider(provider)); err != nil {
+				return errors.Wrap(err, "failed to start runtime metrics")
+			}
+
+			if err := hostMetrics.Start(hostMetrics.WithMeterProvider(provider)); err != nil {
+				return errors.Wrap(err, "failed to start host metrics")
+			}
+
+			pusher.Start()
+
+			return nil
+		}, func() error {
+			pusher.Stop()
+			return metricExporter.Shutdown(context.Background())
+		}, nil
 }
 
-func ConfigureOpentelemetry(opts ...Option) Launcher {
-	c := newConfig(opts...)
-
-	level.Debug(c.logger).Log("msg", "debug logging enabled")
-	s, _ := json.MarshalIndent(c, "", "\t")
-	level.Debug(c.logger).Log("configuration", string(s))
-
-	staticSetup(c.logger)
-
-	ls := Launcher{
-		config: c,
+func ConfigureOpentelemetry(opts ...Option) *Telemetry {
+	tel := Telemetry{
+		config: newConfig(opts...),
 	}
-	for _, setup := range []setupFunc{setupTracing, setupMetrics} {
-		shutdown, err := setup(c)
+
+	level.Debug(tel.config.logger).Log("msg", "debug logging enabled")
+	s, _ := json.MarshalIndent(tel.config, "", "\t")
+	level.Debug(tel.config.logger).Log("configuration", string(s))
+
+	var startFuncs []func() error
+
+	staticSetup(tel.config.logger)
+
+	for _, setup := range []setupFunc{tel.config.setupTracing, tel.config.setupMetrics} {
+		start, shutdown, err := setup()
 		if err != nil {
-			level.Error(c.logger).Log("setup error", err)
+			level.Error(tel.config.logger).Log("setup error", err)
 			continue
 		}
 		if shutdown != nil {
-			ls.shutdownFuncs = append(ls.shutdownFuncs, shutdown)
+			tel.shutdownFuncs = append(tel.shutdownFuncs, shutdown)
+		}
+		if start != nil {
+			startFuncs = append(startFuncs, start)
 		}
 	}
-	return ls
+	for _, start := range startFuncs {
+		if err := start(); err != nil {
+			level.Error(tel.config.logger).Log("start error", err)
+		}
+	}
+	return &tel
 }
 
-func (ls Launcher) Shutdown() {
-	for _, shutdown := range ls.shutdownFuncs {
+func (tel *Telemetry) Shutdown() {
+	for _, shutdown := range tel.shutdownFuncs {
 		if err := shutdown(); err != nil {
-			level.Error(ls.config.logger).Log("msg", "failed to stop exporter", "error", err)
+			level.Error(tel.config.logger).Log("msg", "failed to stop exporter", "error", err)
 		}
 	}
 }
