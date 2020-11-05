@@ -148,7 +148,7 @@ type securityConfig struct {
 }
 
 type durationConfig struct {
-	time.Duration `yaml:"-,inline"`
+	time.Duration `json:"duration" yaml:"-,inline"`
 }
 
 type otlpConfig struct {
@@ -203,9 +203,8 @@ type mainConfig struct {
 
 type fileReadFunc func(filename string) ([]byte, error)
 
-// Configure is a separate unit of code for testing purposes.
-func Configure(args []string, readFunc fileReadFunc) (mainConfig, map[string]string, []*metadata.Entry, promlog.Config, error) {
-	cfg := mainConfig{
+func defaultMainConfig() mainConfig {
+	return mainConfig{
 		Prometheus: promConfig{
 			WAL:      defaultWALDirectory,
 			Endpoint: defaultPrometheusEndpoint,
@@ -217,10 +216,19 @@ func Configure(args []string, readFunc fileReadFunc) (mainConfig, map[string]str
 			Headers:    map[string]string{},
 			Attributes: map[string]string{},
 		},
+		LogConfig: logConfig{
+			Level:  "info",
+			Format: "logfmt",
+		},
 		StartupDelay: durationConfig{
 			defaultStartupDelay,
 		},
 	}
+}
+
+// Configure is a separate unit of code for testing purposes.
+func Configure(args []string, readFunc fileReadFunc) (mainConfig, map[string]string, []*metadata.Entry, promlog.Config, error) {
+	cfg := defaultMainConfig()
 
 	a := kingpin.New(filepath.Base(args[0]), briefDescription)
 

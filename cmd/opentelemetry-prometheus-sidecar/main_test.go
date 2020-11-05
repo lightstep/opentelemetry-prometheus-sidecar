@@ -217,6 +217,154 @@ static_metadata:
 	}
 }
 
-func TestConfig(t *testing.T) {
-	// @@@
+func TestConfiguration(t *testing.T) {
+	for _, tt := range []struct {
+		name       string
+		yaml       string
+		args       []string
+		mainConfig mainConfig
+		errText    string
+	}{
+		{
+			"empty",
+			"",
+			nil,
+			defaultMainConfig(),
+			"",
+		},
+		{
+			"only_file", `
+destination:
+  endpoint: http://womp.womp
+  attributes:
+    a: b
+    c: d
+  headers:
+    e: f
+    g: h
+
+prometheus:
+  wal: wal-eeee
+
+startup_delay: 1333s
+
+`,
+			nil,
+			mainConfig{
+				Prometheus: promConfig{
+					WAL:      "wal-eeee",
+					Endpoint: defaultPrometheusEndpoint,
+				},
+				Admin: adminConfig{
+					ListenAddress: defaultAdminListenAddress,
+				},
+				Destination: otlpConfig{
+					Endpoint: "http://womp.womp",
+					Attributes: map[string]string{
+						"a": "b",
+						"c": "d",
+					},
+					Headers: map[string]string{
+						"e": "f",
+						"g": "h",
+					},
+				},
+				LogConfig: logConfig{
+					Level:  "info",
+					Format: "logfmt",
+				},
+				StartupDelay: durationConfig{
+					1333 * time.Second,
+				},
+			},
+			"",
+		},
+		{
+			"invalid_yaml", `
+:
+  x: y
+`,
+			nil,
+			mainConfig{},
+			"invalid YAML",
+		},
+		{
+			"file_and_flag", `
+destination:
+  endpoint: http://womp.womp
+  attributes:
+    a: b
+  headers:
+    e: f
+
+prometheus:
+  wal: bad-guy
+
+`,
+			[]string{
+				"--startup.delay=1333s",
+				"--destination.attribute", "c=d",
+				"--destination.header", "g=h",
+				"--prometheus.wal", "wal-eeee",
+			},
+			mainConfig{
+				Prometheus: promConfig{
+					WAL:      "wal-eeee",
+					Endpoint: defaultPrometheusEndpoint,
+				},
+				Admin: adminConfig{
+					ListenAddress: defaultAdminListenAddress,
+				},
+				Destination: otlpConfig{
+					Endpoint: "http://womp.womp",
+					Attributes: map[string]string{
+						"a": "b",
+						"c": "d",
+					},
+					Headers: map[string]string{
+						"e": "f",
+						"g": "h",
+					},
+				},
+				LogConfig: logConfig{
+					Level:  "info",
+					Format: "logfmt",
+				},
+				StartupDelay: durationConfig{
+					1333 * time.Second,
+				},
+			},
+			"",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			const cfgFile = "testFileDotYaml"
+			readFunc := func(fn string) ([]byte, error) {
+				require.Equal(t, fn, cfgFile)
+				return []byte(tt.yaml), nil
+			}
+			args := []string{"program"}
+			if len(tt.yaml) != 0 {
+				args = append(args, "--config-file="+cfgFile)
+			}
+			args = append(args, tt.args...)
+			cfg, _, _, _, err := Configure(args, readFunc)
+			cfg.ConfigFilename = ""
+
+			// @@@
+			// if diff := cmp.Diff(tt.promlogConfig, plc); diff != "" {
+			// 	t.Errorf("promlogConfig mismatch: %v", diff)
+			// }
+
+			if tt.errText == "" {
+				if diff := cmp.Diff(tt.mainConfig, cfg); diff != "" {
+					t.Errorf("mainConfig mismatch: %v", diff)
+				}
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.errText)
+			}
+		})
+	}
 }
