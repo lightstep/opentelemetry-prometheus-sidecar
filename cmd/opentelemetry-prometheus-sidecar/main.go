@@ -504,9 +504,6 @@ func main() {
 		conntrack.DialWithTracing(),
 	)
 
-	// // TODO: this should be _if_ the prom monitoring is selected
-	// http.Handle("/metrics", promhttp.Handler())
-
 	var g group.Group
 	{
 		ctx, cancel := context.WithCancel(context.Background())
