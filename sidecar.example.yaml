@@ -1,0 +1,82 @@
+# Destination parameters, where the sidecar will send metrics:
+destination:
+
+  # Endpoint should be a HTTP or HTTPS address that accepts
+  # OpenTelemetry Metrics v0.5 (or later) over gRPC:
+  endpoint: https://ingest.staging.lightstep.com:443
+
+  # Headers are included as gRPC metadata, represented as HTTP
+  # request headers when exporting metric data:
+  headers:
+    Lightstep-Access-Token: aabbccdd...wwxxyyzz
+
+  # Attributes are applied as OpenTelemetry resources on exporter
+  # metrics, which are typically treated like constant labels in
+  # downstream systems:
+  attributes:
+    # See the well-known semantic conventions for system resources:
+    # https://github.com/open-telemetry/opentelemetry-specification/tree/master/specification/resource/semantic_conventions
+    service.name: demo
+
+# Promehteus configuration:
+prometheus:
+  # Location of the write-ahead-log directory.
+  wal: /volume/wal
+
+  # The primary HTTP endpoint:
+  endpoint: http://127.0.0.1:19090
+
+# Administrative settings:
+admin:
+  # Listen-address of the sidecar's http server (e.g., for healtchecks)
+  listen_address: 0.0.0.0:10000
+
+# Security settings:
+security:
+  # Root certificates used in TLS settings:
+  root_certificates:
+  - /certs/root1.crt
+  - /certs/root2.crt
+
+# OpenTelemetry settings:
+opentelemetry:
+  # Metrics prefix is prepended to all exported metric names:
+  metrics_prefix: prefix.
+
+# Filters expressed as Prometheus series expressions.  If any of these
+# are configured, at least one must match for the timeseries be
+# exported:
+filter_sets:
+- metric{label=value}
+- other{l1=v1,l2=v2}
+
+# Metric renamings:
+metric_renames:
+- from: old_metric
+  to:   new_metric
+- from: mistake
+  to:   correct
+
+# Static metadata configures the kind of metric (counter, gauge,
+# histogram, summary), the value type (int64, double), and the
+# help string used for exporting metrics.  These settings override
+# metadata discovered via Prometheus:
+static_metadata:
+- metric:     network_bps
+  type:       counter
+  value_type: int64
+  help:       Number of bits transferred by this process.
+
+# This option tells the sidecar to apply all "__meta_"-prefixed
+# target labels returned by Prometheus discovered as resource
+# attributes in the exported metric data:
+use_meta_labels: true
+
+# Startup delay determines how long to wait before processing new
+# write-ahead-log entries after startup:
+startup_delay: 30s
+
+# Control the format and level of console-logging output:
+log_config:
+  level: warn
+  format: json
