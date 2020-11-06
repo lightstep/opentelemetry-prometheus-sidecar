@@ -103,7 +103,7 @@ An example command-line:
 opentelemetry-prometheus-sidecar \
   --prometheus.wal=${WAL} \
   --destination.endpoint=${DESTINATION} \
-  --destination.header="Lightstep-Access-Token=${TOKEN}" \
+  --destination.header="Custom-Header=${VALUE}" \
   --destination.attribute="service.name=${SERVICE}" \
   --prometheus.endpoint=${PROMETHEUS} \
 ```
@@ -111,9 +111,9 @@ opentelemetry-prometheus-sidecar \
 where:
 
 * `WAL`: Prometheus' WAL directory, defaults to `data/wal`
-* `DESTINATION`: Destination address host:port, set this to `ingest.lightstep.com:443`
-* `TOKEN`: A Lightstep access token (example header)
-* `SERVICE`: Value for the conventional `service.name` (example resource attribute)
+* `DESTINATION`: Destination address https://host:port
+* `VALUE`: Value for the `Custom-Header` request header
+* `SERVICE`: Value for the `service.name` resource attribute
 * `API_ADDRESS`: Prometheus URL, defaults to `http://127.0.0.1:9090`
 
 The sidecar requires write access to the directory to store its progress between restarts.

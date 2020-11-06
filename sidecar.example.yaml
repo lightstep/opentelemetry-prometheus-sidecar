@@ -3,12 +3,12 @@ destination:
 
   # Endpoint should be a HTTP or HTTPS address that accepts
   # OpenTelemetry Metrics v0.5 (or later) over gRPC:
-  endpoint: https://ingest.staging.lightstep.com:443
+  endpoint: https://otlp.io:443
 
   # Headers are included as gRPC metadata, represented as HTTP
   # request headers when exporting metric data:
   headers:
-    Lightstep-Access-Token: aabbccdd...wwxxyyzz
+    Access-Token: aabbccdd...wwxxyyzz
 
   # Attributes are applied as OpenTelemetry resources on exporter
   # metrics, which are typically treated like constant labels in
@@ -17,6 +17,7 @@ destination:
     # See the well-known semantic conventions for system resources:
     # https://github.com/open-telemetry/opentelemetry-specification/tree/master/specification/resource/semantic_conventions
     service.name: demo
+    environment: public
 
 # Promehteus configuration:
 prometheus:
@@ -47,6 +48,15 @@ security:
   root_certificates:
   - /certs/root1.crt
   - /certs/root2.crt
+
+# Diagnostics parameters, where the sidecar will send its own diagnostic
+# data.  This is structurally the same as destination, above.
+diagnostics:
+  endpoint: https://otlp.io:443
+  headers:
+    Access-Token: wwxxyyzz...aabbccdd
+  attributes:
+    environment: internal
 
 # Filters expressed as Prometheus series expressions.  If any of these
 # are configured, at least one must match for the timeseries be
