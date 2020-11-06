@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
 	_ "net/http/pprof" // Comment this line to disable pprof endpoint.
 	"net/url"
@@ -37,6 +38,7 @@ import (
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/retrieval"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/targets"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	conntrack "github.com/mwitkow/go-conntrack"
 	"github.com/oklog/oklog/pkg/group"
 	"github.com/pkg/errors"
@@ -45,6 +47,7 @@ import (
 	promconfig "github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	grpcMetadata "google.golang.org/grpc/metadata"
 )
 
@@ -150,13 +153,18 @@ func main() {
 	// parsing succeeds in cases w/o a scheme, needs to be
 	// validated anyway.
 	type namedURL struct {
-		name  string
-		value string
+		name       string
+		value      string
+		allowEmpty bool
 	}
 	for _, pair := range []namedURL{
-		{"destination.endpoint", cfg.Destination.Endpoint},
-		{"prometheus.endpoint", cfg.Prometheus.Endpoint},
+		{"destination.endpoint", cfg.Destination.Endpoint, false},
+		{"diagnostics.endpoint", cfg.Diagnostics.Endpoint, true},
+		{"prometheus.endpoint", cfg.Prometheus.Endpoint, false},
 	} {
+		if pair.allowEmpty && pair.value == "" {
+			continue
+		}
 		if pair.value == "" {
 			level.Error(logger).Log("msg", "endpoint must be set", "name", pair.name)
 			os.Exit(2)
@@ -176,10 +184,24 @@ func main() {
 		}
 	}
 
-	grpcMetadata, err := buildGRPCHeaders(cfg.Destination.Headers)
-	if err != nil {
-		level.Error(logger).Log("msg", "could not parse --grpc.header", "err", err)
-		os.Exit(2)
+	if cfg.Diagnostics.Endpoint != "" {
+		endpoint, _ := url.Parse(cfg.Diagnostics.Endpoint)
+		hostport := endpoint.Hostname()
+		if len(endpoint.Port()) > 0 {
+			hostport = net.JoinHostPort(hostport, endpoint.Port())
+		}
+		// Set a service.name resource if none is set.
+		const serviceNameKey = "service.name"
+		if _, ok := cfg.Diagnostics.Attributes[serviceNameKey]; !ok {
+			cfg.Diagnostics.Attributes[serviceNameKey] = "opentelemetry-prometheus-sidecar"
+		}
+
+		defer telemetry.ConfigureOpentelemetry(
+			telemetry.WithExporterEndpoint(hostport),
+			telemetry.WithLogger(log.With(logger, "component", "telemetry")),
+			telemetry.WithHeaders(cfg.Diagnostics.Headers),
+			telemetry.WithResourceAttributes(cfg.Diagnostics.Attributes),
+		).Shutdown()
 	}
 
 	// We instantiate a context here since the tailer is used by two other components.
@@ -198,8 +220,7 @@ func main() {
 	// }()
 
 	httpClient := &http.Client{
-		// TODO: Re-enable HTTP tracing:
-		// Transport: otelhttp.NewTransport(http.DefaultTransport),
+		Transport: otelhttp.NewTransport(http.DefaultTransport),
 	}
 
 	filtersets, err := parseFiltersets(logger, cfg.Filtersets)
@@ -250,7 +271,7 @@ func main() {
 		url:      outputURL,
 		timeout:  10 * time.Second,
 		security: cfg.Security,
-		headers:  grpcMetadata,
+		headers:  grpcMetadata.New(cfg.Destination.Headers),
 	}
 
 	queueManager, err := otlp.NewQueueManager(
@@ -400,10 +421,6 @@ func usage(err error) {
 		os.Args[0],
 		err,
 	)
-}
-
-func buildGRPCHeaders(values map[string]string) (grpcMetadata.MD, error) {
-	return grpcMetadata.New(values), nil
 }
 
 type otlpClientFactory struct {
