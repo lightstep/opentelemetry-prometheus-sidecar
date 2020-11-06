@@ -58,9 +58,9 @@ func (dl *deferLogger) Log(kvs ...interface{}) error {
 func init() {
 	stdlog.SetOutput(log.NewStdlibAdapter(log.With(&staticLogger, "component", "stdlog")))
 
-	global.SetErrorHandler(newForOTel(&staticLogger))
+	global.SetErrorHandler(newForOTel(log.With(&staticLogger, "component", "otel")))
 
-	grpclog.SetLoggerV2(newForGRPC(&staticLogger))
+	grpclog.SetLoggerV2(newForGRPC(log.With(&staticLogger, "component", "grpc")))
 }
 
 func staticSetup(logger log.Logger) {
@@ -75,7 +75,7 @@ type forOTel struct {
 
 func newForOTel(l log.Logger) forOTel {
 	return forOTel{
-		logger: level.Error(log.With(l, "component", "otel")),
+		logger: level.Error(l),
 	}
 }
 
@@ -88,7 +88,6 @@ type forGRPC struct {
 }
 
 func newForGRPC(l log.Logger) forGRPC {
-	l = log.With(l, "component", "grpc")
 	// The gRPC logger here could be extended with configurable
 	// verbosity. As this stands, turn off gRPC Info and Verbose
 	// logs.
