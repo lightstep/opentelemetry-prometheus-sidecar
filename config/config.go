@@ -156,7 +156,7 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 		StringVar(&cfg.ConfigFilename)
 
 	makeOTLPFlags := func(lowerPrefix string, op *OTLPConfig) {
-		upperPrefix := strings.ToUpper(lowerPrefix)
+		upperPrefix := strings.Title(lowerPrefix)
 		a.Flag(lowerPrefix+".endpoint", upperPrefix+" address of a OpenTelemetry Metrics protocol gRPC endpoint (e.g., https://host:port).  Use \"http\" (not \"https\") for an insecure connection.").
 			StringVar(&op.Endpoint)
 
