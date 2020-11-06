@@ -170,8 +170,6 @@ func (t *Tailer) Read(b []byte) (int, error) {
 		n, err := t.cur.Read(b)
 		if err != io.EOF {
 			t.incOffset(n)
-			if err != nil {
-			}
 			return n, err
 		}
 		select {

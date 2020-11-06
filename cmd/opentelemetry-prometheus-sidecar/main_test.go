@@ -15,7 +15,6 @@ package main
 
 import (
 	"bytes"
-	"errors"
 	"net/http"
 	"os"
 	"os/exec"
@@ -23,9 +22,6 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
-	"github.com/google/go-cmp/cmp"
-	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
-	"github.com/prometheus/prometheus/pkg/textparse"
 )
 
 func TestMain(m *testing.M) {
@@ -43,7 +39,11 @@ func TestStartupInterrupt(t *testing.T) {
 		t.Skip("skipping test in short mode.")
 	}
 
-	cmd := exec.Command(os.Args[0], "--prometheus.wal-directory=testdata/wal")
+	cmd := exec.Command(
+		os.Args[0],
+		"--prometheus.wal=testdata/wal",
+		"--destination.endpoint=http://localhost:9999",
+	)
 	cmd.Env = append(os.Environ(), "RUN_MAIN=1")
 	var bout, berr bytes.Buffer
 	cmd.Stdout = &bout
@@ -130,66 +130,6 @@ func TestParseFiltersets(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if _, err := parseFiltersets(logger, tt.filtersets); err == nil {
 				t.Fatalf("expected error, but got none")
-			}
-		})
-	}
-}
-
-func TestProcessFileConfig(t *testing.T) {
-	for _, tt := range []struct {
-		name           string
-		config         fileConfig
-		renameMappings map[string]string
-		staticMetadata []*metadata.Entry
-		err            error
-	}{
-		{
-			"empty",
-			fileConfig{},
-			map[string]string{},
-			[]*metadata.Entry{},
-			nil,
-		},
-		{
-			"smoke",
-			fileConfig{
-				MetricRenames: []metricRenamesConfig{
-					{From: "from", To: "to"},
-				},
-				StaticMetadata: []staticMetadataConfig{
-					{Metric: "int64_counter", Type: "counter", ValueType: "int64", Help: "help1"},
-					{Metric: "double_gauge", Type: "gauge", ValueType: "double", Help: "help2"},
-					{Metric: "default_gauge", Type: "gauge"},
-				},
-			},
-			map[string]string{"from": "to"},
-			[]*metadata.Entry{
-				&metadata.Entry{Metric: "int64_counter", MetricType: textparse.MetricTypeCounter, ValueType: metadata.INT64, Help: "help1"},
-				&metadata.Entry{Metric: "double_gauge", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE, Help: "help2"},
-				&metadata.Entry{Metric: "default_gauge", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
-			},
-			nil,
-		},
-		{
-			"missing_metric_type",
-			fileConfig{
-				StaticMetadata: []staticMetadataConfig{{Metric: "int64_default", ValueType: "int64"}},
-			},
-			nil, nil,
-			errors.New("invalid metric type \"\""),
-		},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			renameMappings, staticMetadata, err := processFileConfig(tt.config)
-			if diff := cmp.Diff(tt.renameMappings, renameMappings); diff != "" {
-				t.Errorf("renameMappings mismatch: %v", diff)
-			}
-			if diff := cmp.Diff(tt.staticMetadata, staticMetadata); diff != "" {
-				t.Errorf("staticMetadata mismatch: %v", diff)
-			}
-			if (tt.err != nil && err != nil && tt.err.Error() != err.Error()) ||
-				(tt.err == nil && err != nil) || (tt.err != nil && err == nil) {
-				t.Errorf("error mismatch: got %v, expected %v", err, tt.err)
 			}
 		})
 	}

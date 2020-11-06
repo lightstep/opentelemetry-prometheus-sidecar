@@ -21,11 +21,13 @@ import (
 	"io/ioutil"
 	"net"
 	"net/url"
-	"strconv"
 	"sync"
 	"time"
 
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	metricsService "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/collector/metrics/v1"
+	"github.com/prometheus/common/version"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/balancer/roundrobin"
 	"google.golang.org/grpc/codes"
@@ -33,10 +35,6 @@ import (
 	grpcMetadata "google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/resolver/manual"
 	"google.golang.org/grpc/status"
-
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
-	"github.com/prometheus/common/version"
 )
 
 const (
@@ -68,24 +66,24 @@ const (
 // implementation may hit a single backend, so the application should create a
 // number of these clients.
 type Client struct {
-	logger          log.Logger
-	url             *url.URL
-	timeout         time.Duration
-	resolver        *manual.Resolver
-	rootCertificate string
-	headers         grpcMetadata.MD
+	logger           log.Logger
+	url              *url.URL
+	timeout          time.Duration
+	resolver         *manual.Resolver
+	rootCertificates []string
+	headers          grpcMetadata.MD
 
 	conn *grpc.ClientConn
 }
 
 // ClientConfig configures a Client.
 type ClientConfig struct {
-	Logger          log.Logger
-	URL             *url.URL
-	Timeout         time.Duration
-	Resolver        *manual.Resolver
-	RootCertificate string
-	Headers         grpcMetadata.MD
+	Logger           log.Logger
+	URL              *url.URL
+	Timeout          time.Duration
+	Resolver         *manual.Resolver
+	RootCertificates []string
+	Headers          grpcMetadata.MD
 }
 
 // NewClient creates a new Client.
@@ -95,12 +93,12 @@ func NewClient(conf *ClientConfig) *Client {
 		logger = log.NewNopLogger()
 	}
 	return &Client{
-		logger:          logger,
-		url:             conf.URL,
-		timeout:         conf.Timeout,
-		resolver:        conf.Resolver,
-		rootCertificate: conf.RootCertificate,
-		headers:         conf.Headers,
+		logger:           logger,
+		url:              conf.URL,
+		timeout:          conf.Timeout,
+		resolver:         conf.Resolver,
+		rootCertificates: conf.RootCertificates,
+		headers:          conf.Headers,
 	}
 }
 
@@ -116,10 +114,7 @@ func (c *Client) getConnection(ctx context.Context) (*grpc.ClientConn, error) {
 		return c.conn, nil
 	}
 
-	useAuth, err := strconv.ParseBool(c.url.Query().Get("auth"))
-	if err != nil {
-		useAuth = true // Default to auth enabled.
-	}
+	useAuth := c.url.Scheme == "https"
 	level.Debug(c.logger).Log(
 		"msg", "new otlp connection",
 		"auth", useAuth,
@@ -130,21 +125,24 @@ func (c *Client) getConnection(ctx context.Context) (*grpc.ClientConn, error) {
 		grpc.WithBlock(), // Wait for the connection to be established before using it.
 		grpc.WithUserAgent(userAgent),
 
-		// TODO: enable gRPC tracing
-		// grpc.WithStatsHandler(&ocgrpc.ClientHandler{}),
+		// TODO: Re-enable gRPC tracing.
+		// grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
 	}
 	if useAuth {
 		var tcfg tls.Config
-		if c.rootCertificate != "" {
+		if len(c.rootCertificates) != 0 {
 			certPool := x509.NewCertPool()
-			bs, err := ioutil.ReadFile(c.rootCertificate)
-			if err != nil {
-				return nil, fmt.Errorf("could not read certificate authority certificate: %s: %w", c.rootCertificate, err)
-			}
 
-			ok := certPool.AppendCertsFromPEM(bs)
-			if !ok {
-				return nil, fmt.Errorf("could not parse certificate authority certificate: %s: %w", c.rootCertificate, err)
+			for _, cert := range c.rootCertificates {
+				bs, err := ioutil.ReadFile(cert)
+				if err != nil {
+					return nil, fmt.Errorf("could not read certificate authority certificate: %s: %w", cert, err)
+				}
+
+				ok := certPool.AppendCertsFromPEM(bs)
+				if !ok {
+					return nil, fmt.Errorf("could not parse certificate authority certificate: %s: %w", cert, err)
+				}
 			}
 
 			tcfg = tls.Config{
@@ -168,7 +166,7 @@ func (c *Client) getConnection(ctx context.Context) (*grpc.ClientConn, error) {
 	if err != nil {
 		level.Debug(c.logger).Log(
 			"msg", "connection status",
-			"url", c.url.String(),
+			"address", address,
 			"err", err,
 		)
 	}

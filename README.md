@@ -1,8 +1,8 @@
-# Lightstep Prometheus sidecar
+# OpenTelemetry Prometheus sidecar
 
 This repository contains a sidecar for the
 [Prometheus](https://prometheus.io/) Server that sends metrics data to
-an [OpenTelemetry](https://opentelemetry.io) Protocol endpoint.  This
+an [OpenTelemetry](https://opentelemetry.io) Metrics Protocol endpoint.  This
 software is derived from the [Stackdriver Prometheus
 Sidecar](https://github.com/Stackdriver/stackdriver-prometheus-sidecar).
 
@@ -10,11 +10,15 @@ Sidecar](https://github.com/Stackdriver/stackdriver-prometheus-sidecar).
 
 ## OpenTelemetry Design
 
-In OpenTelemetry, the basic process or instrumented unit of
-computation is described by a _resource_.  The primary function of
-this sidecar is to read data pulled by Prometheus, covert it to the
-OpenTelemetry data model, and finally write it to an OpenTelemetry
-endpoint.
+A key difference between the OpenTelemetry Metrics data model and the
+Prometheus or OpenMetrics data models is the introduction of a
+[Resource concept](https://github.com/open-telemetry/opentelemetry-specification/blob/master/specification/resource/sdk.md)
+to describe the unit of computation or the entity responsible for
+producing a batch of metric data.
+
+The function of this sidecar is to read data collected and written by
+Prometheus, convert into the OpenTelemetry data model, attach Resource
+attributes, and write to an OpenTelemetry endpoint.
 
 This sidecar sends [OpenTelemetry Protocol](https://github.com/open-telemetry/opentelemetry-specification/blob/master/specification/protocol/otlp.md) [version 0.5](https://github.com/open-telemetry/opentelemetry-proto/releases/tag/v0.5.0) over gRPC.
 
@@ -62,8 +66,8 @@ metric labels plus those applied during Prometheus relabeling rules; this always
 
 When reporting timeseries to output destination, the identifying
 target labels are included as OpenTelemetry resource attributes.  The
-`--resource.attribute` flag can be used to add addional constant
-labels as resource attributes.  The `--resource.use-meta-labels` flag
+`--destination.attribute` flag can be used to add addional constant
+labels as resource attributes.  The `--opentelemetry.use-meta-labels` flag
 can be used to add all meta labels as resource attribuets.  Otherwise,
 labels beginning with `__` are dropped.
 
@@ -97,18 +101,20 @@ An example command-line:
 
 ```
 opentelemetry-prometheus-sidecar \
-  --prometheus.wal-directory=${WAL} \
-  --opentelemetry.endpoint=${DESTINATION} \
-  --grpc.header="Lightstep-Access-Token=${TOKEN}" \
-  --prometheus.api-address=${API_ADDRESS} \
+  --prometheus.wal=${WAL} \
+  --destination.endpoint=${DESTINATION} \
+  --destination.header="Lightstep-Access-Token=${TOKEN}" \
+  --destination.attribute="service.name=${SERVICE}" \
+  --prometheus.endpoint=${PROMETHEUS} \
 ```
 
 where:
 
 * `WAL`: Prometheus' WAL directory, defaults to `data/wal`
 * `DESTINATION`: Destination address host:port, set this to `ingest.lightstep.com:443`
-* `TOKEN`: A Lightstep access token (example header value)
-* `API_ADDRESS`: Prometheus' API address, defaults to `127.0.0.1:9090`
+* `TOKEN`: A Lightstep access token (example header)
+* `SERVICE`: Value for the conventional `service.name` (example resource attribute)
+* `API_ADDRESS`: Prometheus URL, defaults to `http://127.0.0.1:9090`
 
 The sidecar requires write access to the directory to store its progress between restarts.
 
@@ -117,53 +123,66 @@ can be used as a reference for setup.
 
 ### Configuration
 
-The majority of configuration options for the sidecar are set through flags. To see all available flags, run `opentelemetry-prometheus-sidecar --help`.  The printed usage is shown below:
+Most sidecar configuration settings can be set through flags or a yaml
+configuration file. To see all available flags, run
+`opentelemetry-prometheus-sidecar --help`.  The printed usage is shown
+below:
 
 ```
 $ ./opentelemetry-prometheus-sidecar --help
 usage: opentelemetry-prometheus-sidecar [<flags>]
 
-OpenTelemetry Prometheus sidecar
+The OpenTelemetry Prometheus sidecar runs alongside the Prometheus (https://prometheus.io/) Server and
+sends metrics data to an OpenTelemetry (https://opentelemetry.io) Protocol endpoint.
 
 Flags:
   -h, --help                     Show context-sensitive help (also try --help-long and --help-man).
       --version                  Show application version.
       --config-file=CONFIG-FILE  A configuration file.
-      --opentelemetry.endpoint=
-                                 Address of the OpenTelemetry Metrics endpoint.
-      --opentelemetry.metrics-prefix=OPENTELEMETRY.METRICS-PREFIX
-                                 Customized prefix for exporter metrics. If not set, none will be used
-      --prometheus.wal-directory="data/wal"
-                                 Directory from where to read the Prometheus TSDB WAL.
-      --prometheus.api-address=http://127.0.0.1:9090/
-                                 Address to listen on for UI, API, and telemetry. Use ?auth=false for an
-                                 insecure connection.
-      --monitoring.backend=prometheus ...
-                                 Monitoring backend(s) for internal metrics
-      --web.listen-address="0.0.0.0:9091"
-                                 Address to listen on for UI, API, and telemetry.
-      --include=INCLUDE ...      PromQL metric and label matcher which must pass for a series to be forwarded
-                                 to OpenTelemetry. If repeated, the series must pass any of the filter sets to
-                                 be forwarded.
-      --security.root-certificate=SECURITY.ROOT-CERTIFICATE
-                                 Root CA certificate to use for TLS connections, in PEM format (e.g.,
-                                 root.crt).
-      --grpc.header=GRPC.HEADER ...
+      --destination.endpoint=DESTINATION.ENDPOINT  
+                                 Address of the OpenTelemetry Metrics protocol (gRPC) endpoint (e.g.,
+                                 https://host:port). Use "http" (not "https") for an insecure
+                                 connection.
+      --destination.attribute=DESTINATION.ATTRIBUTE ...  
+                                 Attributes for exported metrics (e.g., MyResource=Value1). May be
+                                 repeated.
+      --destination.header=DESTINATION.HEADER ...  
                                  Headers for gRPC connection (e.g., MyHeader=Value1). May be repeated.
-      --resource.attribute=RESOURCE.ATTRIBUTE ...
-                                 Attributes for exported metrics (e.g., MyResource=Value1). May be repeated.
-      --resource.use-meta-labels
+      --prometheus.wal=PROMETHEUS.WAL  
+                                 Directory from where to read the Prometheus TSDB WAL. Default:
+                                 data/wal
+      --prometheus.endpoint=PROMETHEUS.ENDPOINT  
+                                 Endpoint where Prometheus hosts its UI, API, and serves its own
+                                 metrics. Default: http://127.0.0.1:9090/
+      --admin.listen-address=ADMIN.LISTEN-ADDRESS  
+                                 Administrative HTTP address this process listens on. Default:
+                                 0.0.0.0:9091
+      --security.root-certificate=SECURITY.ROOT-CERTIFICATE ...  
+                                 Root CA certificate to use for TLS connections, in PEM format (e.g.,
+                                 root.crt). May be repeated.
+      --opentelemetry.metrics-prefix=OPENTELEMETRY.METRICS-PREFIX  
+                                 Customized prefix for exporter metrics. If not set, none will be used
+      --opentelemetry.use-meta-labels  
                                  Prometheus target labels prefixed with __meta_ map into labels.
-      --log.level=info           Only log messages with the given severity or above. One of: [debug, info,
-                                 warn, error]
-      --log.format=logfmt        Output format of log messages. One of: [logfmt, json]
+      --include=INCLUDE ...      PromQL metric and label matcher which must pass for a series to be
+                                 forwarded to OpenTelemetry. If repeated, the series must pass any of
+                                 the filter sets to be forwarded.
+      --startup.delay=STARTUP.DELAY  
+                                 Delay at startup to allow Prometheus its initial scrape. Default: 1m0s
+      --log.level=LOG.LEVEL      Only log messages with the given severity or above. One of: [debug,
+                                 info, warn, error]
+      --log.format=LOG.FORMAT    Output format of log messages. One of: [logfmt, json]
 ```
+
+Two kinds of sidecar customization are available only through the
+configuration file.  An [example sidecar yaml configuration documents
+the available options](./sidecar.yaml).
 
 #### Resources
 
-Use the `--resource.attribute=KEY=VALUE` flag to add additional resource attributes to all exported timeseries.
+Use the `--destination.attribute=KEY=VALUE` flag to add additional resource attributes to all exported timeseries.
 
-Use the `--resource.use-meta-labels` flag to add discovery meta-labels to all exported timeseries.
+Use the `--opentelemetry.use-meta-labels` flag to add discovery meta-labels to all exported timeseries.
 
 #### Filters
 
@@ -179,25 +198,34 @@ For equality filter on metric name you can use the simpler notation, e.g. `--inc
 
 The flag may be repeated to provide several sets of filters, in which case the metric will be forwarded if it matches at least one of them.
 
-#### File
+#### Metric renames
 
-The sidecar can also be provided with a configuration file. It allows to define static metric renames and to overwrite metric metadata which is usually provided by Prometheus. A configuration file should not be required for the majority of users.
+To change the name of a metric as it is exported, use the
+`metric_renames` section in the configuration file:
 
 ```yaml
 metric_renames:
   - from: original_metric_name
     to: new_metric_name
 # - ...
+```
 
+#### Static metadata
+
+To change the output type, value type, or description of a metric
+instrument as it is exported, use the `static_metadata` section in the
+configuration file:
+
+```yaml
 static_metadata:
   - metric: some_metric_name
-    type: counter # or gauge/histogram
+    type: counter # or gauge, or histogram
     value_type: double # or int64
     help: an arbitrary help string
 # - ...
 ```
 
-Static metadata allows overriding metadata used for output timeseries.  Note:
+Note:
 
 * All `static_metadata` entries must have `type` specified.
 * If `value_type` is specified, it will override the default value type for counters and gauges. All Prometheus metrics have a default type of double.
@@ -206,12 +234,14 @@ Static metadata allows overriding metadata used for output timeseries.  Note:
 
 This repository was copied into a private reposotitory from [this upstream fork](https://github.com/Stackdriver/stackdriver-prometheus-sidecar/tree/1361301230bcfc978864a8f4c718aba98bc07a3d) of `stackdriver-prometheus-sidecar`, dated July 31, 2020.
 
-Changes relative to `stackdriver-prometheus-sidecar` include:
+### Changes relative to Stackdriver
+
+Changes relative to `stackdriver-prometheus-sidecar` included in the initial release of `opentelemetry-prometheus-sidecar`:
 
 * Replace Stackdriver monitoring protocol with OTLP v0.5; this was straightforward since these are similar protocols
-* Add `--grpc.header` support for adding gRPC metadata
-* Remove "Resource Map" code, used for generating "Monitored Resource" concept in Stackdriver; OpenTelemetry is less restrictive, this code is replaced by `--resource.attribute` and `--resource.use-meta-labels` support
-* Remove GCP/GKE-specific automatic resources; these can be applied using `--resource.attribute`
+* Add `--destination.header` support for adding gRPC metadata
+* Remove "Resource Map" code, used for generating "Monitored Resource" concept in Stackdriver; OpenTelemetry is less restrictive, this code is replaced by `--destination.attribute` and `--opentelemetry.use-meta-labels` support
+* Remove GCP/GKE-specific automatic resources; these can be applied using `--destination.attribute`
 * Remove "Counter Aggregator" support, which pre-aggregates labels; there are other ways this could be implemented, if the OpenTelemetry-Go SDK were used to generate OTLP instead of the dedicated code in this repository
 * Add `--security.root-certificate` support for supplying the root certificate used in TLS connection setup.
 

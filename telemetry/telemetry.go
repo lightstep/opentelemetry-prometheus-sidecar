@@ -129,8 +129,9 @@ func newConfig(opts ...Option) Config {
 // configurePropagators configures B3 propagation by default
 func configurePropagators(c *Config) error {
 	propagatorsMap := map[string]otel.TextMapPropagator{
-		"b3": b3.B3{},
-		"cc": propagators.Baggage{},
+		"b3":           b3.B3{},
+		"cc":           propagators.Baggage{},
+		"tracecontext": propagators.TraceContext{},
 	}
 	var props []otel.TextMapPropagator
 	for _, key := range c.Propagators {
