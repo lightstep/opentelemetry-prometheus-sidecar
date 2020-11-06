@@ -205,14 +205,14 @@ func TestSampleBuilder(t *testing.T) {
 		}
 	)
 	cases := []struct {
-		name         string
-		series       seriesMap
-		targets      TargetGetter
-		metadata     MetadataGetter
-		metricPrefix string
-		input        []record.RefSample
-		result       []*metric_pb.ResourceMetrics
-		fail         bool
+		name          string
+		series        seriesMap
+		targets       TargetGetter
+		metadata      MetadataGetter
+		metricsPrefix string
+		input         []record.RefSample
+		result        []*metric_pb.ResourceMetrics
+		fail          bool
 	}{
 		{
 			name: "basics",
@@ -640,7 +640,7 @@ func TestSampleBuilder(t *testing.T) {
 			metadata: metadataMap{
 				"job1/instance1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
 			},
-			metricPrefix: "test.otel.io",
+			metricsPrefix: "test.otel.io/",
 			input: []record.RefSample{
 				{Ref: 1, T: 1000, V: 200},
 			},
@@ -820,7 +820,7 @@ func TestSampleBuilder(t *testing.T) {
 				var err error
 				var result []*metric_pb.ResourceMetrics
 
-				series := newSeriesCache(nil, "", nil, nil, c.targets, c.metadata, c.metricPrefix)
+				series := newSeriesCache(nil, "", nil, nil, c.targets, c.metadata, c.metricsPrefix)
 				for ref, s := range c.series {
 					series.set(ctx, ref, s, 0)
 				}

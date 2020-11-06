@@ -262,7 +262,7 @@ func getMetricName(prefix string, promName string) string {
 	if prefix == "" {
 		return promName
 	}
-	return prefix + "/" + promName
+	return prefix + promName
 }
 
 // getNanos converts a millisecond timestamp into a OTLP nanosecond timestamp.

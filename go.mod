@@ -25,6 +25,7 @@ require (
 	//
 	// see https://github.com/prometheus/prometheus/issues/7663.
 	github.com/prometheus/prometheus v1.8.2-0.20201015110737-0a7fdd3b7696
+	github.com/stretchr/testify v1.5.1
 	golang.org/x/time v0.0.0-20200630173020-3af7569d3a1e
 	golang.org/x/tools v0.0.0-20201014170642-d1624618ad65 // indirect
 	google.golang.org/grpc v1.32.0
