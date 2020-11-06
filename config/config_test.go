@@ -168,6 +168,10 @@ startup_delay: 1333s
 						"g": "h",
 					},
 				},
+				Diagnostics: OTLPConfig{
+					Headers:    map[string]string{},
+					Attributes: map[string]string{},
+				},
 				LogConfig: LogConfig{
 					Level:  "info",
 					Format: "logfmt",
@@ -210,6 +214,10 @@ destination:
   headers:
     e: f
 
+filters:
+- one{two="three"}
+- four{five="six"}
+
 prometheus:
   wal: bad-guy
 
@@ -223,6 +231,9 @@ log_config:
 				"--destination.header", "g=h",
 				"--prometheus.wal", "wal-eeee",
 				"--log.level=warning",
+				"--diagnostics.endpoint", "https://look.here",
+				`--filter=l1{l2="v3"}`,
+				"--filter", `l4{l5="v6"}`,
 			},
 			MainConfig{
 				Prometheus: PromConfig{
@@ -242,6 +253,17 @@ log_config:
 						"e": "f",
 						"g": "h",
 					},
+				},
+				Filters: []string{
+					`one{two="three"}`,
+					`four{five="six"}`,
+					`l1{l2="v3"}`,
+					`l4{l5="v6"}`,
+				},
+				Diagnostics: OTLPConfig{
+					Endpoint:   "https://look.here",
+					Headers:    map[string]string{},
+					Attributes: map[string]string{},
 				},
 				LogConfig: LogConfig{
 					Level:  "warning",
@@ -263,6 +285,13 @@ destination:
 
   attributes:
     service.name: demo
+
+diagnostics:
+  endpoint: https://diagnose.me
+  headers:
+    A: B
+  attributes:
+    C: D
 
 prometheus:
   wal: /volume/wal
@@ -286,7 +315,7 @@ opentelemetry:
   metrics_prefix: prefix.
   use_meta_labels: true
 
-filter_sets:
+filters:
 - metric{label=value}
 - other{l1=v1,l2=v2}
 
@@ -334,11 +363,20 @@ static_metadata:
 						"Lightstep-Access-Token": "aabbccdd...wwxxyyzz",
 					},
 				},
+				Diagnostics: OTLPConfig{
+					Endpoint: "https://diagnose.me",
+					Headers: map[string]string{
+						"A": "B",
+					},
+					Attributes: map[string]string{
+						"C": "D",
+					},
+				},
 				LogConfig: LogConfig{
 					Level:  "warn",
 					Format: "json",
 				},
-				Filtersets: []string{
+				Filters: []string{
 					"metric{label=value}",
 					"other{l1=v1,l2=v2}",
 				},

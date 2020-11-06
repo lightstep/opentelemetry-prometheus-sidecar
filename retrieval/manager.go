@@ -45,7 +45,7 @@ func NewPrometheusReader(
 	logger log.Logger,
 	walDirectory string,
 	tailer *tail.Tailer,
-	filtersets [][]*labels.Matcher,
+	filters [][]*labels.Matcher,
 	metricRenames map[string]string,
 	targetGetter TargetGetter,
 	metadataGetter MetadataGetter,
@@ -59,7 +59,7 @@ func NewPrometheusReader(
 		appender:             appender,
 		logger:               logger,
 		tailer:               tailer,
-		filtersets:           filtersets,
+		filters:              filters,
 		walDirectory:         walDirectory,
 		targetGetter:         targetGetter,
 		metadataGetter:       metadataGetter,
@@ -73,7 +73,7 @@ type PrometheusReader struct {
 	logger               log.Logger
 	walDirectory         string
 	tailer               *tail.Tailer
-	filtersets           [][]*labels.Matcher
+	filters              [][]*labels.Matcher
 	metricRenames        map[string]string
 	targetGetter         TargetGetter
 	metadataGetter       MetadataGetter
@@ -114,7 +114,7 @@ func (r *PrometheusReader) Run(ctx context.Context, startOffset int) error {
 	seriesCache := newSeriesCache(
 		r.logger,
 		r.walDirectory,
-		r.filtersets,
+		r.filters,
 		r.metricRenames,
 		r.targetGetter,
 		r.metadataGetter,

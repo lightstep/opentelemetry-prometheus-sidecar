@@ -28,11 +28,12 @@ func Example() {
 	// Output:
 	// {
 	//   "destination": {
-	//     "endpoint": "https://ingest.staging.lightstep.com:443",
+	//     "endpoint": "https://otlp.io:443",
 	//     "headers": {
-	//       "Lightstep-Access-Token": "aabbccdd...wwxxyyzz"
+	//       "Access-Token": "aabbccdd...wwxxyyzz"
 	//     },
 	//     "attributes": {
+	//       "environment": "public",
 	//       "service.name": "demo"
 	//     }
 	//   },
@@ -53,8 +54,17 @@ func Example() {
 	//       "/certs/root2.crt"
 	//     ]
 	//   },
+	//   "diagnostics": {
+	//     "endpoint": "https://otlp.io:443",
+	//     "headers": {
+	//       "Access-Token": "wwxxyyzz...aabbccdd"
+	//     },
+	//     "attributes": {
+	//       "environment": "internal"
+	//     }
+	//   },
 	//   "startup_delay": "30s",
-	//   "filter_sets": [
+	//   "filters": [
 	//     "metric{label=value}",
 	//     "other{l1=v1,l2=v2}"
 	//   ],

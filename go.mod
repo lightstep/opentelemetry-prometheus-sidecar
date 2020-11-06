@@ -27,7 +27,9 @@ require (
 	// see https://github.com/prometheus/prometheus/issues/7663.
 	github.com/prometheus/prometheus v1.8.2-0.20201015110737-0a7fdd3b7696
 	github.com/stretchr/testify v1.6.1
+	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.13.0
 	go.opentelemetry.io/contrib/instrumentation/host v0.13.0
+	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.13.0
 	go.opentelemetry.io/contrib/instrumentation/runtime v0.13.0
 	go.opentelemetry.io/contrib/propagators v0.13.0
 	go.opentelemetry.io/otel v0.13.0

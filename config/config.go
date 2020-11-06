@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/ghodss/yaml"
@@ -96,13 +97,15 @@ type MainConfig struct {
 	OpenTelemetry  OTelConfig             `json:"opentelemetry"`
 	Admin          AdminConfig            `json:"admin"`
 	Security       SecurityConfig         `json:"security"`
+	Diagnostics    OTLPConfig             `json:"diagnostics"`
 	StartupDelay   DurationConfig         `json:"startup_delay"`
-	Filtersets     []string               `json:"filter_sets"`
+	Filters        []string               `json:"filters"`
 	MetricRenames  []MetricRenamesConfig  `json:"metric_renames"`
 	StaticMetadata []StaticMetadataConfig `json:"static_metadata"`
 	LogConfig      LogConfig              `json:"log_config"`
 
-	// This field will cannot be parsed from file:
+	// This field cannot be parsed inside a configuration file,
+	// only can be set by command-line flag.:
 	ConfigFilename string `json:"-" yaml:"-"`
 }
 
@@ -118,6 +121,10 @@ func DefaultMainConfig() MainConfig {
 			ListenAddress: DefaultAdminListenAddress,
 		},
 		Destination: OTLPConfig{
+			Headers:    map[string]string{},
+			Attributes: map[string]string{},
+		},
+		Diagnostics: OTLPConfig{
 			Headers:    map[string]string{},
 			Attributes: map[string]string{},
 		},
@@ -148,14 +155,20 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 	a.Flag("config-file", "A configuration file.").
 		StringVar(&cfg.ConfigFilename)
 
-	a.Flag("destination.endpoint", "Address of the OpenTelemetry Metrics protocol (gRPC) endpoint (e.g., https://host:port).  Use \"http\" (not \"https\") for an insecure connection.").
-		StringVar(&cfg.Destination.Endpoint)
+	makeOTLPFlags := func(lowerPrefix string, op *OTLPConfig) {
+		upperPrefix := strings.Title(lowerPrefix)
+		a.Flag(lowerPrefix+".endpoint", upperPrefix+" address of a OpenTelemetry Metrics protocol gRPC endpoint (e.g., https://host:port).  Use \"http\" (not \"https\") for an insecure connection.").
+			StringVar(&op.Endpoint)
 
-	a.Flag("destination.attribute", "Attributes for exported metrics (e.g., MyResource=Value1). May be repeated.").
-		StringMapVar(&cfg.Destination.Attributes)
+		a.Flag(lowerPrefix+".attribute", upperPrefix+" resource attributes attached to OTLP data (e.g., MyResource=Value1). May be repeated.").
+			StringMapVar(&op.Attributes)
 
-	a.Flag("destination.header", "Headers for gRPC connection (e.g., MyHeader=Value1). May be repeated.").
-		StringMapVar(&cfg.Destination.Headers)
+		a.Flag(lowerPrefix+".header", upperPrefix+" headers used for OTLP requests (e.g., MyHeader=Value1). May be repeated.").
+			StringMapVar(&op.Headers)
+	}
+
+	makeOTLPFlags("destination", &cfg.Destination)
+	makeOTLPFlags("diagnostics", &cfg.Diagnostics)
 
 	a.Flag("prometheus.wal", "Directory from where to read the Prometheus TSDB WAL. Default: "+DefaultWALDirectory).
 		StringVar(&cfg.Prometheus.WAL)
@@ -175,8 +188,8 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 	a.Flag("opentelemetry.use-meta-labels", "Prometheus target labels prefixed with __meta_ map into labels.").
 		BoolVar(&cfg.OpenTelemetry.UseMetaLabels)
 
-	a.Flag("include", "PromQL metric and label matcher which must pass for a series to be forwarded to OpenTelemetry. If repeated, the series must pass any of the filter sets to be forwarded.").
-		StringsVar(&cfg.Filtersets)
+	a.Flag("filter", "PromQL metric and label matcher which must pass for a series to be forwarded to OpenTelemetry. If repeated, the series must pass any of the filter sets to be forwarded.").
+		StringsVar(&cfg.Filters)
 
 	a.Flag("startup.delay", "Delay at startup to allow Prometheus its initial scrape. Default: "+DefaultStartupDelay.String()).
 		DurationVar(&cfg.StartupDelay.Duration)
@@ -202,6 +215,7 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 				errors.Wrap(err, "reading file")
 		}
 
+		cfg = DefaultMainConfig()
 		metricRenames, staticMetadata, err = parseConfigFile(data, &cfg)
 		if err != nil {
 			return MainConfig{}, nil, nil,

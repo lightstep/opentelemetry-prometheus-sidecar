@@ -97,24 +97,39 @@ docker build .
 ## Deployment
 
 The sidecar is deployed next to an already running Prometheus server.
+
 An example command-line:
 
 ```
 opentelemetry-prometheus-sidecar \
-  --prometheus.wal=${WAL} \
   --destination.endpoint=${DESTINATION} \
-  --destination.header="Lightstep-Access-Token=${TOKEN}" \
+  --destination.header="Custom-Header=${VALUE}" \
   --destination.attribute="service.name=${SERVICE}" \
+  --prometheus.wal=${WAL} \
   --prometheus.endpoint=${PROMETHEUS} \
 ```
 
 where:
 
+* `DESTINATION`: Destination address https://host:port
+* `VALUE`: Value for the `Custom-Header` request header
+* `SERVICE`: Value for the `service.name` resource attribute
 * `WAL`: Prometheus' WAL directory, defaults to `data/wal`
-* `DESTINATION`: Destination address host:port, set this to `ingest.lightstep.com:443`
-* `TOKEN`: A Lightstep access token (example header)
-* `SERVICE`: Value for the conventional `service.name` (example resource attribute)
-* `API_ADDRESS`: Prometheus URL, defaults to `http://127.0.0.1:9090`
+* `PROMETHEUS`: URL of the Prometheus UI.
+
+Settings can also be passed through a configuration file, for example:
+
+```
+destination:
+  endpoint: https://otlp.io:443
+  headers:
+    Custom-Header: custom-value
+  attributes:
+    service.name: my-service-name
+prometheus:
+  wal: /prometheus/wal
+  endpoint: http://192.168.10.10:9191
+```
 
 The sidecar requires write access to the directory to store its progress between restarts.
 
@@ -129,48 +144,63 @@ configuration file. To see all available flags, run
 below:
 
 ```
-$ ./opentelemetry-prometheus-sidecar --help
+$ ./opentelemetry-prometheus-sidecar -h
 usage: opentelemetry-prometheus-sidecar [<flags>]
 
-The OpenTelemetry Prometheus sidecar runs alongside the Prometheus (https://prometheus.io/) Server and
-sends metrics data to an OpenTelemetry (https://opentelemetry.io) Protocol endpoint.
+The OpenTelemetry Prometheus sidecar runs alongside the Prometheus (https://prometheus.io/)
+Server and sends metrics data to an OpenTelemetry (https://opentelemetry.io) Protocol endpoint.
 
 Flags:
-  -h, --help                     Show context-sensitive help (also try --help-long and --help-man).
+  -h, --help                     Show context-sensitive help (also try --help-long and
+                                 --help-man).
       --version                  Show application version.
       --config-file=CONFIG-FILE  A configuration file.
-      --destination.endpoint=DESTINATION.ENDPOINT  
-                                 Address of the OpenTelemetry Metrics protocol (gRPC) endpoint (e.g.,
-                                 https://host:port). Use "http" (not "https") for an insecure
-                                 connection.
-      --destination.attribute=DESTINATION.ATTRIBUTE ...  
-                                 Attributes for exported metrics (e.g., MyResource=Value1). May be
-                                 repeated.
-      --destination.header=DESTINATION.HEADER ...  
-                                 Headers for gRPC connection (e.g., MyHeader=Value1). May be repeated.
-      --prometheus.wal=PROMETHEUS.WAL  
+      --destination.endpoint=DESTINATION.ENDPOINT
+                                 Destination address of a OpenTelemetry Metrics protocol gRPC
+                                 endpoint (e.g., https://host:port). Use "http" (not "https")
+                                 for an insecure connection.
+      --destination.attribute=DESTINATION.ATTRIBUTE ...
+                                 Destination resource attributes attached to OTLP data (e.g.,
+                                 MyResource=Value1). May be repeated.
+      --destination.header=DESTINATION.HEADER ...
+                                 Destination headers used for OTLP requests (e.g.,
+                                 MyHeader=Value1). May be repeated.
+      --diagnostics.endpoint=DIAGNOSTICS.ENDPOINT
+                                 Diagnostics address of a OpenTelemetry Metrics protocol gRPC
+                                 endpoint (e.g., https://host:port). Use "http" (not "https")
+                                 for an insecure connection.
+      --diagnostics.attribute=DIAGNOSTICS.ATTRIBUTE ...
+                                 Diagnostics resource attributes attached to OTLP data (e.g.,
+                                 MyResource=Value1). May be repeated.
+      --diagnostics.header=DIAGNOSTICS.HEADER ...
+                                 Diagnostics headers used for OTLP requests (e.g.,
+                                 MyHeader=Value1). May be repeated.
+      --prometheus.wal=PROMETHEUS.WAL
                                  Directory from where to read the Prometheus TSDB WAL. Default:
                                  data/wal
-      --prometheus.endpoint=PROMETHEUS.ENDPOINT  
-                                 Endpoint where Prometheus hosts its UI, API, and serves its own
-                                 metrics. Default: http://127.0.0.1:9090/
-      --admin.listen-address=ADMIN.LISTEN-ADDRESS  
+      --prometheus.endpoint=PROMETHEUS.ENDPOINT
+                                 Endpoint where Prometheus hosts its UI, API, and serves its
+                                 own metrics. Default: http://127.0.0.1:9090/
+      --admin.listen-address=ADMIN.LISTEN-ADDRESS
                                  Administrative HTTP address this process listens on. Default:
                                  0.0.0.0:9091
-      --security.root-certificate=SECURITY.ROOT-CERTIFICATE ...  
-                                 Root CA certificate to use for TLS connections, in PEM format (e.g.,
-                                 root.crt). May be repeated.
-      --opentelemetry.metrics-prefix=OPENTELEMETRY.METRICS-PREFIX  
-                                 Customized prefix for exporter metrics. If not set, none will be used
-      --opentelemetry.use-meta-labels  
-                                 Prometheus target labels prefixed with __meta_ map into labels.
-      --include=INCLUDE ...      PromQL metric and label matcher which must pass for a series to be
-                                 forwarded to OpenTelemetry. If repeated, the series must pass any of
-                                 the filter sets to be forwarded.
-      --startup.delay=STARTUP.DELAY  
-                                 Delay at startup to allow Prometheus its initial scrape. Default: 1m0s
-      --log.level=LOG.LEVEL      Only log messages with the given severity or above. One of: [debug,
-                                 info, warn, error]
+      --security.root-certificate=SECURITY.ROOT-CERTIFICATE ...
+                                 Root CA certificate to use for TLS connections, in PEM format
+                                 (e.g., root.crt). May be repeated.
+      --opentelemetry.metrics-prefix=OPENTELEMETRY.METRICS-PREFIX
+                                 Customized prefix for exporter metrics. If not set, none will
+                                 be used
+      --opentelemetry.use-meta-labels
+                                 Prometheus target labels prefixed with __meta_ map into
+                                 labels.
+      --filter=INCLUDE ...       PromQL metric and label matcher which must pass for a series
+                                 to be forwarded to OpenTelemetry. If repeated, the series must
+                                 pass any of the filter sets to be forwarded.
+      --startup.delay=STARTUP.DELAY
+                                 Delay at startup to allow Prometheus its initial scrape.
+                                 Default: 1m0s
+      --log.level=LOG.LEVEL      Only log messages with the given severity or above. One of:
+                                 [debug, info, warn, error]
       --log.format=LOG.FORMAT    Output format of log messages. One of: [logfmt, json]
 ```
 
@@ -178,23 +208,48 @@ Two kinds of sidecar customization are available only through the
 configuration file.  An [example sidecar yaml configuration documents
 the available options](./sidecar.yaml).
 
+Command-line and configuration files can be used at the same time,
+where command-line parameter values override configuration-file
+parameter values, with one exception.  Configurations that support
+a map from string to string, including both request headers and
+resource attributes, are combined from both sources.
+
 #### Resources
 
 Use the `--destination.attribute=KEY=VALUE` flag to add additional resource attributes to all exported timeseries.
 
 Use the `--opentelemetry.use-meta-labels` flag to add discovery meta-labels to all exported timeseries.
 
-#### Filters
+#### Diagnostics
 
-The `--include` flag allows to provide filters which all series have to pass before being sent to the destination. Filters use the same syntax as [Prometheus instant vector selectors](https://prometheus.io/docs/prometheus/latest/querying/basics/#instant-vector-selectors), e.g.:
+The sidecar is instrumented with the OpenTelemetry-Go SDK and runs
+with standard instrumentation packages, including runtime and host
+metrics and gRPC and HTTP tracing.  Configure diagnostics output OTLP
+settings similar to configuring the primary destination, for example:
 
 ```
-opentelemetry-prometheus-sidecar --include='{__name__!~"cadvisor_.+",job="k8s"}' ...
+diagnostics:
+  endpoint: https://otel-collector:443
+  headers:
+    Custom-Header: custom-value
+  attributes:
+    extra.resource: extra-value
+```
+
+Likewise, these fields can be accessed using `--diagnostics.endpoint`,
+`--diagnostics.header`, and `--diagnostics.attribute`.
+
+#### Filters
+	
+The `--filter` flag allows to provide filters which all series have to pass before being sent to the destination. Filters use the same syntax as [Prometheus instant vector selectors](https://prometheus.io/docs/prometheus/latest/querying/basics/#instant-vector-selectors), e.g.:
+
+```
+opentelemetry-prometheus-sidecar --filter='{__name__!~"cadvisor_.+",job="k8s"}' ...
 ```
 
 This drops all series which do not have a `job` label `k8s` and all metrics that have a name starting with `cadvisor_`.
 
-For equality filter on metric name you can use the simpler notation, e.g. `--include='metric_name{label="foo"}'`.
+For equality filter on metric name you can use the simpler notation, e.g. `--filter='metric_name{label="foo"}'`.
 
 The flag may be repeated to provide several sets of filters, in which case the metric will be forwarded if it matches at least one of them.
 
