@@ -64,7 +64,7 @@ func Example() {
 	//     }
 	//   },
 	//   "startup_delay": "30s",
-	//   "filter_sets": [
+	//   "filters": [
 	//     "metric{label=value}",
 	//     "other{l1=v1,l2=v2}"
 	//   ],

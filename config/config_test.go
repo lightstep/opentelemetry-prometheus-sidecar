@@ -214,6 +214,10 @@ destination:
   headers:
     e: f
 
+filters:
+- one{two="three"}
+- four{five="six"}
+
 prometheus:
   wal: bad-guy
 
@@ -228,6 +232,8 @@ log_config:
 				"--prometheus.wal", "wal-eeee",
 				"--log.level=warning",
 				"--diagnostics.endpoint", "https://look.here",
+				`--filter=l1{l2="v3"}`,
+				"--filter", `l4{l5="v6"}`,
 			},
 			MainConfig{
 				Prometheus: PromConfig{
@@ -247,6 +253,12 @@ log_config:
 						"e": "f",
 						"g": "h",
 					},
+				},
+				Filters: []string{
+					`one{two="three"}`,
+					`four{five="six"}`,
+					`l1{l2="v3"}`,
+					`l4{l5="v6"}`,
 				},
 				Diagnostics: OTLPConfig{
 					Endpoint:   "https://look.here",
@@ -303,7 +315,7 @@ opentelemetry:
   metrics_prefix: prefix.
   use_meta_labels: true
 
-filter_sets:
+filters:
 - metric{label=value}
 - other{l1=v1,l2=v2}
 
@@ -364,7 +376,7 @@ static_metadata:
 					Level:  "warn",
 					Format: "json",
 				},
-				Filtersets: []string{
+				Filters: []string{
 					"metric{label=value}",
 					"other{l1=v1,l2=v2}",
 				},

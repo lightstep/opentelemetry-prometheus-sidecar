@@ -99,7 +99,7 @@ type MainConfig struct {
 	Security       SecurityConfig         `json:"security"`
 	Diagnostics    OTLPConfig             `json:"diagnostics"`
 	StartupDelay   DurationConfig         `json:"startup_delay"`
-	Filtersets     []string               `json:"filter_sets"`
+	Filters        []string               `json:"filters"`
 	MetricRenames  []MetricRenamesConfig  `json:"metric_renames"`
 	StaticMetadata []StaticMetadataConfig `json:"static_metadata"`
 	LogConfig      LogConfig              `json:"log_config"`
@@ -188,8 +188,8 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 	a.Flag("opentelemetry.use-meta-labels", "Prometheus target labels prefixed with __meta_ map into labels.").
 		BoolVar(&cfg.OpenTelemetry.UseMetaLabels)
 
-	a.Flag("include", "PromQL metric and label matcher which must pass for a series to be forwarded to OpenTelemetry. If repeated, the series must pass any of the filter sets to be forwarded.").
-		StringsVar(&cfg.Filtersets)
+	a.Flag("filter", "PromQL metric and label matcher which must pass for a series to be forwarded to OpenTelemetry. If repeated, the series must pass any of the filter sets to be forwarded.").
+		StringsVar(&cfg.Filters)
 
 	a.Flag("startup.delay", "Delay at startup to allow Prometheus its initial scrape. Default: "+DefaultStartupDelay.String()).
 		DurationVar(&cfg.StartupDelay.Duration)
@@ -215,6 +215,7 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 				errors.Wrap(err, "reading file")
 		}
 
+		cfg = DefaultMainConfig()
 		metricRenames, staticMetadata, err = parseConfigFile(data, &cfg)
 		if err != nil {
 			return MainConfig{}, nil, nil,

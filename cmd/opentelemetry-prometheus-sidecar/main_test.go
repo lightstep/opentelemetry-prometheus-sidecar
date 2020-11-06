@@ -97,7 +97,7 @@ Loop:
 	}
 }
 
-func TestParseFiltersets(t *testing.T) {
+func TestParseFilters(t *testing.T) {
 	logger := log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
 	for _, tt := range []struct {
 		name         string
@@ -109,7 +109,7 @@ func TestParseFiltersets(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			// Test success cases.
-			parsed, err := parseFiltersets(logger, tt.filtersets)
+			parsed, err := parseFilters(logger, tt.filtersets)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -128,7 +128,7 @@ func TestParseFiltersets(t *testing.T) {
 		{"Empty filterset", []string{""}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			if _, err := parseFiltersets(logger, tt.filtersets); err == nil {
+			if _, err := parseFilters(logger, tt.filtersets); err == nil {
 				t.Fatalf("expected error, but got none")
 			}
 		})

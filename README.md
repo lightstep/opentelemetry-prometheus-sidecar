@@ -193,7 +193,7 @@ Flags:
       --opentelemetry.use-meta-labels
                                  Prometheus target labels prefixed with __meta_ map into
                                  labels.
-      --include=INCLUDE ...      PromQL metric and label matcher which must pass for a series
+      --filter=INCLUDE ...       PromQL metric and label matcher which must pass for a series
                                  to be forwarded to OpenTelemetry. If repeated, the series must
                                  pass any of the filter sets to be forwarded.
       --startup.delay=STARTUP.DELAY
@@ -241,15 +241,15 @@ Likewise, these fields can be accessed using `--diagnostics.endpoint`,
 
 #### Filters
 	
-The `--include` flag allows to provide filters which all series have to pass before being sent to the destination. Filters use the same syntax as [Prometheus instant vector selectors](https://prometheus.io/docs/prometheus/latest/querying/basics/#instant-vector-selectors), e.g.:
+The `--filter` flag allows to provide filters which all series have to pass before being sent to the destination. Filters use the same syntax as [Prometheus instant vector selectors](https://prometheus.io/docs/prometheus/latest/querying/basics/#instant-vector-selectors), e.g.:
 
 ```
-opentelemetry-prometheus-sidecar --include='{__name__!~"cadvisor_.+",job="k8s"}' ...
+opentelemetry-prometheus-sidecar --filter='{__name__!~"cadvisor_.+",job="k8s"}' ...
 ```
 
 This drops all series which do not have a `job` label `k8s` and all metrics that have a name starting with `cadvisor_`.
 
-For equality filter on metric name you can use the simpler notation, e.g. `--include='metric_name{label="foo"}'`.
+For equality filter on metric name you can use the simpler notation, e.g. `--filter='metric_name{label="foo"}'`.
 
 The flag may be repeated to provide several sets of filters, in which case the metric will be forwarded if it matches at least one of them.
 

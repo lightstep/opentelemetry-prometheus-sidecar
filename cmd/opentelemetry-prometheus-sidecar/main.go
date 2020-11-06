@@ -223,9 +223,9 @@ func main() {
 		Transport: otelhttp.NewTransport(http.DefaultTransport),
 	}
 
-	filtersets, err := parseFiltersets(logger, cfg.Filtersets)
+	filters, err := parseFilters(logger, cfg.Filters)
 	if err != nil {
-		level.Error(logger).Log("msg", "error parsing --include", "err", err)
+		level.Error(logger).Log("msg", "error parsing --filter", "err", err)
 		os.Exit(2)
 	}
 
@@ -289,7 +289,7 @@ func main() {
 		log.With(logger, "component", "prom_wal"),
 		cfg.Prometheus.WAL,
 		tailer,
-		filtersets,
+		filters,
 		metricRenames,
 		targetCache,
 		metadataCache,
@@ -470,14 +470,14 @@ func waitForPrometheus(ctx context.Context, logger log.Logger, promURL *url.URL)
 	}
 }
 
-// parseFiltersets parses two flags that contain PromQL-style metric/label selectors and
+// parseFilters parses two flags that contain PromQL-style metric/label selectors and
 // returns a list of the resulting matchers.
-func parseFiltersets(logger log.Logger, filtersets []string) ([][]*labels.Matcher, error) {
+func parseFilters(logger log.Logger, filters []string) ([][]*labels.Matcher, error) {
 	var matchers [][]*labels.Matcher
-	for _, f := range filtersets {
+	for _, f := range filters {
 		m, err := parser.ParseMetricSelector(f)
 		if err != nil {
-			return nil, errors.Errorf("cannot parse --include flag '%s': %q", f, err)
+			return nil, errors.Errorf("cannot parse filter '%s': %q", f, err)
 		}
 		matchers = append(matchers, m)
 	}

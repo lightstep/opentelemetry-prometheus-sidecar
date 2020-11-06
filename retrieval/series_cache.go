@@ -79,7 +79,7 @@ type seriesGetter interface {
 type seriesCache struct {
 	logger        log.Logger
 	dir           string
-	filtersets    [][]*labels.Matcher
+	filters       [][]*labels.Matcher
 	targets       TargetGetter
 	metaget       MetadataGetter
 	metricsPrefix string
@@ -134,7 +134,7 @@ func (e *seriesCacheEntry) shouldRefresh() bool {
 func newSeriesCache(
 	logger log.Logger,
 	dir string,
-	filtersets [][]*labels.Matcher,
+	filters [][]*labels.Matcher,
 	renames map[string]string,
 	targets TargetGetter,
 	metaget MetadataGetter,
@@ -146,7 +146,7 @@ func newSeriesCache(
 	return &seriesCache{
 		logger:        logger,
 		dir:           dir,
-		filtersets:    filtersets,
+		filters:       filters,
 		targets:       targets,
 		metaget:       metaget,
 		entries:       map[uint64]*seriesCacheEntry{},
@@ -304,7 +304,7 @@ func (c *seriesCache) getResetAdjusted(ref uint64, t int64, v float64) (int64, f
 // set the label set for the given reference.
 // maxSegment indicates the the highest segment at which the series was possibly defined.
 func (c *seriesCache) set(ctx context.Context, ref uint64, lset labels.Labels, maxSegment int) error {
-	exported := c.filtersets == nil || matchFiltersets(lset, c.filtersets)
+	exported := c.filters == nil || matchFilters(lset, c.filters)
 
 	if !exported {
 		return nil
@@ -451,20 +451,20 @@ func (c *seriesCache) getMetricName(prefix, name string) string {
 	return getMetricName(prefix, name)
 }
 
-// matchFiltersets checks whether any of the supplied filtersets passes.
-func matchFiltersets(lset labels.Labels, filtersets [][]*labels.Matcher) bool {
-	for _, fs := range filtersets {
-		if matchFilterset(lset, fs) {
+// matchFilters checks whether any of the supplied filters passes.
+func matchFilters(lset labels.Labels, filters [][]*labels.Matcher) bool {
+	for _, fs := range filters {
+		if matchfilter(lset, fs) {
 			return true
 		}
 	}
 	return false
 }
 
-// matchFilterset checks whether labels match a given list of label matchers.
+// matchfilter checks whether labels match a given list of label matchers.
 // All matchers need to match for the function to return true.
-func matchFilterset(lset labels.Labels, filterset []*labels.Matcher) bool {
-	for _, matcher := range filterset {
+func matchfilter(lset labels.Labels, filter []*labels.Matcher) bool {
+	for _, matcher := range filter {
 		if !matcher.Matches(lset.Get(matcher.Name)) {
 			return false
 		}
