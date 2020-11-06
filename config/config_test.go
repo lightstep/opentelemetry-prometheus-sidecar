@@ -168,6 +168,10 @@ startup_delay: 1333s
 						"g": "h",
 					},
 				},
+				Diagnostics: OTLPConfig{
+					Headers:    map[string]string{},
+					Attributes: map[string]string{},
+				},
 				LogConfig: LogConfig{
 					Level:  "info",
 					Format: "logfmt",
@@ -223,6 +227,7 @@ log_config:
 				"--destination.header", "g=h",
 				"--prometheus.wal", "wal-eeee",
 				"--log.level=warning",
+				"--diagnostics.endpoint", "https://look.here",
 			},
 			MainConfig{
 				Prometheus: PromConfig{
@@ -242,6 +247,11 @@ log_config:
 						"e": "f",
 						"g": "h",
 					},
+				},
+				Diagnostics: OTLPConfig{
+					Endpoint:   "https://look.here",
+					Headers:    map[string]string{},
+					Attributes: map[string]string{},
 				},
 				LogConfig: LogConfig{
 					Level:  "warning",
@@ -263,6 +273,13 @@ destination:
 
   attributes:
     service.name: demo
+
+diagnostics:
+  endpoint: https://diagnose.me
+  headers:
+    A: B
+  attributes:
+    C: D
 
 prometheus:
   wal: /volume/wal
@@ -332,6 +349,15 @@ static_metadata:
 					},
 					Headers: map[string]string{
 						"Lightstep-Access-Token": "aabbccdd...wwxxyyzz",
+					},
+				},
+				Diagnostics: OTLPConfig{
+					Endpoint: "https://diagnose.me",
+					Headers: map[string]string{
+						"A": "B",
+					},
+					Attributes: map[string]string{
+						"C": "D",
 					},
 				},
 				LogConfig: LogConfig{

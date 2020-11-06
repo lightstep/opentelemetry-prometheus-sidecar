@@ -14,6 +14,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   Formerly the configuration file was limited to `metric_renames` and
   `static_metadata` settings.  Command-line flag values override their equivalent
   configuration struct fields.
+- The OpenTelemetry-Go SDK is being used with HTTP and gRPC tracing,
+  runtime and host metrics instrumentation packages.
 - Testing for the [example YAML configuration](sidecar.example).
 
 ### Changed
