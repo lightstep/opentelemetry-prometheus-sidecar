@@ -30,7 +30,7 @@ import (
 	"golang.org/x/time/rate"
 	"google.golang.org/grpc/status"
 
-	// Likely types the proto registry:
+	// gRPC Status protobuf types we may want to see:
 	_ "google.golang.org/genproto/googleapis/rpc/errdetails"
 )
 
