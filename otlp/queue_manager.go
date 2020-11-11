@@ -14,7 +14,9 @@
 package otlp
 
 import (
+	"fmt"
 	"math"
+	"strings"
 	"sync"
 	"time"
 
@@ -26,6 +28,10 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/config"
 	"golang.org/x/time/rate"
+	"google.golang.org/grpc/status"
+
+	// Likely types the proto registry:
+	_ "google.golang.org/genproto/googleapis/rpc/errdetails"
 )
 
 // String constants for instrumentation.
@@ -532,8 +538,20 @@ func (s *shardCollection) sendSamplesWithBackoff(client StorageClient, samples [
 			return
 		}
 
+		var detailStrings []string
+
+		if code, ok := status.FromError(err); ok {
+			details := code.Details()
+
+			if len(details) != 0 {
+				for _, det := range details {
+					detailStrings = append(detailStrings, fmt.Sprint(det))
+				}
+			}
+		}
+
 		if _, ok := err.(recoverableError); !ok {
-			level.Warn(s.qm.logger).Log("msg", "Unrecoverable error sending samples to remote storage", "err", err)
+			level.Warn(s.qm.logger).Log("msg", "Unrecoverable error sending samples to remote storage", "err", err, "detail", strings.Join(detailStrings, ", "))
 			break
 		}
 		time.Sleep(time.Duration(backoff))
