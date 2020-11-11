@@ -551,7 +551,14 @@ func (s *shardCollection) sendSamplesWithBackoff(client StorageClient, samples [
 		}
 
 		if _, ok := err.(recoverableError); !ok {
-			level.Warn(s.qm.logger).Log("msg", "Unrecoverable error sending samples to remote storage", "err", err, "detail", strings.Join(detailStrings, ", "))
+			logArgs := []interface{}{
+				"msg", "unrecoverable write error",
+				"err", err,
+			}
+			if detailStrings != nil {
+				logArgs = append(logArgs, "detail", strings.Join(detailStrings, ", "))
+			}
+			level.Warn(s.qm.logger).Log(logArgs...)
 			break
 		}
 		time.Sleep(time.Duration(backoff))
