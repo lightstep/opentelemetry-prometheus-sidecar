@@ -14,7 +14,9 @@
 package otlp
 
 import (
+	"fmt"
 	"math"
+	"strings"
 	"sync"
 	"time"
 
@@ -26,6 +28,15 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/config"
 	"golang.org/x/time/rate"
+	"google.golang.org/grpc/status"
+
+	// gRPC Status protobuf types we may want to see.  This type
+	// is not widely used, but is the most standard way to itemize
+	// validation errors in response to a gRPC request.  If the
+	// service happens to be doing this and the user is not
+	// careful, they'll miss these details, so we explicitly print
+	// them in this code base to avoid potential confusion.
+	_ "google.golang.org/genproto/googleapis/rpc/errdetails"
 )
 
 // String constants for instrumentation.
@@ -532,8 +543,27 @@ func (s *shardCollection) sendSamplesWithBackoff(client StorageClient, samples [
 			return
 		}
 
+		var detailStrings []string
+
+		if code, ok := status.FromError(err); ok {
+			details := code.Details()
+
+			if len(details) != 0 {
+				for _, det := range details {
+					detailStrings = append(detailStrings, fmt.Sprint(det))
+				}
+			}
+		}
+
 		if _, ok := err.(recoverableError); !ok {
-			level.Warn(s.qm.logger).Log("msg", "Unrecoverable error sending samples to remote storage", "err", err)
+			logArgs := []interface{}{
+				"msg", "unrecoverable write error",
+				"err", err,
+			}
+			if detailStrings != nil {
+				logArgs = append(logArgs, "detail", strings.Join(detailStrings, ", "))
+			}
+			level.Warn(s.qm.logger).Log(logArgs...)
 			break
 		}
 		time.Sleep(time.Duration(backoff))

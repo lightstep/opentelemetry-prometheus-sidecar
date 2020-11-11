@@ -198,6 +198,7 @@ func main() {
 
 		defer telemetry.ConfigureOpentelemetry(
 			telemetry.WithExporterEndpoint(hostport),
+			telemetry.WithExporterInsecure(endpoint.Scheme == "http"),
 			telemetry.WithLogger(log.With(logger, "component", "telemetry")),
 			telemetry.WithHeaders(cfg.Diagnostics.Headers),
 			telemetry.WithResourceAttributes(cfg.Diagnostics.Attributes),

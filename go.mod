@@ -37,6 +37,7 @@ require (
 	go.opentelemetry.io/otel/sdk v0.13.0
 	golang.org/x/time v0.0.0-20200630173020-3af7569d3a1e
 	golang.org/x/tools v0.0.0-20201014170642-d1624618ad65 // indirect
+	google.golang.org/genproto v0.0.0-20200904004341-0bd0a958aa1d
 	google.golang.org/grpc v1.32.0
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 	gopkg.in/d4l3k/messagediff.v1 v1.2.1
