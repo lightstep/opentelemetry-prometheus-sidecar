@@ -30,7 +30,12 @@ import (
 	"golang.org/x/time/rate"
 	"google.golang.org/grpc/status"
 
-	// gRPC Status protobuf types we may want to see:
+	// gRPC Status protobuf types we may want to see.  This type
+	// is not widely used, but is the most standard way to itemize
+	// validation errors in response to a gRPC request.  If the
+	// service happens to be doing this and the user is not
+	// careful, they'll miss these details, so we explicitly print
+	// them in this code base to avoid potential confusion.
 	_ "google.golang.org/genproto/googleapis/rpc/errdetails"
 )
 
