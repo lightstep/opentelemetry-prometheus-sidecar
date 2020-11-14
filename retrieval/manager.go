@@ -34,6 +34,18 @@ import (
 	"go.opentelemetry.io/otel"
 )
 
+var (
+	samplesProcessed = sidecar.OTelMeterMust.NewInt64ValueRecorder(
+		"samples_processed",
+		otel.WithDescription("Number of WAL samples processed in a batch"),
+	)
+
+	samplesProduced = sidecar.OTelMeterMust.NewInt64Counter(
+		"samples_produced",
+		otel.WithDescription("Number of Metric samples produced"),
+	)
+)
+
 type TargetGetter interface {
 	Get(ctx context.Context, lset labels.Labels) (*targets.Target, error)
 }
@@ -83,18 +95,6 @@ type PrometheusReader struct {
 	progressSaveInterval time.Duration
 	metricsPrefix        string
 }
-
-var (
-	samplesProcessed = sidecar.OTelMeterMust.NewInt64ValueRecorder(
-		"samples_processed",
-		otel.WithDescription("Number of WAL samples processed in a batch"),
-	)
-
-	samplesProduced = sidecar.OTelMeterMust.NewInt64Counter(
-		"samples_prouced",
-		otel.WithDescription("Number of Metric samples produced"),
-	)
-)
 
 func (r *PrometheusReader) Run(ctx context.Context, startOffset int) error {
 	level.Info(r.logger).Log("msg", "Starting Prometheus reader...")
@@ -174,7 +174,6 @@ Outer:
 			// once at the end.
 			// Otherwise it will increase CPU usage by ~10%.
 			processed, produced := len(samples), 0
-			_ = processed
 
 			for len(samples) > 0 {
 				select {
