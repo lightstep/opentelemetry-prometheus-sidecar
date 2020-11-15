@@ -38,8 +38,14 @@ var (
 		"dropped_series",
 		metric.WithDescription("Number of series that were dropped, not exported"),
 	)
-
 	keyReason = label.Key("key_reason")
+
+	droppedSeriesTargetNotFound = droppedSeries.Bind(
+		keyReason.String("target_not_found"),
+	)
+	droppedSeriesMetadataNotFound = droppedSeries.Bind(
+		keyReason.String("metadata_not_found"),
+	)
 )
 
 // tsDesc has complete, proto-independent data about a metric data
@@ -329,7 +335,7 @@ func (c *seriesCache) refresh(ctx context.Context, ref uint64) error {
 		return errors.Wrap(err, "retrieving target failed")
 	}
 	if target == nil {
-		droppedSeries.Add(ctx, 1, keyReason.String("target_not_found"))
+		droppedSeriesTargetNotFound.Add(ctx, 1)
 
 		level.Debug(c.logger).Log("msg", "target not found", "labels", entry.lset)
 		return nil
@@ -367,7 +373,7 @@ func (c *seriesCache) refresh(ctx context.Context, ref uint64) error {
 			}
 		}
 		if meta == nil {
-			droppedSeries.Add(ctx, 1, keyReason.String("metadata_not_found"))
+			droppedSeriesMetadataNotFound.Add(ctx, 1)
 
 			level.Debug(c.logger).Log("msg", "metadata not found", "metric_name", metricName)
 			return nil
