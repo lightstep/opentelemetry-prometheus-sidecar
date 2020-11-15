@@ -53,69 +53,13 @@ import (
 
 // TODO(jmacd): Define a path for healthchecks.
 
-// var (
-// 	sizeDistribution    = view.Distribution(0, 1024, 2048, 4096, 16384, 65536, 262144, 1048576, 4194304, 33554432)
-// 	latencyDistribution = view.Distribution(0, 1, 2, 5, 10, 15, 25, 50, 100, 200, 400, 800, 1500, 3000, 6000)
-
-// 	// VersionTag identifies the version of this binary.
-// 	VersionTag = tag.MustNewKey("version")
-// 	// UptimeMeasure is a cumulative metric.
-// 	UptimeMeasure = stats.Int64(
-// 		"agent.googleapis.com/agent/uptime",
-// 		"uptime of the OpenTelemetry Prometheus collector",
-// 		stats.UnitSeconds)
-// )
-
-// func init() {
-// 	prometheus.MustRegister(version.NewCollector("prometheus"))
-
-// 	if err := view.Register(
-// 		&view.View{
-// 			Name:        "opencensus.io/http/client/request_count",
-// 			Description: "Count of HTTP requests started",
-// 			Measure:     ochttp.ClientRequestCount,
-// 			TagKeys:     []tag.Key{ochttp.Method, ochttp.Path},
-// 			Aggregation: view.Count(),
-// 		},
-// 		&view.View{
-// 			Name:        "opencensus.io/http/client/request_bytes",
-// 			Description: "Size distribution of HTTP request body",
-// 			Measure:     ochttp.ClientRequestBytes,
-// 			TagKeys:     []tag.Key{ochttp.Method, ochttp.StatusCode, ochttp.Path},
-// 			Aggregation: sizeDistribution,
-// 		},
-// 		&view.View{
-// 			Name:        "opencensus.io/http/client/response_bytes",
-// 			Description: "Size distribution of HTTP response body",
-// 			Measure:     ochttp.ClientResponseBytes,
-// 			TagKeys:     []tag.Key{ochttp.Method, ochttp.StatusCode, ochttp.Path},
-// 			Aggregation: sizeDistribution,
-// 		},
-// 		&view.View{
-// 			Name:        "opencensus.io/http/client/latency",
-// 			Description: "Latency distribution of HTTP requests",
-// 			TagKeys:     []tag.Key{ochttp.Method, ochttp.StatusCode, ochttp.Path},
-// 			Measure:     ochttp.ClientLatency,
-// 			Aggregation: latencyDistribution,
-// 		},
-// 	); err != nil {
-// 		panic(err)
-// 	}
-// 	if err := view.Register(
-// 		ocgrpc.DefaultClientViews...,
-// 	); err != nil {
-// 		panic(err)
-// 	}
-// 	if err := view.Register(
-// 		&view.View{
-// 			Measure:     UptimeMeasure,
-// 			TagKeys:     []tag.Key{VersionTag},
-// 			Aggregation: view.Sum(),
-// 		},
-// 	); err != nil {
-// 		panic(err)
-// 	}
-// }
+// Note on metrics instrumentation relative ot the original OpenCensus
+// code instrumentation of this code base:
+// - telemetry/* starts runtime and host instrumentation packages (includes uptime)
+// - the net/http instrumentation package includes (spans and) metrics
+// - the gRPC instrumentation package does not include mtrics (but will eventually)
+//
+// TODO(jmacd): Await or add gRPC metrics instrumentation  in the upstream package.
 
 func main() {
 	if os.Getenv("DEBUG") != "" {
@@ -208,17 +152,6 @@ func main() {
 	// We instantiate a context here since the tailer is used by two other components.
 	// The context will be used in the lifecycle of prometheusReader further down.
 	ctx, cancel := context.WithCancel(context.Background())
-
-	// go func() {
-	// 	uptimeUpdateTime := time.Now()
-	// 	c := time.Tick(60 * time.Second)
-	// 	for now := range c {
-	// 		stats.RecordWithTags(ctx,
-	// 			[]tag.Mutator{tag.Upsert(VersionTag, fmt.Sprintf("opentelemetry-prometheus-sidecar/%s", version.Version))},
-	// 			UptimeMeasure.M(int64(now.Sub(uptimeUpdateTime).Seconds())))
-	// 		uptimeUpdateTime = now
-	// 	}
-	// }()
 
 	httpClient := &http.Client{
 		Transport: otelhttp.NewTransport(http.DefaultTransport),
