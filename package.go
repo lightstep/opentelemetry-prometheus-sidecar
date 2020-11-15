@@ -2,8 +2,8 @@ package sidecar
 
 import (
 	"github.com/prometheus/common/version"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/global"
+	"go.opentelemetry.io/otel/api/global"
+	"go.opentelemetry.io/otel/api/metric"
 )
 
 const (
@@ -17,8 +17,8 @@ const (
 var (
 	OTelMeter = global.Meter(
 		SelfInstrumentationLibrary,
-		otel.WithInstrumentationVersion(version.Version),
+		metric.WithInstrumentationVersion(version.Version),
 	)
 
-	OTelMeterMust = otel.Must(OTelMeter)
+	OTelMeterMust = metric.Must(OTelMeter)
 )

@@ -24,7 +24,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/go-logfmt/logfmt"
-	"go.opentelemetry.io/otel/global"
+	"go.opentelemetry.io/otel/api/global"
 	"google.golang.org/grpc/grpclog"
 )
 

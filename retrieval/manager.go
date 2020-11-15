@@ -31,7 +31,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb/fileutil"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wal"
-	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/api/metric"
 )
 
 type TargetGetter interface {
@@ -87,12 +87,12 @@ type PrometheusReader struct {
 var (
 	samplesProcessed = sidecar.OTelMeterMust.NewInt64ValueRecorder(
 		"samples_processed",
-		otel.WithDescription("Number of WAL samples processed in a batch"),
+		metric.WithDescription("Number of WAL samples processed in a batch"),
 	)
 
 	samplesProduced = sidecar.OTelMeterMust.NewInt64Counter(
 		"samples_prouced",
-		otel.WithDescription("Number of Metric samples produced"),
+		metric.WithDescription("Number of Metric samples produced"),
 	)
 )
 
