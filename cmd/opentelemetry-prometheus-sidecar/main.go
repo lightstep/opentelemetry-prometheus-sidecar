@@ -54,7 +54,8 @@ import (
 // TODO(jmacd): Define a path for healthchecks.
 
 // Note on metrics instrumentation relative ot the original OpenCensus
-// code instrumentation of this code base:
+// instrumentation of this code base:
+//
 // - telemetry/* starts runtime and host instrumentation packages (includes uptime)
 // - the net/http instrumentation package includes (spans and) metrics
 // - the gRPC instrumentation package does not include mtrics (but will eventually)
