@@ -26,9 +26,11 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
 	metricsService "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/collector/metrics/v1"
 	"github.com/prometheus/common/version"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.opentelemetry.io/otel/api/metric"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/balancer/roundrobin"
 	"google.golang.org/grpc/codes"
@@ -42,26 +44,12 @@ const (
 	MaxTimeseriesesPerRequest = 200
 )
 
-// var (
-// 	// StatusTag is the google3 canonical status code: google3/google/rpc/code.proto
-// 	StatusTag = tag.MustNewKey("status")
-
-// 	// PointCount is a metric.
-// 	PointCount = stats.Int64("agent.googleapis.com/agent/monitoring/point_count",
-// 		"count of metric points written to OpenCensus", stats.UnitDimensionless)
-// )
-
-// func init() {
-// 	if err := view.Register(
-// 		&view.View{
-// 			Measure:     PointCount,
-// 			TagKeys:     []tag.Key{StatusTag},
-// 			Aggregation: view.Sum(),
-// 		},
-// 	); err != nil {
-// 		panic(err)
-// 	}
-// }
+var (
+	pointsExported = sidecar.OTelMeterMust.NewInt64Counter(
+		"points_exported",
+		metric.WithDescription("count of exported metric points"),
+	)
+)
 
 // Client allows reading and writing from/to a remote gRPC endpoint. The
 // implementation may hit a single backend, so the application should create a
@@ -208,10 +196,9 @@ func (c *Client) Store(req *metricsService.ExportMetricsServiceRequest) error {
 			}
 			_, err := service.Export(grpcMetadata.NewOutgoingContext(ctx, c.headers), req_copy)
 			if err == nil {
-				// The response is empty if all points were successfully written.
-				// stats.RecordWithTags(ctx,
-				// 	[]tag.Mutator{tag.Upsert(StatusTag, "0")},
-				// 	PointCount.M(int64(end-begin)))
+				// Points were successfully written.
+				pointsExported.Add(ctx, int64(end-begin))
+
 				level.Debug(c.logger).Log(
 					"msg", "Write was successful",
 					"records", end-begin)

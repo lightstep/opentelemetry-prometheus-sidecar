@@ -28,8 +28,8 @@ import (
 	runtimeMetrics "go.opentelemetry.io/contrib/instrumentation/runtime"
 	"go.opentelemetry.io/contrib/propagators/b3"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/api/global"
 	"go.opentelemetry.io/otel/exporters/otlp"
-	"go.opentelemetry.io/otel/global"
 	"go.opentelemetry.io/otel/label"
 	"go.opentelemetry.io/otel/propagators"
 	controller "go.opentelemetry.io/otel/sdk/metric/controller/push"
@@ -111,7 +111,7 @@ func WithHeaders(headers map[string]string) Option {
 	}
 }
 
-func newConfig(opts ...Option) (Config, error) {
+func newConfig(opts ...Option) Config {
 	var c Config
 	logWriter := log.NewLogfmtLogger(log.NewSyncWriter(os.Stdout))
 	c.Propagators = []string{"b3"}
@@ -122,12 +122,8 @@ func newConfig(opts ...Option) (Config, error) {
 	for _, opt := range append(defaultOpts, opts...) {
 		opt(&c)
 	}
-	res, err := newResource(&c)
-	if err != nil {
-		return c, err
-	}
-	c.resource = res
-	return c, nil
+	c.resource = newResource(&c)
+	return c
 }
 
 // configurePropagators configures B3 propagation by default
@@ -153,12 +149,14 @@ func configurePropagators(c *Config) error {
 	return nil
 }
 
-func newResource(c *Config) (*resource.Resource, error) {
+func newResource(c *Config) *resource.Resource {
+	// TODO placholder until
+	// https://github.com/open-telemetry/opentelemetry-go/pull/1235
 	var kv []label.KeyValue
 	for k, v := range c.ResourceAttributes {
 		kv = append(kv, label.String(k, v))
 	}
-	return resource.New(context.Background(), resource.WithAttributes(kv...))
+	return resource.New(kv...)
 }
 
 func newExporter(endpoint string, insecure bool, headers map[string]string) *otlp.Exporter {
@@ -254,26 +252,22 @@ func (c *Config) setupMetrics() (func() error, func() error, error) {
 }
 
 func ConfigureOpentelemetry(opts ...Option) *Telemetry {
-	cfg, err := newConfig(opts...)
-	if err != nil {
-		level.Error(cfg.logger).Log("config error", err)
-	}
 	tel := Telemetry{
-		config: cfg,
+		config: newConfig(opts...),
 	}
 
-	level.Debug(cfg.logger).Log("msg", "debug logging enabled")
+	level.Debug(tel.config.logger).Log("msg", "debug logging enabled")
 	s, _ := json.MarshalIndent(tel.config, "", "\t")
-	level.Debug(cfg.logger).Log("configuration", string(s))
+	level.Debug(tel.config.logger).Log("configuration", string(s))
 
 	var startFuncs []func() error
 
-	staticSetup(cfg.logger)
+	staticSetup(tel.config.logger)
 
-	for _, setup := range []setupFunc{cfg.setupTracing, cfg.setupMetrics} {
+	for _, setup := range []setupFunc{tel.config.setupTracing, tel.config.setupMetrics} {
 		start, shutdown, err := setup()
 		if err != nil {
-			level.Error(cfg.logger).Log("setup error", err)
+			level.Error(tel.config.logger).Log("setup error", err)
 			continue
 		}
 		if shutdown != nil {
@@ -285,7 +279,7 @@ func ConfigureOpentelemetry(opts ...Option) *Telemetry {
 	}
 	for _, start := range startFuncs {
 		if err := start(); err != nil {
-			level.Error(cfg.logger).Log("start error", err)
+			level.Error(tel.config.logger).Log("start error", err)
 		}
 	}
 	return &tel

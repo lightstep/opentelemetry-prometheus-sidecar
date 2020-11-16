@@ -30,7 +30,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/textparse"
 	"github.com/prometheus/prometheus/tsdb/record"
-	"gopkg.in/d4l3k/messagediff.v1"
+	messagediff "gopkg.in/d4l3k/messagediff.v1"
 )
 
 // seriesMap implements seriesGetter.
@@ -93,7 +93,7 @@ func TestSampleBuilder(t *testing.T) {
 			return ResourceMetrics(
 				Resource(reslab...),
 				InstrumentationLibraryMetrics(
-					InstrumentationLibrary(sidecar.InstrumentationLibrary, version.Version),
+					InstrumentationLibrary(sidecar.ExportInstrumentationLibrary, version.Version),
 					DoubleSumCumulativeMonotonic(
 						name, "", "",
 						DoubleDataPoint(
@@ -116,7 +116,7 @@ func TestSampleBuilder(t *testing.T) {
 			return ResourceMetrics(
 				Resource(reslab...),
 				InstrumentationLibraryMetrics(
-					InstrumentationLibrary(sidecar.InstrumentationLibrary, version.Version),
+					InstrumentationLibrary(sidecar.ExportInstrumentationLibrary, version.Version),
 					DoubleGauge(
 						name, "", "",
 						DoubleDataPoint(
@@ -140,7 +140,7 @@ func TestSampleBuilder(t *testing.T) {
 			return ResourceMetrics(
 				Resource(reslab...),
 				InstrumentationLibraryMetrics(
-					InstrumentationLibrary(sidecar.InstrumentationLibrary, version.Version),
+					InstrumentationLibrary(sidecar.ExportInstrumentationLibrary, version.Version),
 					IntSumCumulativeMonotonic(
 						name, "", "",
 						IntDataPoint(
@@ -163,7 +163,7 @@ func TestSampleBuilder(t *testing.T) {
 			return ResourceMetrics(
 				Resource(reslab...),
 				InstrumentationLibraryMetrics(
-					InstrumentationLibrary(sidecar.InstrumentationLibrary, version.Version),
+					InstrumentationLibrary(sidecar.ExportInstrumentationLibrary, version.Version),
 					IntGauge(
 						name, "", "",
 						IntDataPoint(
@@ -188,7 +188,7 @@ func TestSampleBuilder(t *testing.T) {
 			return ResourceMetrics(
 				Resource(reslab...),
 				InstrumentationLibraryMetrics(
-					InstrumentationLibrary(sidecar.InstrumentationLibrary, version.Version),
+					InstrumentationLibrary(sidecar.ExportInstrumentationLibrary, version.Version),
 					DoubleHistogramCumulative(
 						name, "", "",
 						DoubleHistogramDataPoint(

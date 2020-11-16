@@ -21,6 +21,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/targets"
 	"github.com/pkg/errors"
@@ -28,27 +29,24 @@ import (
 	"github.com/prometheus/prometheus/pkg/textparse"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wal"
+	"go.opentelemetry.io/otel/api/metric"
+	"go.opentelemetry.io/otel/label"
 )
 
-// var (
-// 	droppedSeries = stats.Int64("prometheus_sidecar/dropped_series",
-// 		"Number of series that were dropped instead of being sent to OpenTelemetry", stats.UnitDimensionless)
+var (
+	droppedSeries = sidecar.OTelMeterMust.NewInt64Counter(
+		"dropped_series",
+		metric.WithDescription("Number of series that were dropped, not exported"),
+	)
+	keyReason = label.Key("key_reason")
 
-// 	keyReason, _ = tag.NewKey("reason")
-// )
-
-// func init() {
-// 	if err := view.Register(&view.View{
-// 		Name:        "prometheus_sidecar/dropped_series",
-// 		Description: "Number of series that were dropped instead of being sent to OpenTelemetry",
-// 		Measure:     droppedSeries,
-// 		TagKeys:     []tag.Key{keyReason},
-// 		Aggregation: view.Count(),
-// 	}); err != nil {
-// 		panic(err)
-// 	}
-//
-// }
+	droppedSeriesTargetNotFound = droppedSeries.Bind(
+		keyReason.String("target_not_found"),
+	)
+	droppedSeriesMetadataNotFound = droppedSeries.Bind(
+		keyReason.String("metadata_not_found"),
+	)
+)
 
 // tsDesc has complete, proto-independent data about a metric data
 // point.
@@ -337,8 +335,8 @@ func (c *seriesCache) refresh(ctx context.Context, ref uint64) error {
 		return errors.Wrap(err, "retrieving target failed")
 	}
 	if target == nil {
-		// ctx, _ = tag.New(ctx, tag.Insert(keyReason, "target_not_found"))
-		// stats.Record(ctx, droppedSeries.M(1))
+		droppedSeriesTargetNotFound.Add(ctx, 1)
+
 		level.Debug(c.logger).Log("msg", "target not found", "labels", entry.lset)
 		return nil
 	}
@@ -375,8 +373,8 @@ func (c *seriesCache) refresh(ctx context.Context, ref uint64) error {
 			}
 		}
 		if meta == nil {
-			// ctx, _ = tag.New(ctx, tag.Insert(keyReason, "metadata_not_found"))
-			// stats.Record(ctx, droppedSeries.M(1))
+			droppedSeriesMetadataNotFound.Add(ctx, 1)
+
 			level.Debug(c.logger).Log("msg", "metadata not found", "metric_name", metricName)
 			return nil
 		}
