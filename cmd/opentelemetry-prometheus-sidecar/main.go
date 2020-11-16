@@ -58,7 +58,7 @@ import (
 //
 // - telemetry/* starts runtime and host instrumentation packages (includes uptime)
 // - the net/http instrumentation package includes (spans and) metrics
-// - the gRPC instrumentation package does not include mtrics (but will eventually)
+// - the gRPC instrumentation package does not include metrics (but will eventually)
 //
 // TODO(jmacd): Await or add gRPC metrics instrumentation  in the upstream package.
 
