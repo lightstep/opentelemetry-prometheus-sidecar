@@ -344,9 +344,6 @@ func (t *QueueManager) reshardLoop() {
 }
 
 func (t *QueueManager) reshard(n int) {
-	// @@@
-	// numShards.WithLabelValues(t.queueName).Set(float64(n))
-
 	t.shardsMtx.Lock()
 	newShards := t.newShardCollection(n)
 	oldShards := t.shards
