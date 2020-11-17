@@ -58,7 +58,7 @@ func newTestSample(name string, timestamp int64, v float64) *metric_pb.ResourceM
 	return otlptest.ResourceMetrics(
 		otlptest.Resource(),
 		otlptest.InstrumentationLibraryMetrics(
-			otlptest.InstrumentationLibrary(sidecar.InstrumentationLibrary, version.Version),
+			otlptest.InstrumentationLibrary(sidecar.ExportInstrumentationLibrary, version.Version),
 			otlptest.DoubleGauge(
 				name, "", "",
 				otlptest.DoubleDataPoint(

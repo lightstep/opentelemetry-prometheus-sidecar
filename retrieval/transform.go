@@ -226,7 +226,7 @@ func protoTimeseries(desc *tsDesc) (*metric_pb.ResourceMetrics, *metric_pb.Metri
 		InstrumentationLibraryMetrics: []*metric_pb.InstrumentationLibraryMetrics{
 			&metric_pb.InstrumentationLibraryMetrics{
 				InstrumentationLibrary: &common_pb.InstrumentationLibrary{
-					Name:    sidecar.InstrumentationLibrary,
+					Name:    sidecar.ExportInstrumentationLibrary,
 					Version: version.Version,
 				},
 				Metrics: []*metric_pb.Metric{metric},

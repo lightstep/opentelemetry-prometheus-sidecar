@@ -23,6 +23,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/targets"
@@ -30,6 +31,19 @@ import (
 	"github.com/prometheus/prometheus/tsdb/fileutil"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wal"
+	"go.opentelemetry.io/otel/api/metric"
+)
+
+var (
+	samplesProcessed = sidecar.OTelMeterMust.NewInt64ValueRecorder(
+		"samples_processed",
+		metric.WithDescription("Number of WAL samples processed in a batch"),
+	)
+
+	samplesProduced = sidecar.OTelMeterMust.NewInt64Counter(
+		"samples_produced",
+		metric.WithDescription("Number of Metric samples produced"),
+	)
 )
 
 type TargetGetter interface {
@@ -81,32 +95,6 @@ type PrometheusReader struct {
 	progressSaveInterval time.Duration
 	metricsPrefix        string
 }
-
-// var (
-// 	samplesProcessed = stats.Int64("prometheus_sidecar/samples_processed", "Number of WAL samples processed", stats.UnitDimensionless)
-// 	samplesProduced  = stats.Int64("prometheus_sidecar/samples_produced", "Number of Metric samples produced", stats.UnitDimensionless)
-// )
-
-// func init() {
-// 	view.Register(&view.View{
-// 		Name:        "prometheus_sidecar/batches_processed",
-// 		Description: "Total number of sample batches processed",
-// 		Measure:     samplesProcessed,
-// 		Aggregation: view.Count(),
-// 	})
-// 	view.Register(&view.View{
-// 		Name:        "prometheus_sidecar/samples_processed",
-// 		Description: "Number of WAL samples processed",
-// 		Measure:     samplesProcessed,
-// 		Aggregation: view.Sum(),
-// 	})
-// 	view.Register(&view.View{
-// 		Name:        "prometheus_sidecar/samples_produced",
-// 		Description: "Number of samples produced",
-// 		Measure:     samplesProduced,
-// 		Aggregation: view.Sum(),
-// 	})
-// }
 
 func (r *PrometheusReader) Run(ctx context.Context, startOffset int) error {
 	level.Info(r.logger).Log("msg", "Starting Prometheus reader...")
@@ -186,7 +174,6 @@ Outer:
 			// once at the end.
 			// Otherwise it will increase CPU usage by ~10%.
 			processed, produced := len(samples), 0
-			_ = processed
 
 			for len(samples) > 0 {
 				select {
@@ -214,7 +201,13 @@ Outer:
 				r.appender.Append(hash, outputSample)
 				produced++
 			}
-			// stats.Record(ctx, samplesProcessed.M(int64(processed)), samplesProduced.M(int64(produced)))
+
+			sidecar.OTelMeter.RecordBatch(
+				ctx,
+				nil,
+				samplesProcessed.Measurement(int64(processed)),
+				samplesProduced.Measurement(int64(produced)),
+			)
 
 		case record.Tombstones:
 		default:
