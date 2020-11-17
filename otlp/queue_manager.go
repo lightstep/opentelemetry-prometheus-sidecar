@@ -14,6 +14,7 @@
 package otlp
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"strings"
@@ -22,11 +23,14 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
 	metricsService "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/collector/metrics/v1"
 	metric_pb "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/config"
+	"go.opentelemetry.io/otel/api/metric"
+	"go.opentelemetry.io/otel/label"
 	"golang.org/x/time/rate"
 	"google.golang.org/grpc/status"
 
@@ -39,12 +43,7 @@ import (
 	_ "google.golang.org/genproto/googleapis/rpc/errdetails"
 )
 
-// String constants for instrumentation.
 const (
-	// namespace = "prometheus"
-	// subsystem = "remote_storage"
-	// queue     = "queue"
-
 	// We track samples in/out and how long pushes take using an Exponentially
 	// Weighted Moving Average.
 	ewmaWeight          = 0.2
@@ -53,74 +52,9 @@ const (
 	// Limit to 1 log event every 10s
 	logRateLimit = 0.1
 	logBurst     = 10
+
+	queueName = label.Key("queue")
 )
-
-// var (
-// 	succeededSamplesTotal = prometheus.NewCounterVec(
-// 		prometheus.CounterOpts{
-// 			Namespace: namespace,
-// 			Subsystem: subsystem,
-// 			Name:      "succeeded_samples_total",
-// 			Help:      "Total number of samples successfully sent to remote storage.",
-// 		},
-// 		[]string{queue},
-// 	)
-// 	failedSamplesTotal = prometheus.NewCounterVec(
-// 		prometheus.CounterOpts{
-// 			Namespace: namespace,
-// 			Subsystem: subsystem,
-// 			Name:      "failed_samples_total",
-// 			Help:      "Total number of samples which failed on send to remote storage.",
-// 		},
-// 		[]string{queue},
-// 	)
-// 	sentBatchDuration = prometheus.NewHistogramVec(
-// 		prometheus.HistogramOpts{
-// 			Namespace: namespace,
-// 			Subsystem: subsystem,
-// 			Name:      "sent_batch_duration_seconds",
-// 			Help:      "Duration of sample batch send calls to the remote storage.",
-// 			Buckets:   prometheus.DefBuckets,
-// 		},
-// 		[]string{queue},
-// 	)
-// 	queueLength = prometheus.NewGaugeVec(
-// 		prometheus.GaugeOpts{
-// 			Namespace: namespace,
-// 			Subsystem: subsystem,
-// 			Name:      "queue_length",
-// 			Help:      "The number of processed samples queued to be sent to the remote storage.",
-// 		},
-// 		[]string{queue},
-// 	)
-// 	queueCapacity = prometheus.NewGaugeVec(
-// 		prometheus.GaugeOpts{
-// 			Namespace: namespace,
-// 			Subsystem: subsystem,
-// 			Name:      "queue_capacity",
-// 			Help:      "The capacity of the queue of samples to be sent to the remote storage.",
-// 		},
-// 		[]string{queue},
-// 	)
-// 	numShards = prometheus.NewGaugeVec(
-// 		prometheus.GaugeOpts{
-// 			Namespace: namespace,
-// 			Subsystem: subsystem,
-// 			Name:      "shards",
-// 			Help:      "The number of shards used for parallel sending to the remote storage.",
-// 		},
-// 		[]string{queue},
-// 	)
-// )
-
-// func init() {
-// 	prometheus.MustRegister(succeededSamplesTotal)
-// 	prometheus.MustRegister(failedSamplesTotal)
-// 	prometheus.MustRegister(sentBatchDuration)
-// 	prometheus.MustRegister(queueLength)
-// 	prometheus.MustRegister(queueCapacity)
-// 	prometheus.MustRegister(numShards)
-// }
 
 // StorageClient defines an interface for sending a batch of samples to an
 // external timeseries database.
@@ -158,6 +92,13 @@ type QueueManager struct {
 
 	tailer               *tail.Tailer
 	lastSize, lastOffset int
+
+	succeededSamplesTotal metric.Int64Counter
+	failedSamplesTotal    metric.Int64Counter
+	sentBatchDuration     metric.Float64ValueRecorder
+	queueLengthCounter    metric.Int64UpDownCounter
+	queueCapacityObs      metric.Int64SumObserver
+	numShardsObs          metric.Int64SumObserver
 }
 
 // NewQueueManager builds a new QueueManager.
@@ -191,15 +132,49 @@ func NewQueueManager(logger log.Logger, cfg config.QueueConfig, clientFactory St
 	t.lastOffset = tailer.Offset()
 
 	t.shards = t.newShardCollection(t.numShards)
-	// numShards.WithLabelValues(t.queueName).Set(float64(t.numShards))
-	// queueCapacity.WithLabelValues(t.queueName).Set(float64(t.cfg.Capacity))
 
-	// Initialise counter labels to zero.  TODO(jmacd) understand
-	// what was intended by these statements: is it to establish a
-	// reset timestamp?
-	// sentBatchDuration.WithLabelValues(t.queueName)
-	// succeededSamplesTotal.WithLabelValues(t.queueName)
-	// failedSamplesTotal.WithLabelValues(t.queueName)
+	t.succeededSamplesTotal = sidecar.OTelMeterMust.NewInt64Counter(
+		"export.samples.success",
+		metric.WithDescription(
+			"Total number of samples successfully sent to remote storage.",
+		),
+	)
+	t.failedSamplesTotal = sidecar.OTelMeterMust.NewInt64Counter(
+		"export.samples.failed",
+		metric.WithDescription(
+			"Total number of samples which failed on send to remote storage.",
+		),
+	)
+	t.sentBatchDuration = sidecar.OTelMeterMust.NewFloat64ValueRecorder(
+		"export.samples.duration",
+		metric.WithDescription(
+			"Duration of sample batch send calls to the remote storage.",
+		),
+	)
+	t.queueLengthCounter = sidecar.OTelMeterMust.NewInt64UpDownCounter(
+		"export.queue.size",
+		metric.WithDescription(
+			"The number of processed samples queued to be sent to the remote storage.",
+		),
+	)
+	t.queueCapacityObs = sidecar.OTelMeterMust.NewInt64SumObserver(
+		"export.queue.limit",
+		func(ctx context.Context, result metric.Int64ObserverResult) {
+			result.Observe(int64(t.cfg.Capacity))
+		},
+		metric.WithDescription(
+			"The capacity of the queue of samples to be sent to the remote storage.",
+		),
+	)
+	t.numShardsObs = sidecar.OTelMeterMust.NewInt64SumObserver(
+		"export.queue.shards",
+		func(ctx context.Context, result metric.Int64ObserverResult) {
+			result.Observe(int64(t.numShards))
+		},
+		metric.WithDescription(
+			"The number of shards used for parallel sending to the remote storage.",
+		),
+	)
 
 	return t, nil
 }
@@ -207,7 +182,8 @@ func NewQueueManager(logger log.Logger, cfg config.QueueConfig, clientFactory St
 // Append queues a sample to be sent to the OpenTelemetry API.
 // Always returns nil.
 func (t *QueueManager) Append(hash uint64, sample *metric_pb.ResourceMetrics) error {
-	// queueLength.WithLabelValues(t.queueName).Inc()
+	t.queueLengthCounter.Add(context.Background(), 1, queueName.String(t.queueName))
+
 	t.shardsMtx.RLock()
 	t.shards.enqueue(hash, sample)
 	t.shardsMtx.RUnlock()
@@ -368,6 +344,7 @@ func (t *QueueManager) reshardLoop() {
 }
 
 func (t *QueueManager) reshard(n int) {
+	// @@@
 	// numShards.WithLabelValues(t.queueName).Set(float64(n))
 
 	t.shardsMtx.Lock()
@@ -484,7 +461,7 @@ func (s *shardCollection) runShard(i int) {
 				}
 				return
 			}
-			// queueLength.WithLabelValues(s.qm.queueName).Dec()
+			s.qm.queueLengthCounter.Add(context.Background(), -1, queueName.String(s.qm.queueName))
 
 			// If pendingSamples contains a point for the
 			// incoming time series, send all pending points
@@ -532,14 +509,24 @@ func (s *shardCollection) sendSamples(client StorageClient, samples []*metric_pb
 
 // sendSamples to the remote storage with backoff for recoverable errors.
 func (s *shardCollection) sendSamplesWithBackoff(client StorageClient, samples []*metric_pb.ResourceMetrics) {
+	ctx := context.Background()
+
 	backoff := s.qm.cfg.MinBackoff
 	for {
-		// begin := time.Now()
+		begin := time.Now()
 		err := client.Store(&metricsService.ExportMetricsServiceRequest{ResourceMetrics: samples})
 
-		// sentBatchDuration.WithLabelValues(s.qm.queueName).Observe(time.Since(begin).Seconds())
+		s.qm.sentBatchDuration.Record(
+			ctx,
+			time.Since(begin).Seconds(),
+			queueName.String(s.qm.queueName),
+		)
 		if err == nil {
-			// succeededSamplesTotal.WithLabelValues(s.qm.queueName).Add(float64(len(samples)))
+			s.qm.succeededSamplesTotal.Add(
+				ctx,
+				int64(len(samples)),
+				queueName.String(s.qm.queueName),
+			)
 			return
 		}
 
@@ -573,5 +560,9 @@ func (s *shardCollection) sendSamplesWithBackoff(client StorageClient, samples [
 		}
 	}
 
-	// failedSamplesTotal.WithLabelValues(s.qm.queueName).Add(float64(len(samples)))
+	s.qm.failedSamplesTotal.Add(
+		ctx,
+		int64(len(samples)),
+		queueName.String(s.qm.queueName),
+	)
 }
