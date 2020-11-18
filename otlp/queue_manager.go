@@ -98,7 +98,7 @@ type QueueManager struct {
 	sentBatchDuration     metric.Float64ValueRecorder
 	queueLengthCounter    metric.Int64UpDownCounter
 	queueCapacityObs      metric.Int64SumObserver
-	numShardsObs          metric.Int64SumObserver
+	numShardsObs          metric.Int64UpDownSumObserver
 }
 
 // NewQueueManager builds a new QueueManager.
@@ -166,7 +166,7 @@ func NewQueueManager(logger log.Logger, cfg config.QueueConfig, clientFactory St
 			"The capacity of the queue of samples to be sent to the remote storage.",
 		),
 	)
-	t.numShardsObs = sidecar.OTelMeterMust.NewInt64SumObserver(
+	t.numShardsObs = sidecar.OTelMeterMust.NewInt64UpDownSumObserver(
 		"export.queue.shards",
 		func(ctx context.Context, result metric.Int64ObserverResult) {
 			result.Observe(int64(t.numShards))
