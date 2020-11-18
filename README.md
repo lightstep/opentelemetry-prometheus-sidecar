@@ -8,6 +8,20 @@ Sidecar](https://github.com/Stackdriver/stackdriver-prometheus-sidecar).
 
 ![OpenTelemetry Prometheus Sidecar Diagram](docs/img/opentelemetry-prometheus-sidecar.png)
 
+## Repository Status (11/18/2020)
+
+This repository will be archived after the 0.2 release.  [We are
+moving this
+repository](https://github.com/open-telemetry/community/issues/575)
+into the [OpenTelemetry](https://opentelemetry.io/)
+[organization](http://github.com/open-telemetry) and [will continue
+development on a public fork](https://github.com/open-telemetry/prometheus-sidecar) of the [upstream Stackdriver Prometheus
+sidecar](https://github.com/Stackdriver/stackdriver-prometheus-sidecar)
+repository.
+
+This code base is 100% OpenTelemetry and Prometheus, not a Lightstep
+project.
+
 ## OpenTelemetry Design
 
 A key difference between the OpenTelemetry Metrics data model and the
