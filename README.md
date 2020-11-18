@@ -8,14 +8,14 @@ Sidecar](https://github.com/Stackdriver/stackdriver-prometheus-sidecar).
 
 ![OpenTelemetry Prometheus Sidecar Diagram](docs/img/opentelemetry-prometheus-sidecar.png)
 
-## Repositrory Status (11/17/2020)
+## Repository Status (11/18/2020)
 
 This repository will be archived after the 0.2 release.  [We are
 moving this
 repository](https://github.com/open-telemetry/community/issues/575)
 into the [OpenTelemetry](https://opentelemetry.io/)
-[organization](http://github.com/open-telemetry) and will continue
-development on a public fork of the [upstream Stackdriver Prometheus
+[organization](http://github.com/open-telemetry) and [will continue
+development on a public fork](https://github.com/open-telemetry/prometheus-sidecar) of the [upstream Stackdriver Prometheus
 sidecar](https://github.com/Stackdriver/stackdriver-prometheus-sidecar)
 repository.
 
