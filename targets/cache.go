@@ -209,7 +209,22 @@ func (c *Cache) Get(ctx context.Context, lset labels.Labels) (*Target, error) {
 		}
 	}
 	t.DiscoveredLabels = tmp
+
+	// Sort and remove duplicates.  Duplicates enter the cache as
+	// a result of extraLabels. We could avoid adding duplicates
+	// above or we can remove them here.
 	sort.Sort(&t.DiscoveredLabels)
+
+	o := 1
+	for i := 1; i < len(t.DiscoveredLabels); i++ {
+		if t.DiscoveredLabels[o-1].Name == t.DiscoveredLabels[i].Name {
+			continue
+		}
+		t.DiscoveredLabels[o] = t.DiscoveredLabels[i]
+		o++
+	}
+	t.DiscoveredLabels = t.DiscoveredLabels[:o]
+
 	return t, nil
 }
 
