@@ -7,6 +7,10 @@ jobs:
       - image: circleci/golang:1.14
     steps:
       - run:
+          name: installation
+          command: |
+            sudo apt-get install -y prometheus
+      - run:
           name: "configure environment"
           command: |
             echo 'export GOPATH="$HOME/go"' >> $BASH_ENV
