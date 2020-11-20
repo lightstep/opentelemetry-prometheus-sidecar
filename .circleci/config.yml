@@ -10,12 +10,12 @@ jobs:
       - run:
           name: "install prometheus"
           command: |
-	    mkdir $HOME/prom
-	    cd $HOME/prom
-	    git clone git@github.com:prometheus/prometheus.git
-	    cd $HOME/prom/prometheus
-	    git checkout v`cat $HOME/PROM_VERSION`
-	    go install ./cmd/prometheus
+            mkdir $HOME/prom
+            cd $HOME/prom
+            git clone git@github.com:prometheus/prometheus.git
+            cd $HOME/prom/prometheus
+            git checkout v`cat $HOME/PROM_VERSION`
+            go install ./cmd/prometheus
       - run: go test ./...
       - run: go test -race ./...
       - run: make
