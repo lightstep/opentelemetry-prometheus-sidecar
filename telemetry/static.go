@@ -24,14 +24,14 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/go-logfmt/logfmt"
-	"go.opentelemetry.io/otel/api/global"
+	"go.opentelemetry.io/otel"
 	"google.golang.org/grpc/grpclog"
 )
 
 // This file adds logging configurations for:
 // - "log" logger
 // - "google.golang.org/grpc/grpclog" log handler
-// - "go.opentelemetry.io/otel/api/global" error handler
+// - "go.opentelemetry.io/otel" error handler
 
 type deferLogger struct {
 	lock     sync.Mutex
@@ -58,7 +58,7 @@ func (dl *deferLogger) Log(kvs ...interface{}) error {
 func init() {
 	stdlog.SetOutput(log.NewStdlibAdapter(log.With(&staticLogger, "component", "stdlog")))
 
-	global.SetErrorHandler(newForOTel(log.With(&staticLogger, "component", "otel")))
+	otel.SetErrorHandler(newForOTel(log.With(&staticLogger, "component", "otel")))
 
 	grpclog.SetLoggerV2(newForGRPC(log.With(&staticLogger, "component", "grpc")))
 }

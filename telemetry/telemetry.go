@@ -28,10 +28,9 @@ import (
 	runtimeMetrics "go.opentelemetry.io/contrib/instrumentation/runtime"
 	"go.opentelemetry.io/contrib/propagators/b3"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/api/global"
 	"go.opentelemetry.io/otel/exporters/otlp"
 	"go.opentelemetry.io/otel/label"
-	"go.opentelemetry.io/otel/propagators"
+	"go.opentelemetry.io/otel/propagation"
 	controller "go.opentelemetry.io/otel/sdk/metric/controller/push"
 	processor "go.opentelemetry.io/otel/sdk/metric/processor/basic"
 	selector "go.opentelemetry.io/otel/sdk/metric/selector/simple"
@@ -122,18 +121,22 @@ func newConfig(opts ...Option) Config {
 	for _, opt := range append(defaultOpts, opts...) {
 		opt(&c)
 	}
-	c.resource = newResource(&c)
+	var err error
+	c.resource, err = newResource(&c)
+	if err != nil {
+		c.logger.Log("msg", "telemtry resource initialization failed", "error", err)
+	}
 	return c
 }
 
 // configurePropagators configures B3 propagation by default
 func configurePropagators(c *Config) error {
-	propagatorsMap := map[string]otel.TextMapPropagator{
+	propagatorsMap := map[string]propagation.TextMapPropagator{
 		"b3":           b3.B3{},
-		"baggage":      propagators.Baggage{},
-		"tracecontext": propagators.TraceContext{},
+		"baggage":      propagation.Baggage{},
+		"tracecontext": propagation.TraceContext{},
 	}
-	var props []otel.TextMapPropagator
+	var props []propagation.TextMapPropagator
 	for _, key := range c.Propagators {
 		prop := propagatorsMap[key]
 		if prop != nil {
@@ -143,20 +146,21 @@ func configurePropagators(c *Config) error {
 	if len(props) == 0 {
 		return fmt.Errorf("invalid configuration: unsupported propagators. Supported options: b3,cc")
 	}
-	global.SetTextMapPropagator(otel.NewCompositeTextMapPropagator(
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
 		props...,
 	))
 	return nil
 }
 
-func newResource(c *Config) *resource.Resource {
-	// TODO placholder until
-	// https://github.com/open-telemetry/opentelemetry-go/pull/1235
+func newResource(c *Config) (*resource.Resource, error) {
 	var kv []label.KeyValue
 	for k, v := range c.ResourceAttributes {
 		kv = append(kv, label.String(k, v))
 	}
-	return resource.New(kv...)
+	return resource.New(
+		context.Background(),
+		resource.WithAttributes(kv...),
+	)
 }
 
 func newExporter(endpoint string, insecure bool, headers map[string]string) *otlp.Exporter {
@@ -188,7 +192,7 @@ func (c *Config) setupTracing() (start, stop func() error, err error) {
 		return nil, nil, errors.Wrap(err, "failed to configure propagators")
 	}
 
-	global.SetTracerProvider(tp)
+	otel.SetTracerProvider(tp)
 
 	return func() error {
 			return spanExporter.Start()
@@ -227,7 +231,7 @@ func (c *Config) setupMetrics() (func() error, func() error, error) {
 
 	provider := pusher.MeterProvider()
 
-	global.SetMeterProvider(provider)
+	otel.SetMeterProvider(provider)
 
 	return func() error {
 			if err := metricExporter.Start(); err != nil {

@@ -29,8 +29,8 @@ import (
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/config"
-	"go.opentelemetry.io/otel/api/metric"
 	"go.opentelemetry.io/otel/label"
+	"go.opentelemetry.io/otel/metric"
 	"golang.org/x/time/rate"
 	"google.golang.org/grpc/status"
 
