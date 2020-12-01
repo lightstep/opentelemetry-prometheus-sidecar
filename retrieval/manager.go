@@ -31,7 +31,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb/fileutil"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wal"
-	"go.opentelemetry.io/otel/api/metric"
+	"go.opentelemetry.io/otel/metric"
 )
 
 var (
