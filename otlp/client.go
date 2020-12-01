@@ -46,7 +46,7 @@ const (
 
 var (
 	pointsExported = sidecar.OTelMeterMust.NewInt64Counter(
-		"points_exported",
+		"points.exported",
 		metric.WithDescription("count of exported metric points"),
 	)
 )
