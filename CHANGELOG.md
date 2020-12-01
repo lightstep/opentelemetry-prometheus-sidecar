@@ -12,6 +12,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Change several metric names to use `.` instead of `_` for 
+  OpenTelemetry consistency.
 - Update to OpenTelemetry-Go SDK version 0.14.
 
 ### Removed
