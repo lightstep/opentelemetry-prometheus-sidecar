@@ -274,6 +274,11 @@ var internalMetrics = map[string]*Entry{
 		MetricType: textparse.MetricTypeGauge,
 		ValueType:  DOUBLE,
 		Help:       "How many samples were ingested after relabeling"},
+	"scrape_series_added": &Entry{
+		Metric:     "scrape_series_added",
+		MetricType: textparse.MetricTypeGauge,
+		ValueType:  DOUBLE,
+		Help:       "Number of new series in the last successful scrape"},
 }
 
 type apiResponse struct {
