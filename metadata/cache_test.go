@@ -149,14 +149,16 @@ func TestCache_Get(t *testing.T) {
 	expect(apiMetadata{Metric: "metric6", Type: textparse.MetricTypeUnknown, Help: "help_metric6"}, md)
 
 	// The scrape layer's metrics should not fire off requests.
-	md, err = c.Get(ctx, "prometheus", "localhost:9090", "up")
+	for _, internalName := range []string{"up", "scrape_series_added"} {
+	md, err = c.Get(ctx, "prometheus", "localhost:9090", internalName)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(internalMetrics["up"], md) {
-		t.Errorf("unexpected metadata %v, want %v", *md, internalMetrics["up"])
+	if !reflect.DeepEqual(internalMetrics[internalName], md) {
+		t.Errorf("unexpected metadata %v, want %v", *md, internalMetrics[internalName])
 	}
-
+	}
+	
 	// If a metric does not exist, we first expect a fetch attempt.
 	handler = func(qMetric, qMatch string) *apiResponse {
 		if qMetric != "does_not_exist" {
