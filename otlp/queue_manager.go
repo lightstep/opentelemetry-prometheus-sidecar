@@ -358,26 +358,16 @@ func (t *QueueManager) reshard(n int) {
 }
 
 type queueEntry struct {
-	hash   uint64
 	sample *metric_pb.ResourceMetrics
 }
 
 type shard struct {
 	queue chan queueEntry
-	// A reusable cache of samples that were already seen in a sample batch.
-	seen map[uint64]struct{}
-}
-
-func (s *shard) resetSeen() {
-	for k := range s.seen {
-		delete(s.seen, k)
-	}
 }
 
 func newShard(cfg config.QueueConfig) shard {
 	return shard{
 		queue: make(chan queueEntry, cfg.Capacity),
-		seen:  map[uint64]struct{}{},
 	}
 }
 
@@ -419,7 +409,7 @@ func (s *shardCollection) stop() {
 func (s *shardCollection) enqueue(hash uint64, sample *metric_pb.ResourceMetrics) {
 	s.qm.samplesIn.incr(1)
 	shardIndex := hash % uint64(len(s.shards))
-	s.shards[shardIndex].queue <- queueEntry{sample: sample, hash: hash}
+	s.shards[shardIndex].queue <- queueEntry{sample: sample}
 }
 
 func (s *shardCollection) runShard(i int) {
@@ -432,9 +422,6 @@ func (s *shardCollection) runShard(i int) {
 	// If we have fewer samples than that, flush them out after a deadline
 	// anyways.
 	pendingSamples := make([]*metric_pb.ResourceMetrics, 0, s.qm.cfg.MaxSamplesPerSend)
-	// Fingerprint of time series contained in pendingSamples. Gets reset
-	// whenever samples are extracted from pendingSamples.
-	shard.resetSeen()
 
 	timer := time.NewTimer(time.Duration(s.qm.cfg.BatchSendDeadline))
 	stop := func() {
@@ -450,7 +437,7 @@ func (s *shardCollection) runShard(i int) {
 	for {
 		select {
 		case entry, ok := <-shard.queue:
-			fp, sample := entry.hash, entry.sample
+			sample := entry.sample
 
 			if !ok {
 				if len(pendingSamples) > 0 {
@@ -460,34 +447,18 @@ func (s *shardCollection) runShard(i int) {
 			}
 			s.qm.queueLengthCounter.Add(context.Background(), -1, queueName.String(s.qm.queueName))
 
-			// If pendingSamples contains a point for the
-			// incoming time series, send all pending points
-			// to OpenTelemetry, and start a new list. This
-			// prevents adding two points for the same time
-			// series to a single request, which OpenTelemetry
-			// rejects.
-			_, seen := shard.seen[fp]
-			if !seen {
-				pendingSamples = append(pendingSamples, sample)
-				shard.seen[fp] = struct{}{}
-			}
-			if len(pendingSamples) >= s.qm.cfg.MaxSamplesPerSend || seen {
+			pendingSamples = append(pendingSamples, sample)
+			if len(pendingSamples) >= s.qm.cfg.MaxSamplesPerSend {
 				s.sendSamples(client, pendingSamples)
 				pendingSamples = pendingSamples[:0]
-				shard.resetSeen()
 
 				stop()
 				timer.Reset(time.Duration(s.qm.cfg.BatchSendDeadline))
-			}
-			if seen {
-				pendingSamples = append(pendingSamples, sample)
-				shard.seen[fp] = struct{}{}
 			}
 		case <-timer.C:
 			if len(pendingSamples) > 0 {
 				s.sendSamples(client, pendingSamples)
 				pendingSamples = pendingSamples[:0]
-				shard.resetSeen()
 			}
 			timer.Reset(time.Duration(s.qm.cfg.BatchSendDeadline))
 		}
