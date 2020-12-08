@@ -17,7 +17,6 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"strings"
 	"sync"
 	"time"
 
@@ -32,7 +31,6 @@ import (
 	"go.opentelemetry.io/otel/label"
 	"go.opentelemetry.io/otel/metric"
 	"golang.org/x/time/rate"
-	"google.golang.org/grpc/status"
 
 	// gRPC Status protobuf types we may want to see.  This type
 	// is not widely used, but is the most standard way to itemize
@@ -52,6 +50,8 @@ const (
 	// Limit to 1 log event every 10s
 	logRateLimit = 0.1
 	logBurst     = 10
+
+	maxErrorDetailStringLen = 512
 
 	queueName = label.Key("queue")
 )
@@ -498,27 +498,11 @@ func (s *shardCollection) sendSamplesWithBackoff(client StorageClient, samples [
 			return
 		}
 
-		var detailStrings []string
-
-		if code, ok := status.FromError(err); ok {
-			details := code.Details()
-
-			if len(details) != 0 {
-				for _, det := range details {
-					detailStrings = append(detailStrings, fmt.Sprint(det))
-				}
-			}
-		}
-
 		if _, ok := err.(recoverableError); !ok {
-			logArgs := []interface{}{
+			level.Warn(s.qm.logger).Log(
 				"msg", "unrecoverable write error",
-				"err", err,
-			}
-			if detailStrings != nil {
-				logArgs = append(logArgs, "detail", strings.Join(detailStrings, ", "))
-			}
-			level.Warn(s.qm.logger).Log(logArgs...)
+				"err", truncateErrorString(err),
+			)
 			break
 		}
 		time.Sleep(time.Duration(backoff))
@@ -533,4 +517,14 @@ func (s *shardCollection) sendSamplesWithBackoff(client StorageClient, samples [
 		int64(len(samples)),
 		queueName.String(s.qm.queueName),
 	)
+}
+
+// truncateErrorString avoids printing error messages that are very
+// large.
+func truncateErrorString(err error) string {
+	tmp := fmt.Sprint(err)
+	if len(tmp) > maxErrorDetailStringLen {
+		tmp = fmt.Sprint(tmp[:maxErrorDetailStringLen], " ...")
+	}
+	return tmp
 }

@@ -205,8 +205,8 @@ func (c *Client) Store(req *metricsService.ExportMetricsServiceRequest) error {
 			} else {
 				// TODO This happens too fast _after_ a healthy connection becomes unhealthy. Fix.
 				level.Debug(c.logger).Log(
-					"msg", "Partial failure calling Export",
-					"err", err)
+					"msg", "Failure calling Export",
+					"err", truncateErrorString(err))
 				status, ok := status.FromError(err)
 				// TODO metrics
 				if !ok {
