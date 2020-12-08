@@ -8,9 +8,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
-### Added
-
 ### Changed
+
+## [0.3.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.3.0) - 2020-12-08
 
 - Change several metric names to use `.` instead of `_` for 
   OpenTelemetry consistency. (#43)
@@ -19,11 +19,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Truncate server error messages to 256 bytes. (#46)
 - Implement `--prometheus.max-point-age` flag, default 25h. (#47)
 
-### Removed
-
-### Fixed
-
-## [0.2.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.2.0) - 2020-10-20
+## [0.2.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.2.0) - 2020-11-20
 
 ### Added
 
@@ -54,7 +50,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `tail/tail.go` has an updated copy of `listSegments()` from Prometheus
   v2.22.0.
 
-## [0.1.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.1.0) - 2020-10-08
+## [0.1.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.1.0) - 2020-10-21
 
 ### Added
 
