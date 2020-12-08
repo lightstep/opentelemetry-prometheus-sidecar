@@ -51,7 +51,7 @@ const (
 	logRateLimit = 0.1
 	logBurst     = 10
 
-	maxErrorDetailStringLen = 256
+	maxErrorDetailStringLen = 512
 
 	queueName = label.Key("queue")
 )
