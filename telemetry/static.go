@@ -113,8 +113,6 @@ func newForGRPC(l log.Logger) forGRPC {
 	}
 }
 
-// Info and Verbose logs are no-ops.
-
 func (l forGRPC) Info(args ...interface{}) {
 	l.loggers[0].Log("message", fmt.Sprint(args...))
 }
