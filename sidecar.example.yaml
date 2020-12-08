@@ -27,6 +27,9 @@ prometheus:
   # Location of the write-ahead-log directory.
   wal: /volume/wal
 
+  # Skip points older than this
+  max_point_age: 72h
+
 # OpenTelemetry settings:
 opentelemetry:
   # Metrics prefix is prepended to all exported metric names:

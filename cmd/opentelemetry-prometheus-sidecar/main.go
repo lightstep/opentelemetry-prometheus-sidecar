@@ -230,6 +230,7 @@ func main() {
 		metadataCache,
 		queueManager,
 		cfg.OpenTelemetry.MetricsPrefix,
+		cfg.Prometheus.MaxPointAge.Duration,
 	)
 
 	// Monitor outgoing connections on default transport with conntrack.
