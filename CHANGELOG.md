@@ -17,6 +17,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Update to OpenTelemetry-Go SDK version 0.14. (#41)
 - Removed unnecessary code that reduced batching capability. (#45)
 - Truncate server error messages to 256 bytes. (#46)
+- Implement `--prometheus.max-point-age` flag, default 25h. (#47)
 
 ### Removed
 
