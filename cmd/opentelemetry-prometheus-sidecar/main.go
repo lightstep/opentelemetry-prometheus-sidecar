@@ -74,6 +74,15 @@ func main() {
 		os.Exit(2)
 	}
 
+	vlevel := cfg.LogConfig.Verbose
+	if cfg.LogConfig.Level == "debug" {
+		vlevel++
+	}
+
+	if vlevel > 0 {
+		telemetry.SetVerboseLevel(vlevel)
+	}
+
 	var plc promlog.Config
 	plc.Level = &promlog.AllowedLevel{}
 	plc.Format = &promlog.AllowedFormat{}
