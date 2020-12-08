@@ -36,6 +36,8 @@ const (
 	DefaultAdminListenAddress = "0.0.0.0:9091"
 	DefaultPrometheusEndpoint = "http://127.0.0.1:9090/"
 	DefaultMaxPointAge        = time.Hour * 25
+	DefaultExportTimeout      = time.Second * 60
+	DefaultReportingPeriod    = time.Second * 30
 
 	briefDescription = `
 The OpenTelemetry Prometheus sidecar runs alongside the
@@ -68,6 +70,7 @@ type OTLPConfig struct {
 	Endpoint   string            `json:"endpoint"`
 	Headers    map[string]string `json:"headers"`
 	Attributes map[string]string `json:"attributes"`
+	Timeout    DurationConfig    `json:"timeout"`
 }
 
 type LogConfig struct {
@@ -126,10 +129,12 @@ func DefaultMainConfig() MainConfig {
 		Destination: OTLPConfig{
 			Headers:    map[string]string{},
 			Attributes: map[string]string{},
+			Timeout:    DurationConfig{DefaultExportTimeout},
 		},
 		Diagnostics: OTLPConfig{
 			Headers:    map[string]string{},
 			Attributes: map[string]string{},
+			Timeout:    DurationConfig{DefaultExportTimeout},
 		},
 		LogConfig: LogConfig{
 			Level:  "info",
@@ -168,6 +173,9 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 
 		a.Flag(lowerPrefix+".header", upperPrefix+" headers used for OTLP requests (e.g., MyHeader=Value1). May be repeated.").
 			StringMapVar(&op.Headers)
+
+		a.Flag(lowerPrefix+".timeout", upperPrefix+" timeout used for OTLP Export() requests").
+			DurationVar(&op.Timeout.Duration)
 	}
 
 	makeOTLPFlags("destination", &cfg.Destination)

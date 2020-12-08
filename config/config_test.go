@@ -141,6 +141,7 @@ destination:
   headers:
     e: f
     g: h
+  timeout: 14s
 
 prometheus:
   wal: wal-eeee
@@ -170,10 +171,16 @@ startup_delay: 1333s
 						"e": "f",
 						"g": "h",
 					},
+					Timeout: DurationConfig{
+						14 * time.Second,
+					},
 				},
 				Diagnostics: OTLPConfig{
 					Headers:    map[string]string{},
 					Attributes: map[string]string{},
+					Timeout: DurationConfig{
+						60 * time.Second,
+					},
 				},
 				LogConfig: LogConfig{
 					Level:  "info",
@@ -259,6 +266,9 @@ log_config:
 						"e": "f",
 						"g": "h",
 					},
+					Timeout: DurationConfig{
+						60 * time.Second,
+					},
 				},
 				Filters: []string{
 					`one{two="three"}`,
@@ -270,6 +280,9 @@ log_config:
 					Endpoint:   "https://look.here",
 					Headers:    map[string]string{},
 					Attributes: map[string]string{},
+					Timeout: DurationConfig{
+						60 * time.Second,
+					},
 				},
 				LogConfig: LogConfig{
 					Level:  "warning",
@@ -291,6 +304,7 @@ destination:
 
   attributes:
     service.name: demo
+  timeout: 10m
 
 diagnostics:
   endpoint: https://diagnose.me
@@ -298,6 +312,7 @@ diagnostics:
     A: B
   attributes:
     C: D
+  timeout: 1h40m
 
 prometheus:
   wal: /volume/wal
@@ -372,6 +387,9 @@ static_metadata:
 					Headers: map[string]string{
 						"Lightstep-Access-Token": "aabbccdd...wwxxyyzz",
 					},
+					Timeout: DurationConfig{
+						600 * time.Second,
+					},
 				},
 				Diagnostics: OTLPConfig{
 					Endpoint: "https://diagnose.me",
@@ -380,6 +398,9 @@ static_metadata:
 					},
 					Attributes: map[string]string{
 						"C": "D",
+					},
+					Timeout: DurationConfig{
+						6000 * time.Second,
 					},
 				},
 				LogConfig: LogConfig{

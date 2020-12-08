@@ -19,6 +19,8 @@ destination:
     service.name: demo
     environment: public
 
+  timeout: 2m
+
 # Promehteus configuration:
 prometheus:
   # The primary HTTP endpoint:

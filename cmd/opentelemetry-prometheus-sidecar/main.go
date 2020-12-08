@@ -141,12 +141,17 @@ func main() {
 			cfg.Diagnostics.Attributes[serviceNameKey] = "opentelemetry-prometheus-sidecar"
 		}
 
+		// TODO: Configure metric reporting interval, trace batching interval,
+		// currently there is no such setting.
+
 		defer telemetry.ConfigureOpentelemetry(
 			telemetry.WithExporterEndpoint(hostport),
 			telemetry.WithExporterInsecure(endpoint.Scheme == "http"),
 			telemetry.WithLogger(log.With(logger, "component", "telemetry")),
 			telemetry.WithHeaders(cfg.Diagnostics.Headers),
 			telemetry.WithResourceAttributes(cfg.Diagnostics.Attributes),
+			telemetry.WithExportTimeout(cfg.Diagnostics.Timeout.Duration),
+			telemetry.WithMetricReportingPeriod(config.DefaultReportingPeriod),
 		).Shutdown()
 	}
 
@@ -204,7 +209,7 @@ func main() {
 	var scf otlp.StorageClientFactory = &otlpClientFactory{
 		logger:   log.With(logger, "component", "storage"),
 		url:      outputURL,
-		timeout:  10 * time.Second,
+		timeout:  cfg.Destination.Timeout.Duration,
 		security: cfg.Security,
 		headers:  grpcMetadata.New(cfg.Destination.Headers),
 	}
