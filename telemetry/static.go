@@ -20,6 +20,7 @@ import (
 	stdlog "log"
 	"os"
 	"sync"
+	"sync/atomic"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -40,6 +41,16 @@ type deferLogger struct {
 
 var staticLogger deferLogger
 
+var verboseLevel atomic.Value
+
+func SetVerboseLevel(level int) {
+	verboseLevel.Store(level)
+}
+
+func VerboseLevel() int {
+	return verboseLevel.Load().(int)
+}
+
 func (dl *deferLogger) Log(kvs ...interface{}) error {
 	staticLogger.lock.Lock()
 	delegate := dl.delegate
@@ -56,6 +67,8 @@ func (dl *deferLogger) Log(kvs ...interface{}) error {
 }
 
 func init() {
+	verboseLevel.Store(int(0))
+
 	stdlog.SetOutput(log.NewStdlibAdapter(log.With(&staticLogger, "component", "stdlog")))
 
 	otel.SetErrorHandler(newForOTel(log.With(&staticLogger, "component", "otel")))
@@ -84,7 +97,7 @@ func (l forOTel) Handle(err error) {
 }
 
 type forGRPC struct {
-	loggers [4]log.Logger
+	loggers [3]log.Logger
 }
 
 func newForGRPC(l log.Logger) forGRPC {
@@ -92,9 +105,8 @@ func newForGRPC(l log.Logger) forGRPC {
 	// verbosity. As this stands, turn off gRPC Info and Verbose
 	// logs.
 	return forGRPC{
-		loggers: [4]log.Logger{
-			nil, // level.Debug(l),
-			nil, // level.Info(l),
+		loggers: [3]log.Logger{
+			level.Info(l),
 			level.Warn(l),
 			level.Error(l),
 		},
@@ -103,46 +115,57 @@ func newForGRPC(l log.Logger) forGRPC {
 
 // Info and Verbose logs are no-ops.
 
-func (l forGRPC) Info(args ...interface{})                 {}
-func (l forGRPC) Infoln(args ...interface{})               {}
-func (l forGRPC) Infof(format string, args ...interface{}) {}
-func (l forGRPC) V(_ int) bool                             { return false }
+func (l forGRPC) Info(args ...interface{}) {
+	l.loggers[0].Log("message", fmt.Sprint(args...))
+}
+
+func (l forGRPC) Infoln(args ...interface{}) {
+	l.loggers[0].Log("message", fmt.Sprintln(args...))
+}
+
+func (l forGRPC) Infof(format string, args ...interface{}) {
+	l.loggers[0].Log("message", fmt.Sprintf(format, args...))
+}
+
+func (l forGRPC) V(level int) bool {
+	return level <= verboseLevel.Load().(int)
+}
 
 func (l forGRPC) Warning(args ...interface{}) {
-	l.loggers[2].Log("message", fmt.Sprint(args...))
+	l.loggers[1].Log("message", fmt.Sprint(args...))
 }
 
 func (l forGRPC) Warningln(args ...interface{}) {
-	l.loggers[2].Log("message", fmt.Sprintln(args...))
+	l.loggers[1].Log("message", fmt.Sprintln(args...))
 }
 
 func (l forGRPC) Warningf(format string, args ...interface{}) {
-	l.loggers[2].Log("message", fmt.Sprintf(format, args...))
+	l.loggers[1].Log("message", fmt.Sprintf(format, args...))
 }
 
 func (l forGRPC) Error(args ...interface{}) {
-	l.loggers[3].Log("message", fmt.Sprint(args...))
+	l.loggers[2].Log("message", fmt.Sprint(args...))
 }
 
 func (l forGRPC) Errorln(args ...interface{}) {
-	l.loggers[3].Log("message", fmt.Sprintln(args...))
+	l.loggers[2].Log("message", fmt.Sprintln(args...))
 }
 
 func (l forGRPC) Errorf(format string, args ...interface{}) {
-	l.loggers[3].Log("message", fmt.Sprintf(format, args...))
+	l.loggers[2].Log("message", fmt.Sprintf(format, args...))
 }
 
 func (l forGRPC) Fatal(args ...interface{}) {
-	l.loggers[3].Log("fatal", fmt.Sprint(args...))
+	l.loggers[2].Log("fatal", fmt.Sprint(args...))
 	os.Exit(2)
 }
 
 func (l forGRPC) Fatalln(args ...interface{}) {
-	l.loggers[3].Log("fatal", fmt.Sprintln(args...))
+	l.loggers[2].Log("fatal", fmt.Sprintln(args...))
 	os.Exit(2)
 }
 
 func (l forGRPC) Fatalf(format string, args ...interface{}) {
-	l.loggers[3].Log("fatal", fmt.Sprintf(format, args...))
+	l.loggers[2].Log("fatal", fmt.Sprintf(format, args...))
 	os.Exit(2)
 }

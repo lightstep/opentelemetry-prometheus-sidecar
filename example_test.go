@@ -88,8 +88,9 @@ func Example() {
 	//     }
 	//   ],
 	//   "log_config": {
-	//     "level": "warn",
-	//     "format": "json"
+	//     "level": "debug",
+	//     "format": "json",
+	//     "verbose": 1
 	//   }
 	// }
 }
