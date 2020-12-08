@@ -93,5 +93,6 @@ startup_delay: 30s
 
 # Control the format and level of console-logging output:
 log_config:
-  level: warn
+  level: debug
   format: json
+  verbose: 1

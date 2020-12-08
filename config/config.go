@@ -74,8 +74,9 @@ type OTLPConfig struct {
 }
 
 type LogConfig struct {
-	Level  string `json:"level"`
-	Format string `json:"format"`
+	Level   string `json:"level"`
+	Format  string `json:"format"`
+	Verbose int    `json:"verbose"`
 }
 
 type PromConfig struct {
@@ -137,8 +138,9 @@ func DefaultMainConfig() MainConfig {
 			Timeout:    DurationConfig{DefaultExportTimeout},
 		},
 		LogConfig: LogConfig{
-			Level:  "info",
-			Format: "logfmt",
+			Level:   "info",
+			Format:  "logfmt",
+			Verbose: 0,
 		},
 		StartupDelay: DurationConfig{
 			DefaultStartupDelay,
@@ -210,6 +212,8 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 
 	a.Flag(promlogflag.LevelFlagName, promlogflag.LevelFlagHelp).StringVar(&cfg.LogConfig.Level)
 	a.Flag(promlogflag.FormatFlagName, promlogflag.FormatFlagHelp).StringVar(&cfg.LogConfig.Format)
+	a.Flag("log.verbose", "Verbose logging level: 0 = off, 1 = some, 2 = more; 1 is automatically added when log.level is 'debug'; impacts logging from the gRPC library in particular").
+		IntVar(&cfg.LogConfig.Verbose)
 
 	_, err := a.Parse(args[1:])
 	if err != nil {

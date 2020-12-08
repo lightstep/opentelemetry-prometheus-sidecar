@@ -10,6 +10,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Add `--log.verbose` setting and enable verbose gRPC logging. (#50)
 - Add `--destination.timeout` and `--diagnostics.timeout` values to set gRPC timeout for
   primary and diagnostic OTLP Export() calls. (#51)
 
