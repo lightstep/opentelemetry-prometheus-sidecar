@@ -35,6 +35,7 @@ const (
 	DefaultWALDirectory       = "data/wal"
 	DefaultAdminListenAddress = "0.0.0.0:9091"
 	DefaultPrometheusEndpoint = "http://127.0.0.1:9090/"
+	DefaultMaxPointAge        = time.Hour * 25
 
 	briefDescription = `
 The OpenTelemetry Prometheus sidecar runs alongside the
@@ -75,8 +76,9 @@ type LogConfig struct {
 }
 
 type PromConfig struct {
-	Endpoint string `json:"endpoint"`
-	WAL      string `json:"wal"`
+	Endpoint    string         `json:"endpoint"`
+	WAL         string         `json:"wal"`
+	MaxPointAge DurationConfig `json:"max_point_age"`
 }
 
 type OTelConfig struct {
@@ -114,8 +116,9 @@ type FileReadFunc func(filename string) ([]byte, error)
 func DefaultMainConfig() MainConfig {
 	return MainConfig{
 		Prometheus: PromConfig{
-			WAL:      DefaultWALDirectory,
-			Endpoint: DefaultPrometheusEndpoint,
+			WAL:         DefaultWALDirectory,
+			Endpoint:    DefaultPrometheusEndpoint,
+			MaxPointAge: DurationConfig{DefaultMaxPointAge},
 		},
 		Admin: AdminConfig{
 			ListenAddress: DefaultAdminListenAddress,
@@ -175,6 +178,9 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 
 	a.Flag("prometheus.endpoint", "Endpoint where Prometheus hosts its  UI, API, and serves its own metrics. Default: "+DefaultPrometheusEndpoint).
 		StringVar(&cfg.Prometheus.Endpoint)
+
+	a.Flag("prometheus.max-point-age", "Skip points older than this, to assist recovery. Default: "+DefaultMaxPointAge.String()).
+		DurationVar(&cfg.Prometheus.MaxPointAge.Duration)
 
 	a.Flag("admin.listen-address", "Administrative HTTP address this process listens on. Default: "+DefaultAdminListenAddress).
 		StringVar(&cfg.Admin.ListenAddress)

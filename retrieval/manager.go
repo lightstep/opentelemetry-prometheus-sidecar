@@ -65,6 +65,7 @@ func NewPrometheusReader(
 	metadataGetter MetadataGetter,
 	appender Appender,
 	metricsPrefix string,
+	maxPointAge time.Duration,
 ) *PrometheusReader {
 	if logger == nil {
 		logger = log.NewNopLogger()
@@ -80,6 +81,7 @@ func NewPrometheusReader(
 		progressSaveInterval: time.Minute,
 		metricRenames:        metricRenames,
 		metricsPrefix:        metricsPrefix,
+		maxPointAge:          maxPointAge,
 	}
 }
 
@@ -94,6 +96,7 @@ type PrometheusReader struct {
 	appender             Appender
 	progressSaveInterval time.Duration
 	metricsPrefix        string
+	maxPointAge          time.Duration
 }
 
 func (r *PrometheusReader) Run(ctx context.Context, startOffset int) error {
@@ -110,7 +113,10 @@ func (r *PrometheusReader) Run(ctx context.Context, startOffset int) error {
 	)
 	go seriesCache.run(ctx)
 
-	builder := &sampleBuilder{series: seriesCache}
+	builder := &sampleBuilder{
+		series:      seriesCache,
+		maxPointAge: r.maxPointAge,
+	}
 
 	// NOTE(fabxc): wrap the tailer into a buffered reader once we become concerned
 	// with performance. The WAL reader will do a lot of tiny reads otherwise.

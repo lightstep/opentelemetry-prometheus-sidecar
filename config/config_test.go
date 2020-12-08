@@ -153,6 +153,9 @@ startup_delay: 1333s
 				Prometheus: PromConfig{
 					WAL:      "wal-eeee",
 					Endpoint: config.DefaultPrometheusEndpoint,
+					MaxPointAge: DurationConfig{
+						25 * time.Hour,
+					},
 				},
 				Admin: AdminConfig{
 					ListenAddress: config.DefaultAdminListenAddress,
@@ -239,6 +242,9 @@ log_config:
 				Prometheus: PromConfig{
 					WAL:      "wal-eeee",
 					Endpoint: config.DefaultPrometheusEndpoint,
+					MaxPointAge: DurationConfig{
+						25 * time.Hour,
+					},
 				},
 				Admin: AdminConfig{
 					ListenAddress: config.DefaultAdminListenAddress,
@@ -296,6 +302,7 @@ diagnostics:
 prometheus:
   wal: /volume/wal
   endpoint: http://127.0.0.1:19090/
+  max_point_age: 72h
 
 startup_delay: 30s
 
@@ -349,6 +356,9 @@ static_metadata:
 				Prometheus: PromConfig{
 					WAL:      "/volume/wal",
 					Endpoint: "http://127.0.0.1:19090/",
+					MaxPointAge: DurationConfig{
+						72 * time.Hour,
+					},
 				},
 				OpenTelemetry: OTelConfig{
 					MetricsPrefix: "prefix.",

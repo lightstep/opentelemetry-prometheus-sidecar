@@ -47,17 +47,22 @@ type Appender interface {
 }
 
 type sampleBuilder struct {
-	series seriesGetter
+	series      seriesGetter
+	maxPointAge time.Duration
 }
 
 // next extracts the next sample from the TSDB input sample list and returns
 // the remainder of the input.
+//
+// Note in cases when no timeseries point is produced, the return value has a
+// nil timeseries and a nil error.  These are observable as the difference between
+// "processed" and "produced" in the calling code (see manager.go).  TODO: Add
+// a label to identify each of the paths below.
 func (b *sampleBuilder) next(ctx context.Context, samples []record.RefSample) (*metric_pb.ResourceMetrics, uint64, []record.RefSample, error) {
 	sample := samples[0]
 	tailSamples := samples[1:]
 
 	if math.IsNaN(sample.V) {
-		// TODO: counter?
 		return nil, 0, tailSamples, nil
 	}
 
@@ -66,21 +71,20 @@ func (b *sampleBuilder) next(ctx context.Context, samples []record.RefSample) (*
 		return nil, 0, samples, errors.Wrap(err, "get series information")
 	}
 	if !ok {
-		// TODO: counter?  simple negative lookup
 		return nil, 0, tailSamples, nil
 	}
 
 	if !entry.exported {
-		// TODO: counter?
 		return nil, 0, tailSamples, nil
 	}
 	// Allocate the proto and fill in its metadata.
 	//
 	// TODO This code does not try to combine more than one point
-	// into a ResourceMetrics, which is possible here. The hope is
+	// into a ResourceMetrics, which is possible here (or on the
+	// other side of the channel). The hope is
 	// to use an OTel-Go SDK metrics processor to implement this
 	// functionality, where the OTLP exporter already applies
-	// this.
+	// this.  Note: issue #44.
 	ts, point := protoTimeseries(entry.desc)
 	labels := protoStringLabels(entry.desc.Labels)
 
@@ -91,7 +95,6 @@ func (b *sampleBuilder) next(ctx context.Context, samples []record.RefSample) (*
 		var value float64
 		resetTimestamp, value, ok = b.series.getResetAdjusted(sample.Ref, sample.T, sample.V)
 		if !ok {
-			// TODO: counter
 			return nil, 0, tailSamples, nil
 		}
 
@@ -176,6 +179,13 @@ func (b *sampleBuilder) next(ctx context.Context, samples []record.RefSample) (*
 	if !b.series.updateSampleInterval(entry.hash, resetTimestamp, sample.T) {
 		return nil, 0, tailSamples, nil
 	}
+	if b.maxPointAge > 0 {
+		when := time.Unix(sample.T/1000, int64(time.Duration(sample.T%1000)*time.Millisecond))
+		if time.Since(when) > b.maxPointAge {
+			return nil, 0, tailSamples, nil
+		}
+	}
+
 	return ts, entry.hash, tailSamples, nil
 }
 
