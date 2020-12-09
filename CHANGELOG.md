@@ -8,6 +8,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+## [0.4.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.4.0) - 2020-12-09
+
 ### Changed
 
 - Add `--log.verbose` setting and enable verbose gRPC logging. (#50)
@@ -20,7 +22,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   OpenTelemetry consistency. (#43)
 - Update to OpenTelemetry-Go SDK version 0.14. (#41)
 - Removed unnecessary code that reduced batching capability. (#45)
-- Truncate server error messages to 256 bytes. (#46)
+- Truncate server error messages to 512 bytes. (#46)
 - Implement `--prometheus.max-point-age` flag, default 25h. (#47)
 
 ## [0.2.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.2.0) - 2020-11-20
