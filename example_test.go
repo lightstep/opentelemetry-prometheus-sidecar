@@ -35,7 +35,8 @@ func Example() {
 	//     "attributes": {
 	//       "environment": "public",
 	//       "service.name": "demo"
-	//     }
+	//     },
+	//     "timeout": "2m0s"
 	//   },
 	//   "prometheus": {
 	//     "endpoint": "http://127.0.0.1:19090",
@@ -62,7 +63,8 @@ func Example() {
 	//     },
 	//     "attributes": {
 	//       "environment": "internal"
-	//     }
+	//     },
+	//     "timeout": "1m0s"
 	//   },
 	//   "startup_delay": "30s",
 	//   "filters": [

@@ -21,7 +21,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -138,18 +137,6 @@ func TestValidConfig1(t *testing.T) {
 func filterDebugLogs() (*testLogger, log.Logger) {
 	tl := &testLogger{}
 	return tl, level.NewFilter(tl, level.AllowInfo())
-}
-
-func TestInvalidMetricsPushIntervalConfig(t *testing.T) {
-	logger := &testLogger{}
-	lsOtel := ConfigureOpentelemetry(
-		WithLogger(logger),
-		WithExporterEndpoint("127.0.0.1:4000"),
-		WithMetricReportingPeriod(-time.Second),
-	)
-	defer lsOtel.Shutdown()
-
-	logger.requireContains(t, "invalid metric reporting period")
 }
 
 func TestDebugEnabled(t *testing.T) {

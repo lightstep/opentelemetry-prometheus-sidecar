@@ -23,6 +23,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/pkg/errors"
 	hostMetrics "go.opentelemetry.io/contrib/instrumentation/host"
 	runtimeMetrics "go.opentelemetry.io/contrib/instrumentation/runtime"
@@ -51,9 +52,10 @@ type (
 		ExporterEndpoint         string
 		ExporterEndpointInsecure bool
 		Propagators              []string
-		MetricReportingPeriod    string
+		MetricReportingPeriod    time.Duration
 		ResourceAttributes       map[string]string
 		Headers                  map[string]string
+		ExportTimeout            time.Duration
 		resource                 *resource.Resource
 		logger                   log.Logger
 	}
@@ -94,7 +96,14 @@ func WithPropagators(propagators ...string) Option {
 // how often the controller collects and exports metric data.
 func WithMetricReportingPeriod(p time.Duration) Option {
 	return func(c *Config) {
-		c.MetricReportingPeriod = fmt.Sprint(p)
+		c.MetricReportingPeriod = p
+	}
+}
+
+// WithExportTimeout configures the timeout used for Export().
+func WithExportTimeout(t time.Duration) Option {
+	return func(c *Config) {
+		c.ExportTimeout = t
 	}
 }
 
@@ -121,6 +130,14 @@ func newConfig(opts ...Option) Config {
 	for _, opt := range append(defaultOpts, opts...) {
 		opt(&c)
 	}
+
+	if c.ExportTimeout <= 0 {
+		c.ExportTimeout = config.DefaultExportTimeout
+	}
+	if c.MetricReportingPeriod <= 0 {
+		c.MetricReportingPeriod = config.DefaultReportingPeriod
+	}
+
 	var err error
 	c.resource, err = newResource(&c)
 	if err != nil {
@@ -182,6 +199,9 @@ func (c *Config) setupTracing() (start, stop func() error, err error) {
 	}
 	spanExporter := newExporter(c.ExporterEndpoint, c.ExporterEndpointInsecure, c.Headers)
 
+	// TODO: Make a way to set the export timeout, there is
+	// apparently not such a thing for OTel-Go:
+	// https://github.com/open-telemetry/opentelemetry-go/issues/1386
 	tp := trace.NewTracerProvider(
 		trace.WithConfig(trace.Config{DefaultSampler: trace.AlwaysSample()}),
 		trace.WithSyncer(spanExporter),
@@ -208,17 +228,6 @@ func (c *Config) setupMetrics() (func() error, func() error, error) {
 	}
 	metricExporter := newExporter(c.ExporterEndpoint, c.ExporterEndpointInsecure, c.Headers)
 
-	period := controller.DefaultPushPeriod
-	if c.MetricReportingPeriod != "" {
-		var err error
-		period, err = time.ParseDuration(c.MetricReportingPeriod)
-		if err != nil {
-			return nil, nil, errors.Wrap(err, "invalid metric reporting period")
-		}
-		if period <= 0 {
-			return nil, nil, fmt.Errorf("invalid metric reporting period")
-		}
-	}
 	pusher := controller.New(
 		processor.New(
 			selector.NewWithInexpensiveDistribution(),
@@ -226,7 +235,8 @@ func (c *Config) setupMetrics() (func() error, func() error, error) {
 		),
 		metricExporter,
 		controller.WithResource(c.resource),
-		controller.WithPeriod(period),
+		controller.WithPeriod(c.MetricReportingPeriod),
+		controller.WithTimeout(c.ExportTimeout),
 	)
 
 	provider := pusher.MeterProvider()

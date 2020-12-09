@@ -8,9 +8,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
-- Add `--log.verbose` setting and enable verbose gRPC logging. (#50)
-
 ### Changed
+
+- Add `--log.verbose` setting and enable verbose gRPC logging. (#50)
+- Add `--destination.timeout` and `--diagnostics.timeout` values to set gRPC timeout for
+  primary and diagnostic OTLP Export() calls. (#51)
 
 ## [0.3.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.3.0) - 2020-12-08
 
