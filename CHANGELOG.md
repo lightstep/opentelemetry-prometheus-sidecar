@@ -8,6 +8,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+## [0.5.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.5.0) - 2020-12-12
+
+### Changed
+
+- Update to gRPC v1.34.0 (#54)
+- Update to OTel-Go v0.15. (#56)
+
 ## [0.4.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.4.0) - 2020-12-09
 
 ### Changed
