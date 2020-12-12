@@ -101,7 +101,7 @@ endif
 	@echo ">> running goveralls"
 	$(GOVERALLS) -coverprofile=coverage.out -service=travis-ci -repotoken "${COVERALLS_TOKEN}"
 
-build: promu
+build: promu vendor
 	@echo ">> building binaries"
 	GO111MODULE=$(GO111MODULE) $(PROMU) build --prefix $(PREFIX)
 
