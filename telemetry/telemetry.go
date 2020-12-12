@@ -43,7 +43,7 @@ import (
 type (
 	Telemetry struct {
 		config        Config
-		shutdownFuncs []func() error
+		shutdownFuncs []func(context.Context) error
 	}
 
 	Option func(*Config)
@@ -60,7 +60,7 @@ type (
 		logger                   log.Logger
 	}
 
-	setupFunc func() (start, stop func() error, err error)
+	setupFunc func() (start, stop func(context.Context) error, err error)
 )
 
 // WithExporterEndpoint configures the endpoint for sending metrics via OTLP
@@ -192,7 +192,7 @@ func newExporter(endpoint string, insecure bool, headers map[string]string) *otl
 	)
 }
 
-func (c *Config) setupTracing() (start, stop func() error, err error) {
+func (c *Config) setupTracing() (start, stop func(ctx context.Context) error, err error) {
 	if c.ExporterEndpoint == "" {
 		level.Debug(c.logger).Log("msg", "tracing is disabled: no endpoint set")
 		return nil, nil, nil
@@ -214,14 +214,14 @@ func (c *Config) setupTracing() (start, stop func() error, err error) {
 
 	otel.SetTracerProvider(tp)
 
-	return func() error {
-			return spanExporter.Start()
-		}, func() error {
-			return spanExporter.Shutdown(context.Background())
+	return func(ctx context.Context) error {
+			return spanExporter.Start(ctx)
+		}, func(ctx context.Context) error {
+			return spanExporter.Shutdown(ctx)
 		}, nil
 }
 
-func (c *Config) setupMetrics() (func() error, func() error, error) {
+func (c *Config) setupMetrics() (start, stop func(ctx context.Context) error, err error) {
 	if c.ExporterEndpoint == "" {
 		level.Debug(c.logger).Log("msg", "metrics are disabled: no endpoint set")
 		return nil, nil, nil
@@ -243,8 +243,8 @@ func (c *Config) setupMetrics() (func() error, func() error, error) {
 
 	otel.SetMeterProvider(provider)
 
-	return func() error {
-			if err := metricExporter.Start(); err != nil {
+	return func(ctx context.Context) error {
+			if err := metricExporter.Start(ctx); err != nil {
 				return errors.Wrap(err, "failed to start OTLP exporter")
 			}
 
@@ -259,9 +259,9 @@ func (c *Config) setupMetrics() (func() error, func() error, error) {
 			pusher.Start()
 
 			return nil
-		}, func() error {
+		}, func(ctx context.Context) error {
 			pusher.Stop()
-			return metricExporter.Shutdown(context.Background())
+			return metricExporter.Shutdown(ctx)
 		}, nil
 }
 
@@ -274,7 +274,7 @@ func ConfigureOpentelemetry(opts ...Option) *Telemetry {
 	s, _ := json.MarshalIndent(tel.config, "", "\t")
 	level.Debug(tel.config.logger).Log("configuration", string(s))
 
-	var startFuncs []func() error
+	var startFuncs []func(context.Context) error
 
 	staticSetup(tel.config.logger)
 
@@ -292,16 +292,16 @@ func ConfigureOpentelemetry(opts ...Option) *Telemetry {
 		}
 	}
 	for _, start := range startFuncs {
-		if err := start(); err != nil {
+		if err := start(context.Background()); err != nil {
 			level.Error(tel.config.logger).Log("start error", err)
 		}
 	}
 	return &tel
 }
 
-func (tel *Telemetry) Shutdown() {
+func (tel *Telemetry) Shutdown(ctx context.Context) {
 	for _, shutdown := range tel.shutdownFuncs {
-		if err := shutdown(); err != nil {
+		if err := shutdown(ctx); err != nil {
 			level.Error(tel.config.logger).Log("msg", "failed to stop exporter", "error", err)
 		}
 	}

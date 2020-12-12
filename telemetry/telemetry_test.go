@@ -16,6 +16,7 @@ package telemetry
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -102,7 +103,7 @@ func testEndpointDisabled(t *testing.T, expected string, opts ...Option) {
 			WithLogger(logger),
 		)...,
 	)
-	defer lsOtel.Shutdown()
+	defer lsOtel.Shutdown(context.Background())
 
 	logger.requireContains(t, expected)
 }
@@ -129,7 +130,7 @@ func TestValidConfig1(t *testing.T) {
 	lsOtel := ConfigureOpentelemetry(
 		WithLogger(logger),
 	)
-	defer lsOtel.Shutdown()
+	defer lsOtel.Shutdown(context.Background())
 
 	logger.requireContains(t, expectedMetricsDisabledMessage)
 }
@@ -150,7 +151,7 @@ func TestDebugEnabled(t *testing.T) {
 			"host.name": "host456",
 		}),
 	)
-	defer lsOtel.Shutdown()
+	defer lsOtel.Shutdown(context.Background())
 	output := strings.Join(logger.Output(), ",")
 	assert.Contains(t, output, "debug logging enabled")
 	assert.Contains(t, output, "localhost:443")
