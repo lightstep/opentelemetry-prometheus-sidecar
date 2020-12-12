@@ -36,7 +36,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	grpcMetadata "google.golang.org/grpc/metadata"
-	"google.golang.org/grpc/resolver/manual"
 	"google.golang.org/grpc/status"
 )
 
@@ -58,7 +57,6 @@ type Client struct {
 	logger           log.Logger
 	url              *url.URL
 	timeout          time.Duration
-	resolver         *manual.Resolver
 	rootCertificates []string
 	headers          grpcMetadata.MD
 
@@ -70,7 +68,6 @@ type ClientConfig struct {
 	Logger           log.Logger
 	URL              *url.URL
 	Timeout          time.Duration
-	Resolver         *manual.Resolver
 	RootCertificates []string
 	Headers          grpcMetadata.MD
 }
@@ -85,7 +82,6 @@ func NewClient(conf *ClientConfig) *Client {
 		logger:           logger,
 		url:              conf.URL,
 		timeout:          conf.Timeout,
-		resolver:         conf.Resolver,
 		rootCertificates: conf.RootCertificates,
 		headers:          conf.Headers,
 	}
@@ -144,9 +140,6 @@ func (c *Client) getConnection(ctx context.Context) (*grpc.ClientConn, error) {
 	address := c.url.Hostname()
 	if len(c.url.Port()) > 0 {
 		address = net.JoinHostPort(address, c.url.Port())
-	}
-	if c.resolver != nil {
-		address = c.resolver.Scheme() + ":///" + address
 	}
 	conn, err := grpc.DialContext(ctx, address, dopts...)
 	c.conn = conn
