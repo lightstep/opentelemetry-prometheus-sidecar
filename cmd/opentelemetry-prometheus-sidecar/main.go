@@ -161,7 +161,7 @@ func main() {
 			telemetry.WithResourceAttributes(cfg.Diagnostics.Attributes),
 			telemetry.WithExportTimeout(cfg.Diagnostics.Timeout.Duration),
 			telemetry.WithMetricReportingPeriod(config.DefaultReportingPeriod),
-		).Shutdown()
+		).Shutdown(context.Background())
 	}
 
 	// We instantiate a context here since the tailer is used by two other components.
