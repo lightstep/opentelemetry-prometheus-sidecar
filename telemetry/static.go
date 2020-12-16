@@ -113,20 +113,33 @@ func newForGRPC(l log.Logger) forGRPC {
 	}
 }
 
+// The Info methods are disabled until some degree of verbosity is
+// set; the main() function adds 1 to verbosity so that
+// --log.level=debug enables gRPC logging in this way.
+
 func (l forGRPC) Info(args ...interface{}) {
+	if VerboseLevel() <= 0 {
+		return
+	}
 	l.loggers[0].Log("message", fmt.Sprint(args...))
 }
 
 func (l forGRPC) Infoln(args ...interface{}) {
+	if VerboseLevel() <= 0 {
+		return
+	}
 	l.loggers[0].Log("message", fmt.Sprintln(args...))
 }
 
 func (l forGRPC) Infof(format string, args ...interface{}) {
+	if VerboseLevel() <= 0 {
+		return
+	}
 	l.loggers[0].Log("message", fmt.Sprintf(format, args...))
 }
 
 func (l forGRPC) V(level int) bool {
-	return level <= verboseLevel.Load().(int)
+	return level <= VerboseLevel()
 }
 
 func (l forGRPC) Warning(args ...interface{}) {
