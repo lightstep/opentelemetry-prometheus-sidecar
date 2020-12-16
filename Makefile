@@ -60,7 +60,6 @@ deps:
 	@echo ">> getting dependencies"
 	$(GO) mod download
 
-.PHONY: vendor
 vendor:
 	@echo ">> building vendor dir"
 	$(GO) mod vendor
@@ -105,7 +104,7 @@ build: promu vendor
 	@echo ">> building binaries"
 	GO111MODULE=$(GO111MODULE) $(PROMU) build --prefix $(PREFIX)
 
-build-linux-amd64: promu
+build-linux-amd64: promu vendor
 	@echo ">> building linux amd64 binaries"
 	@GO111MODULE=$(GO111MODULE) GOOS=linux GOARCH=amd64 $(PROMU) build --prefix $(PREFIX)
 
@@ -116,10 +115,6 @@ tarball: promu
 docker: build-linux-amd64
 	@echo ">> building docker image"
 	docker build -t "$(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_TAG)" .
-
-push: test docker
-	@echo ">> pushing docker image"
-	docker push "$(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_TAG)"
 
 assets:
 	@echo ">> writing assets"
@@ -142,4 +137,4 @@ $(FIRST_GOPATH)/bin/staticcheck:
 $(FIRST_GOPATH)/bin/goveralls:
 	GOOS= GOARCH= $(GO) get -u github.com/mattn/goveralls
 
-.PHONY: all style deps format build test vet assets tarball docker promu staticcheck $(FIRST_GOPATH)/bin/staticcheck goveralls $(FIRST_GOPATH)/bin/goveralls
+.PHONY: all style deps format build test vendor vet assets tarball docker promu staticcheck $(FIRST_GOPATH)/bin/staticcheck goveralls $(FIRST_GOPATH)/bin/goveralls
