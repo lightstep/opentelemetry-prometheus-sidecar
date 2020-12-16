@@ -34,7 +34,7 @@ The function of this sidecar is to read data collected and written by
 Prometheus, convert into the OpenTelemetry data model, attach Resource
 attributes, and write to an OpenTelemetry endpoint.
 
-This sidecar sends [OpenTelemetry Protocol](https://github.com/open-telemetry/opentelemetry-specification/blob/master/specification/protocol/otlp.md) [version 0.5](https://github.com/open-telemetry/opentelemetry-proto/releases/tag/v0.5.0) over gRPC.
+This sidecar sends [OpenTelemetry Protocol](https://github.com/open-telemetry/opentelemetry-specification/blob/master/specification/protocol/otlp.md) [version 0.5](https://github.com/open-telemetry/opentelemetry-proto/releases/tag/v0.5.0) (or later versions) over gRPC.
 
 ## Prometheus Design
 
@@ -87,25 +87,20 @@ labels beginning with `__` are dropped.
 
 ## Installation
 
-Please clone this repository and build the sidecar from source.  You
-will build a Docker image, push it to a private container registry,
-and then run the container as described below.  To test and build a
-Docker image for the current operating system, simply:
+Lightstep publishes Docker images of this binary named
+`lightstep/opentelemetry-prometheus-sidecar:${VERSION}`, with the
+latest release always tagged `latest`.
+
+To build from source, please clone this repository.  You will build a
+Docker image, push it to a private container registry, and then run
+the container as described below.  To test and build a Docker image
+for the current operating system, simply:
 
 ```
-git clone https://github.com/lightstep/opentelemetry-prometheus-sidecar.git
-cd opentelemetry-prometheus-sidecar
-make
-docker build .
-```
-
-To package a linux-amd64 binary:
-
-```
-git clone https://github.com/lightstep/opentelemetry-prometheus-sidecar.git
-cd opentelemetry-prometheus-sidecar
-make build-linux-amd64
-docker build .
+export DOCKER_IMAGE_NAME=my.image.reposito.ry/opentelemetry/prometheus-sidecar
+export DOCKER_IMAGE_TAG=$(cat ./VERSION)
+make docker
+docker push ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}
 ```
 
 ## Deployment
@@ -147,8 +142,33 @@ prometheus:
 
 The sidecar requires write access to the directory to store its progress between restarts.
 
-If your Prometheus server itself is running inside of Kubernetes, the example [Kubernetes setup](./kube/README.md)
-can be used as a reference for setup.
+### Kubernetes and Helm setup
+
+To configure the sidecar for a Prometheus server installed using the
+[Prometheus Community Helm Charts](https://github.com/prometheus-community/helm-charts),
+add the following definition to your custom `values.yaml`:
+
+```
+server:
+  sidecarContainers:
+  - name: otel-sidecar
+    image: lightstep/opentelemetry-prometheus-sidecar
+    imagePullPolicy: Always
+    args:
+    - --prometheus.wal=/data/wal
+    - --destination.endpoint=${DESTINATION}
+    - --destination.header=Access-Token=AAAAAAAAAAAAAAAA
+    - --diagnostics.endpoint=${DIAGNOSTICS_DESTINATION}
+    - --diagnostics.header=Access-Token=BBBBBBBBBBBBBBBB
+    volumeMounts:
+    - name: storage-volume
+      mountPath: /data
+```
+
+The [upstream Stackdriver Prometheus sidecar Kubernetes
+README](https://github.com/Stackdriver/stackdriver-prometheus-sidecar/blob/master/kube/README.md)
+contains more examples of how to patch an existing Prometheus
+deployment or deploy the sidecar without using Helm.
 
 ### Configuration
 
