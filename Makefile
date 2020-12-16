@@ -116,10 +116,6 @@ docker: build-linux-amd64
 	@echo ">> building docker image"
 	docker build -t "$(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_TAG)" .
 
-push: test docker
-	@echo ">> pushing docker image"
-	docker push "$(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_TAG)"
-
 assets:
 	@echo ">> writing assets"
 	$(GO) get -u github.com/jteeuwen/go-bindata/...
