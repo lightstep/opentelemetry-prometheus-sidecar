@@ -11,6 +11,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Changed
 
 - gRPC logging is enabled only when --log.level=debug or --log.verbose > 0. (#59)
+- Updated Kubernetes Helm example, removed former `kube` sub-directory. (#60)
 
 ## [0.5.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.5.0) - 2020-12-12
 
