@@ -426,6 +426,24 @@ static_metadata:
 			},
 			"",
 		},
+		{
+			"trim header whitespace",
+			"",
+			[]string{"--destination.header=key=\nabcdef\n"},
+			func() config.MainConfig {
+				cfg := config.DefaultMainConfig()
+				cfg.Destination.Headers["key"] = "abcdef"
+				return cfg
+			}(),
+			"",
+		},
+		{
+			"check header newlines",
+			"",
+			[]string{"--destination.header=key=abc\ndef"},
+			config.DefaultMainConfig(),
+			"invalid newline",
+		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			const cfgFile = "testFileDotYaml"
