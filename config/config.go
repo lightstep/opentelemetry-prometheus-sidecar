@@ -260,10 +260,16 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 }
 
 func checkEmptyKeys(kind string, values map[string]string) error {
-	for key, _ := range values {
+	for key, value := range values {
 		if key == "" {
-			return fmt.Errorf("empty %s key(s)", kind)
+			return fmt.Errorf("empty %s key", kind)
 		}
+		value = strings.TrimSpace(value)
+
+		if strings.Contains(value, "\n") {
+			return fmt.Errorf("invalid newline in %s value: %s", kind, key)
+		}
+		values[key] = value
 	}
 	return nil
 }
