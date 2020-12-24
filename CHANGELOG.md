@@ -10,7 +10,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
-## [0.6.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.5.0) - 2020-12-16
+## [0.7.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.7.0) - 2020-12-24
+
+### Changed
+
+- Trim whitespace in configured HTTP headers and OpenTelemetry attributes.  Avoid starting with newlines embedded in these strings. (#61)
+
+## [0.6.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.6.0) - 2020-12-16
 
 ### Changed
 
