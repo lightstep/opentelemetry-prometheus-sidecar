@@ -61,6 +61,8 @@ const (
 type StorageClient interface {
 	// Store stores the given metric families in the remote storage.
 	Store(*metricsService.ExportMetricsServiceRequest) error
+	// Test this connection
+	Selftest() error
 	// Release the resources allocated by the client.
 	Close() error
 }
@@ -498,7 +500,7 @@ func (s *shardCollection) sendSamplesWithBackoff(client StorageClient, samples [
 			return
 		}
 
-		if _, ok := err.(recoverableError); !ok {
+		if !isRecoverable(err) {
 			level.Warn(s.qm.logger).Log(
 				"msg", "unrecoverable write error",
 				"err", truncateErrorString(err),
@@ -517,6 +519,11 @@ func (s *shardCollection) sendSamplesWithBackoff(client StorageClient, samples [
 		int64(len(samples)),
 		queueName.String(s.qm.queueName),
 	)
+}
+
+func isRecoverable(err error) bool {
+	_, ok := err.(recoverableError)
+	return ok
 }
 
 // truncateErrorString avoids printing error messages that are very

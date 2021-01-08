@@ -176,6 +176,10 @@ func (t *TestStorageClient) New() StorageClient {
 	return t
 }
 
+func (t *TestStorageClient) Selftest() error {
+	return nil
+}
+
 func (c *TestStorageClient) Name() string {
 	return "teststorageclient"
 }
@@ -411,6 +415,10 @@ func (c *TestBlockingStorageClient) unlock() {
 
 func (t *TestBlockingStorageClient) New() StorageClient {
 	return t
+}
+
+func (t *TestBlockingStorageClient) Selftest() error {
+	return nil
 }
 
 func (c *TestBlockingStorageClient) Name() string {

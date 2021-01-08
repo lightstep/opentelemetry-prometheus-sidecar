@@ -138,6 +138,8 @@ func main() {
 		}
 	}
 
+	telemetry.StaticSetup(logger)
+
 	if cfg.Diagnostics.Endpoint != "" {
 		endpoint, _ := url.Parse(cfg.Diagnostics.Endpoint)
 		hostport := endpoint.Hostname()
@@ -154,9 +156,9 @@ func main() {
 		// currently there is no such setting.
 
 		defer telemetry.ConfigureOpentelemetry(
+			telemetry.WithLogger(logger),
 			telemetry.WithExporterEndpoint(hostport),
 			telemetry.WithExporterInsecure(endpoint.Scheme == "http"),
-			telemetry.WithLogger(log.With(logger, "component", "telemetry")),
 			telemetry.WithHeaders(cfg.Diagnostics.Headers),
 			telemetry.WithResourceAttributes(cfg.Diagnostics.Attributes),
 			telemetry.WithExportTimeout(cfg.Diagnostics.Timeout.Duration),
@@ -251,6 +253,12 @@ func main() {
 	http.DefaultTransport.(*http.Transport).DialContext = conntrack.NewDialContextFunc(
 		conntrack.DialWithTracing(),
 	)
+
+	// Perform a test of the outbound connection before starting.
+	if err := selfTest(logger, scf); err != nil {
+		level.Error(logger).Log("msg", "selftest failed, not starting", "err", err)
+		os.Exit(1)
+	}
 
 	var g group.Group
 	{
@@ -432,4 +440,19 @@ func parseFilters(logger log.Logger, filters []string) ([][]*labels.Matcher, err
 		matchers = append(matchers, m)
 	}
 	return matchers, nil
+}
+
+func selfTest(logger log.Logger, scf otlp.StorageClientFactory) error {
+	client := scf.New()
+
+	if err := client.Selftest(); err != nil {
+		_ = client.Close()
+		return fmt.Errorf("could not send test opentelemetry.ExportMetricsServiceRequest request: %w", err)
+	}
+
+	if err := client.Close(); err != nil {
+		return fmt.Errorf("error closing test client: %w", err)
+	}
+
+	return nil
 }

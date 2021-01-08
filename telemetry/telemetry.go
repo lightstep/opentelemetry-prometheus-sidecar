@@ -276,8 +276,6 @@ func ConfigureOpentelemetry(opts ...Option) *Telemetry {
 
 	var startFuncs []func(context.Context) error
 
-	staticSetup(tel.config.logger)
-
 	for _, setup := range []setupFunc{tel.config.setupTracing, tel.config.setupMetrics} {
 		start, shutdown, err := setup()
 		if err != nil {

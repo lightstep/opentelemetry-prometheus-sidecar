@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMain(m *testing.M) {
@@ -39,11 +40,20 @@ func TestStartupInterrupt(t *testing.T) {
 		t.Skip("skipping test in short mode.")
 	}
 
+	ts := newTestServer(t)
+	go func() {
+		time.Sleep(5 * time.Second)
+		runMetricsService(ts)
+	}()
+	defer ts.Stop()
+
 	cmd := exec.Command(
 		os.Args[0],
-		"--prometheus.wal=testdata/wal",
-		"--destination.endpoint=http://localhost:9999",
-	)
+		append(e2eTestMainCommonFlags,
+			"--prometheus.wal=testdata/wal",
+			"--destination.timeout=30s",
+		)...)
+
 	cmd.Env = append(os.Environ(), "RUN_MAIN=1")
 	var bout, berr bytes.Buffer
 	cmd.Stdout = &bout
@@ -81,7 +91,7 @@ Loop:
 			default: // try again
 			}
 		}
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(time.Second)
 	}
 
 	t.Logf("stdout: %v\n", bout.String())
@@ -133,4 +143,35 @@ func TestParseFilters(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestStartupUnhealthyEndpoint(t *testing.T) {
+	// Tests that the selftest detects an unhealthy endpoint
+	if testing.Short() {
+		t.Skip("skipping test in short mode.")
+	}
+
+	cmd := exec.Command(
+		os.Args[0],
+		append(e2eTestMainCommonFlags,
+			"--prometheus.wal=testdata/wal",
+			"--destination.timeout=2s",
+		)...)
+
+	cmd.Env = append(os.Environ(), "RUN_MAIN=1")
+	var bout, berr bytes.Buffer
+	cmd.Stdout = &bout
+	cmd.Stderr = &berr
+	err := cmd.Start()
+	if err != nil {
+		t.Errorf("execution error: %v", err)
+		return
+	}
+
+	cmd.Wait()
+
+	t.Logf("stdout: %v\n", bout.String())
+	t.Logf("stderr: %v\n", berr.String())
+
+	require.Contains(t, berr.String(), "selftest failed, not starting")
 }

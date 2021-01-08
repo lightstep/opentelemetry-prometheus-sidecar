@@ -26,13 +26,13 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"google.golang.org/grpc/balancer/roundrobin"
 	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
 	metricsService "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/collector/metrics/v1"
 	"github.com/prometheus/common/version"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/balancer/roundrobin"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	grpcMetadata "google.golang.org/grpc/metadata"
@@ -94,20 +94,25 @@ type recoverableError struct {
 // version.* is populated for 'promu' builds, so this will look broken in unit tests.
 var userAgent = fmt.Sprintf("OpenTelemetryPrometheus/%s", version.Version)
 
-func (c *Client) getConnection(ctx context.Context) (*grpc.ClientConn, error) {
+func (c *Client) getConnection() (*grpc.ClientConn, error) {
 	if c.conn != nil {
 		return c.conn, nil
 	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
 
 	useAuth := c.url.Scheme == "https"
 	level.Debug(c.logger).Log(
 		"msg", "new otlp connection",
 		"auth", useAuth,
-		"url", c.url.String())
+		"url", c.url.String(),
+		"timeout", c.timeout)
 
 	dopts := []grpc.DialOption{
 		grpc.WithBalancerName(roundrobin.Name),
 		grpc.WithBlock(), // Wait for the connection to be established before using it.
+		grpc.WithReturnConnectionError(),
 		grpc.WithUserAgent(userAgent),
 		grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
 	}
@@ -156,7 +161,46 @@ func (c *Client) getConnection(ctx context.Context) (*grpc.ClientConn, error) {
 	return conn, err
 }
 
-// Store sends a batch of samples to the HTTP endpoint.
+// Selftest sends an empty request the endpoint.
+func (c *Client) Selftest() error {
+	level.Debug(c.logger).Log("msg", "starting selftest")
+
+	conn, err := c.getConnection()
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	service := metricsService.NewMetricsServiceClient(conn)
+	empty := &metricsService.ExportMetricsServiceRequest{}
+
+	// Loop until the context is canceled, allowing for retryable failures.
+	for {
+		_, err = service.Export(c.grpcMetadata(ctx), empty)
+		if err == nil {
+			level.Debug(c.logger).Log("msg", "selftest was successful")
+			return nil
+		}
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			if isRecoverable(err) {
+				level.Debug(c.logger).Log("msg", "selftest recoverable error, still trying", "err", err)
+				continue
+			}
+		}
+		return fmt.Errorf(
+			"non-recoverable failure in selftest: %s",
+			truncateErrorString(err),
+		)
+	}
+}
+
+// Store sends a batch of samples to the endpoint.
 func (c *Client) Store(req *metricsService.ExportMetricsServiceRequest) error {
 	tss := req.ResourceMetrics
 	if len(tss) == 0 {
@@ -164,13 +208,13 @@ func (c *Client) Store(req *metricsService.ExportMetricsServiceRequest) error {
 		return nil
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
-	defer cancel()
-
-	conn, err := c.getConnection(ctx)
+	conn, err := c.getConnection()
 	if err != nil {
 		return err
 	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
 
 	service := metricsService.NewMetricsServiceClient(conn)
 
@@ -187,36 +231,23 @@ func (c *Client) Store(req *metricsService.ExportMetricsServiceRequest) error {
 			req_copy := &metricsService.ExportMetricsServiceRequest{
 				ResourceMetrics: req.ResourceMetrics[begin:end],
 			}
-			_, err := service.Export(grpcMetadata.NewOutgoingContext(ctx, c.headers), req_copy)
-			if err == nil {
-				// Points were successfully written.
-				pointsExported.Add(ctx, int64(end-begin))
 
-				level.Debug(c.logger).Log(
-					"msg", "Write was successful",
-					"records", end-begin)
-			} else {
-				// TODO This happens too fast _after_ a healthy connection becomes unhealthy. Fix.
+			if _, err := service.Export(c.grpcMetadata(ctx), req_copy); err == nil {
+				// TODO This happens too fast _after_ a healthy
+				// connection becomes unhealthy. Fix.
 				level.Debug(c.logger).Log(
 					"msg", "Failure calling Export",
 					"err", truncateErrorString(err))
-				status, ok := status.FromError(err)
-				// TODO metrics
-				if !ok {
-					level.Warn(c.logger).Log("msg", "Unexpected error message type from OpenTelemetry service", "err", err)
-					errors <- err
-					return
-				}
-				switch status.Code() {
-				case codes.DeadlineExceeded, codes.Canceled, codes.ResourceExhausted,
-					codes.Aborted, codes.OutOfRange, codes.Unavailable, codes.DataLoss:
-					// See https://github.com/open-telemetry/opentelemetry-specification/
-					// blob/master/specification/protocol/otlp.md#response
-					errors <- recoverableError{err}
-				default:
-					errors <- err
-				}
+				errors <- maybeRetry(err)
+				return
 			}
+
+			// Points were successfully written.
+			pointsExported.Add(ctx, int64(end-begin))
+
+			level.Debug(c.logger).Log(
+				"msg", "Write was successful",
+				"records", end-begin)
 		}(i, end)
 	}
 	wg.Wait()
@@ -227,9 +258,29 @@ func (c *Client) Store(req *metricsService.ExportMetricsServiceRequest) error {
 	return nil
 }
 
-func (c Client) Close() error {
+func (c *Client) Close() error {
 	if c.conn == nil {
 		return nil
 	}
 	return c.conn.Close()
+}
+
+func maybeRetry(err error) error {
+	status, ok := status.FromError(err)
+	if !ok {
+		return fmt.Errorf("unexpected error from OpenTelemetry service: %w", err)
+	}
+	switch status.Code() {
+	case codes.DeadlineExceeded, codes.Canceled, codes.ResourceExhausted,
+		codes.Aborted, codes.OutOfRange, codes.Unavailable, codes.DataLoss:
+		// See https://github.com/open-telemetry/opentelemetry-specification/
+		// blob/master/specification/protocol/otlp.md#response
+		return recoverableError{err}
+	default:
+		return err
+	}
+}
+
+func (c *Client) grpcMetadata(ctx context.Context) context.Context {
+	return grpcMetadata.NewOutgoingContext(ctx, c.headers)
 }
