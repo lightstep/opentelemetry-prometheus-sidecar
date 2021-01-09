@@ -162,7 +162,7 @@ func main() {
 			telemetry.WithHeaders(cfg.Diagnostics.Headers),
 			telemetry.WithResourceAttributes(cfg.Diagnostics.Attributes),
 			telemetry.WithExportTimeout(cfg.Diagnostics.Timeout.Duration),
-			telemetry.WithMetricReportingPeriod(config.DefaultReportingPeriod),
+			telemetry.WithMetricReportingPeriod(telemetry.DefaultReportingPeriod),
 		).Shutdown(context.Background())
 	}
 
