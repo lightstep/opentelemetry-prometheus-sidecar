@@ -184,5 +184,5 @@ func TestStartupUnhealthyEndpoint(t *testing.T) {
 	t.Logf("stderr: %v\n", berr.String())
 
 	require.Contains(t, berr.String(), "selftest failed, not starting")
-	require.Contains(t, berr.String(), "selftest failed, not starting")
+	require.Contains(t, berr.String(), "selftest recoverable error, still trying")
 }
