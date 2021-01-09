@@ -44,6 +44,15 @@ type (
 
 var (
 	ErrUnsupported = fmt.Errorf("unsupported method")
+
+	// e2eTestMainCommonFlags are needed to correctly call the
+	// test gRPC server's Export().
+	e2eTestMainCommonFlags = []string{
+		"--security.root-certificate=testdata/certs/root_ca.crt",
+		"--destination.endpoint=https://127.0.0.1:19001",
+		"--destination.header",
+		fmt.Sprint(e2eTestHeaderName, "=", e2eTestHeaderValue),
+	}
 )
 
 const (
@@ -125,11 +134,7 @@ func TestE2E(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	ts := &testServer{
-		t:      t,
-		stops:  make(chan func(), 2),
-		result: make(chan *metrics.ResourceMetrics, e2eTestScrapes),
-	}
+	ts := newTestServer(t)
 
 	// Run prometheus
 	promCmd := exec.CommandContext(
@@ -164,13 +169,11 @@ func TestE2E(t *testing.T) {
 	sideCmd := exec.CommandContext(
 		ctx,
 		os.Args[0],
-		"--prometheus.wal", path.Join(dataDir, "wal"),
-		"--prometheus.endpoint=http://127.0.0.1:19000",
-		"--destination.endpoint=https://127.0.0.1:19001",
-		"--destination.header", fmt.Sprint(e2eTestHeaderName, "=", e2eTestHeaderValue),
-		"--destination.attribute=service.name=Service",
-		"--security.root-certificate=testdata/certs/root_ca.crt",
-		"--startup.delay=1s",
+		append(e2eTestMainCommonFlags,
+			"--prometheus.wal", path.Join(dataDir, "wal"),
+			"--prometheus.endpoint=http://127.0.0.1:19000",
+			"--destination.attribute=service.name=Service",
+			"--startup.delay=1s")...,
 	)
 	sideCmd.Env = append(os.Environ(), "RUN_MAIN=1")
 	sideCmd.Stderr = os.Stderr
@@ -230,11 +233,7 @@ func TestE2E(t *testing.T) {
 	}
 
 	// Stop the in-process services
-	close(ts.stops)
-
-	for stop := range ts.stops {
-		stop()
-	}
+	ts.Stop()
 
 	// Validate data.
 	output := map[string][]float64{}
@@ -346,4 +345,20 @@ func (s *testServer) Export(ctx context.Context, req *metricService.ExportMetric
 
 	return &emptyValue, nil
 
+}
+
+func (s *testServer) Stop() {
+	close(s.stops)
+
+	for stop := range s.stops {
+		stop()
+	}
+}
+
+func newTestServer(t *testing.T) *testServer {
+	return &testServer{
+		t:      t,
+		stops:  make(chan func(), 2), // 2 = max number of stop functions registered
+		result: make(chan *metrics.ResourceMetrics, e2eTestScrapes),
+	}
 }

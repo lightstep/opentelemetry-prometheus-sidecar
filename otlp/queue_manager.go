@@ -39,6 +39,8 @@ import (
 	// careful, they'll miss these details, so we explicitly print
 	// them in this code base to avoid potential confusion.
 	_ "google.golang.org/genproto/googleapis/rpc/errdetails"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 const (
@@ -61,6 +63,8 @@ const (
 type StorageClient interface {
 	// Store stores the given metric families in the remote storage.
 	Store(*metricsService.ExportMetricsServiceRequest) error
+	// Test this connection
+	Selftest(context.Context) error
 	// Release the resources allocated by the client.
 	Close() error
 }
@@ -498,7 +502,7 @@ func (s *shardCollection) sendSamplesWithBackoff(client StorageClient, samples [
 			return
 		}
 
-		if _, ok := err.(recoverableError); !ok {
+		if !isRecoverable(err) {
 			level.Warn(s.qm.logger).Log(
 				"msg", "unrecoverable write error",
 				"err", truncateErrorString(err),
@@ -517,6 +521,30 @@ func (s *shardCollection) sendSamplesWithBackoff(client StorageClient, samples [
 		int64(len(samples)),
 		queueName.String(s.qm.queueName),
 	)
+}
+
+func isRecoverable(err error) bool {
+	if errors.Is(err, context.Canceled) {
+		return true
+	}
+
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+
+	status, ok := status.FromError(err)
+	if !ok {
+		return false
+	}
+	switch status.Code() {
+	case codes.DeadlineExceeded, codes.Canceled, codes.ResourceExhausted,
+		codes.Aborted, codes.OutOfRange, codes.Unavailable, codes.DataLoss:
+		// See https://github.com/open-telemetry/opentelemetry-specification/
+		// blob/master/specification/protocol/otlp.md#response
+		return true
+	default:
+		return false
+	}
 }
 
 // truncateErrorString avoids printing error messages that are very

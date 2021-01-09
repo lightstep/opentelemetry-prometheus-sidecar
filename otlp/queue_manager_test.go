@@ -35,6 +35,9 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/version"
 	"github.com/prometheus/prometheus/config"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // TestStorageClient simulates a storage that can store samples and compares it
@@ -174,6 +177,10 @@ func (c *TestStorageClient) Store(req *metricsService.ExportMetricsServiceReques
 
 func (t *TestStorageClient) New() StorageClient {
 	return t
+}
+
+func (t *TestStorageClient) Selftest(context.Context) error {
+	return nil
 }
 
 func (c *TestStorageClient) Name() string {
@@ -413,6 +420,10 @@ func (t *TestBlockingStorageClient) New() StorageClient {
 	return t
 }
 
+func (t *TestBlockingStorageClient) Selftest(context.Context) error {
+	return nil
+}
+
 func (c *TestBlockingStorageClient) Name() string {
 	return "testblockingstorageclient"
 }
@@ -429,6 +440,14 @@ func (t *QueueManager) queueLen() int {
 		queueLength += len(shard.queue)
 	}
 	return queueLength
+}
+
+func TestRecoverable(t *testing.T) {
+	require.True(t, isRecoverable(context.Canceled))
+	require.True(t, isRecoverable(context.DeadlineExceeded))
+	require.True(t, isRecoverable(status.Error(codes.Unavailable, "try again later")))
+	require.False(t, isRecoverable(status.Error(codes.PermissionDenied, "sorry")))
+	require.False(t, isRecoverable(fmt.Errorf("no idea what this is")))
 }
 
 func TestSpawnNotMoreThanMaxConcurrentSendsGoroutines(t *testing.T) {

@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMain(m *testing.M) {
@@ -39,11 +40,23 @@ func TestStartupInterrupt(t *testing.T) {
 		t.Skip("skipping test in short mode.")
 	}
 
+	ts := newTestServer(t)
+	go func() {
+		// By sleeping 5 seconds here, we require the
+		// sidecar's selftest to try and fail for 5 seconds
+		// before succeeding, after which the interrupt is
+		// delivered here.
+		time.Sleep(5 * time.Second)
+		runMetricsService(ts)
+	}()
+	defer ts.Stop()
+
 	cmd := exec.Command(
 		os.Args[0],
-		"--prometheus.wal=testdata/wal",
-		"--destination.endpoint=http://localhost:9999",
-	)
+		append(e2eTestMainCommonFlags,
+			"--prometheus.wal=testdata/wal",
+		)...)
+
 	cmd.Env = append(os.Environ(), "RUN_MAIN=1")
 	var bout, berr bytes.Buffer
 	cmd.Stdout = &bout
@@ -63,6 +76,7 @@ func TestStartupInterrupt(t *testing.T) {
 	var stoppedErr error
 
 Loop:
+	// This loop sleeps allows least 10 seconds to pass.
 	for x := 0; x < 10; x++ {
 		// error=nil means the sidecar has started so can send the interrupt signal and wait for the grace shutdown.
 		if _, err := http.Get("http://localhost:9091/metrics"); err == nil {
@@ -81,7 +95,7 @@ Loop:
 			default: // try again
 			}
 		}
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(time.Second)
 	}
 
 	t.Logf("stdout: %v\n", bout.String())
@@ -95,6 +109,11 @@ Loop:
 	} else if stoppedErr != nil && stoppedErr.Error() != "signal: interrupt" { // TODO - find a better way to detect when the process didn't exit as expected!
 		t.Errorf("opentelemetry-prometheus-sidecar exited with an unexpected error:%v", stoppedErr)
 	}
+
+	// Because the fake endpoint was started after the start of
+	// the test, we should see some gRPC warnings the connection up
+	// until --startup.timeout takes effect.
+	require.Contains(t, berr.String(), "connect: connection refused")
 }
 
 func TestParseFilters(t *testing.T) {
@@ -133,4 +152,37 @@ func TestParseFilters(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestStartupUnhealthyEndpoint(t *testing.T) {
+	// Tests that the selftest detects an unhealthy endpoint during the selftest.
+	if testing.Short() {
+		t.Skip("skipping test in short mode.")
+	}
+
+	cmd := exec.Command(
+		os.Args[0],
+		append(e2eTestMainCommonFlags,
+			"--prometheus.wal=testdata/wal",
+			"--startup.timeout=5s",
+			"--destination.timeout=1s",
+		)...)
+
+	cmd.Env = append(os.Environ(), "RUN_MAIN=1")
+	var bout, berr bytes.Buffer
+	cmd.Stdout = &bout
+	cmd.Stderr = &berr
+	err := cmd.Start()
+	if err != nil {
+		t.Errorf("execution error: %v", err)
+		return
+	}
+
+	cmd.Wait()
+
+	t.Logf("stdout: %v\n", bout.String())
+	t.Logf("stderr: %v\n", berr.String())
+
+	require.Contains(t, berr.String(), "selftest failed, not starting")
+	require.Contains(t, berr.String(), "selftest recoverable error, still trying")
 }

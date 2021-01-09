@@ -147,6 +147,7 @@ prometheus:
   wal: wal-eeee
 
 startup_delay: 1333s
+startup_timeout: 1777s
 
 `,
 			nil,
@@ -188,6 +189,9 @@ startup_delay: 1333s
 				},
 				StartupDelay: DurationConfig{
 					1333 * time.Second,
+				},
+				StartupTimeout: DurationConfig{
+					1777 * time.Second,
 				},
 			},
 			"",
@@ -237,6 +241,7 @@ log_config:
 `,
 			[]string{
 				"--startup.delay=1333s",
+				"--startup.timeout=1777s",
 				"--destination.attribute", "c=d",
 				"--destination.header", "g=h",
 				"--prometheus.wal", "wal-eeee",
@@ -291,6 +296,9 @@ log_config:
 				StartupDelay: DurationConfig{
 					1333 * time.Second,
 				},
+				StartupTimeout: DurationConfig{
+					1777 * time.Second,
+				},
 			},
 			"",
 		},
@@ -320,6 +328,7 @@ prometheus:
   max_point_age: 72h
 
 startup_delay: 30s
+startup_timeout: 33s
 
 log_config:
   level: warn
@@ -367,6 +376,9 @@ static_metadata:
 				},
 				StartupDelay: DurationConfig{
 					30 * time.Second,
+				},
+				StartupTimeout: DurationConfig{
+					33 * time.Second,
 				},
 				Prometheus: PromConfig{
 					WAL:      "/volume/wal",

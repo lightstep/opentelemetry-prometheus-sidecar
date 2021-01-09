@@ -39,9 +39,17 @@ type deferLogger struct {
 	delegate log.Logger
 }
 
-var staticLogger deferLogger
+var (
+	uninitializedLogKVS = []interface{}{
+		"logging", "uninitialized",
+	}
 
-var verboseLevel atomic.Value
+	staticLogger = log.With(&staticDeferred)
+
+	staticDeferred deferLogger
+
+	verboseLevel atomic.Value
+)
 
 func SetVerboseLevel(level int) {
 	verboseLevel.Store(level)
@@ -52,11 +60,12 @@ func VerboseLevel() int {
 }
 
 func (dl *deferLogger) Log(kvs ...interface{}) error {
-	staticLogger.lock.Lock()
+	staticDeferred.lock.Lock()
 	delegate := dl.delegate
-	staticLogger.lock.Unlock()
+	staticDeferred.lock.Unlock()
 
 	if delegate == nil {
+		kvs = append(kvs[:len(kvs):len(kvs)], uninitializedLogKVS...)
 		var buf bytes.Buffer
 		enc := logfmt.NewEncoder(&buf)
 		_ = enc.EncodeKeyvals(kvs...)
@@ -69,17 +78,21 @@ func (dl *deferLogger) Log(kvs ...interface{}) error {
 func init() {
 	verboseLevel.Store(int(0))
 
-	stdlog.SetOutput(log.NewStdlibAdapter(log.With(&staticLogger, "component", "stdlog")))
+	stdlog.SetOutput(log.NewStdlibAdapter(
+		log.With(staticLogger, "component", "stdlog"),
+		log.FileKey(""),
+		log.TimestampKey(""),
+	))
 
-	otel.SetErrorHandler(newForOTel(log.With(&staticLogger, "component", "otel")))
+	otel.SetErrorHandler(newForOTel(log.With(staticLogger, "component", "otel")))
 
-	grpclog.SetLoggerV2(newForGRPC(log.With(&staticLogger, "component", "grpc")))
+	grpclog.SetLoggerV2(newForGRPC(log.With(staticLogger, "component", "grpc")))
 }
 
-func staticSetup(logger log.Logger) {
-	staticLogger.lock.Lock()
-	defer staticLogger.lock.Unlock()
-	staticLogger.delegate = logger
+func StaticSetup(logger log.Logger) {
+	staticDeferred.lock.Lock()
+	defer staticDeferred.lock.Unlock()
+	staticDeferred.delegate = logger
 }
 
 type forOTel struct {
@@ -93,7 +106,10 @@ func newForOTel(l log.Logger) forOTel {
 }
 
 func (l forOTel) Handle(err error) {
-	l.logger.Log("error", err)
+	if err == nil {
+		return
+	}
+	l.logger.Log("err", err)
 }
 
 type forGRPC struct {
@@ -121,21 +137,21 @@ func (l forGRPC) Info(args ...interface{}) {
 	if VerboseLevel() <= 0 {
 		return
 	}
-	l.loggers[0].Log("message", fmt.Sprint(args...))
+	l.loggers[0].Log("msg", fmt.Sprint(args...))
 }
 
 func (l forGRPC) Infoln(args ...interface{}) {
 	if VerboseLevel() <= 0 {
 		return
 	}
-	l.loggers[0].Log("message", fmt.Sprintln(args...))
+	l.loggers[0].Log("msg", fmt.Sprintln(args...))
 }
 
 func (l forGRPC) Infof(format string, args ...interface{}) {
 	if VerboseLevel() <= 0 {
 		return
 	}
-	l.loggers[0].Log("message", fmt.Sprintf(format, args...))
+	l.loggers[0].Log("msg", fmt.Sprintf(format, args...))
 }
 
 func (l forGRPC) V(level int) bool {
@@ -143,27 +159,27 @@ func (l forGRPC) V(level int) bool {
 }
 
 func (l forGRPC) Warning(args ...interface{}) {
-	l.loggers[1].Log("message", fmt.Sprint(args...))
+	l.loggers[1].Log("msg", fmt.Sprint(args...))
 }
 
 func (l forGRPC) Warningln(args ...interface{}) {
-	l.loggers[1].Log("message", fmt.Sprintln(args...))
+	l.loggers[1].Log("msg", fmt.Sprintln(args...))
 }
 
 func (l forGRPC) Warningf(format string, args ...interface{}) {
-	l.loggers[1].Log("message", fmt.Sprintf(format, args...))
+	l.loggers[1].Log("msg", fmt.Sprintf(format, args...))
 }
 
 func (l forGRPC) Error(args ...interface{}) {
-	l.loggers[2].Log("message", fmt.Sprint(args...))
+	l.loggers[2].Log("msg", fmt.Sprint(args...))
 }
 
 func (l forGRPC) Errorln(args ...interface{}) {
-	l.loggers[2].Log("message", fmt.Sprintln(args...))
+	l.loggers[2].Log("msg", fmt.Sprintln(args...))
 }
 
 func (l forGRPC) Errorf(format string, args ...interface{}) {
-	l.loggers[2].Log("message", fmt.Sprintf(format, args...))
+	l.loggers[2].Log("msg", fmt.Sprintf(format, args...))
 }
 
 func (l forGRPC) Fatal(args ...interface{}) {

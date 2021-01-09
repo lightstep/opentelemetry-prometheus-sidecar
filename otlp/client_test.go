@@ -22,6 +22,7 @@ import (
 
 	metricsService "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/collector/metrics/v1"
 	metric_pb "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 )
 
@@ -56,9 +57,7 @@ func TestStoreErrorHandlingOnTimeout(t *testing.T) {
 			&metric_pb.ResourceMetrics{},
 		},
 	})
-	if _, recoverable := err.(recoverableError); !recoverable {
-		t.Errorf("expected recoverableError in error %v", err)
-	}
+	require.True(t, isRecoverable(err), "expected recoverableError in error %v", err)
 }
 
 func TestEmptyRequest(t *testing.T) {
