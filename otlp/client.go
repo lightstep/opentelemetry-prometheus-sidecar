@@ -26,17 +26,15 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"google.golang.org/grpc/balancer/roundrobin"
 	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
 	metricsService "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/collector/metrics/v1"
 	"github.com/prometheus/common/version"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/balancer/roundrobin"
 	"google.golang.org/grpc/credentials"
 	grpcMetadata "google.golang.org/grpc/metadata"
-	"google.golang.org/grpc/status"
 )
 
 const (
@@ -87,19 +85,18 @@ func NewClient(conf *ClientConfig) *Client {
 	}
 }
 
-type recoverableError struct {
-	error
-}
-
 // version.* is populated for 'promu' builds, so this will look broken in unit tests.
 var userAgent = fmt.Sprintf("OpenTelemetryPrometheus/%s", version.Version)
 
-func (c *Client) getConnection() (*grpc.ClientConn, error) {
+// getConnection will dial a new connection if one is not set.  When
+// dialing, this function uses its a new context and the same timeout
+// used for Store().
+func (c *Client) getConnection(ctx context.Context) (*grpc.ClientConn, error) {
 	if c.conn != nil {
 		return c.conn, nil
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 
 	useAuth := c.url.Scheme == "https"
@@ -112,7 +109,7 @@ func (c *Client) getConnection() (*grpc.ClientConn, error) {
 	dopts := []grpc.DialOption{
 		grpc.WithBalancerName(roundrobin.Name),
 		grpc.WithBlock(), // Wait for the connection to be established before using it.
-		grpc.WithReturnConnectionError(),
+		// TODO: experiment grpc.WithReturnConnectionError(),
 		grpc.WithUserAgent(userAgent),
 		grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
 	}
@@ -155,33 +152,26 @@ func (c *Client) getConnection() (*grpc.ClientConn, error) {
 			"err", err,
 		)
 	}
-	if err == context.DeadlineExceeded {
-		return conn, recoverableError{err}
-	}
 	return conn, err
 }
 
 // Selftest sends an empty request the endpoint.
-func (c *Client) Selftest() error {
+func (c *Client) Selftest(ctx context.Context) error {
 	level.Debug(c.logger).Log("msg", "starting selftest")
-
-	conn, err := c.getConnection()
-	if err != nil {
-		return err
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
-	defer cancel()
-
-	service := metricsService.NewMetricsServiceClient(conn)
-	empty := &metricsService.ExportMetricsServiceRequest{}
 
 	// Loop until the context is canceled, allowing for retryable failures.
 	for {
-		_, err = service.Export(c.grpcMetadata(ctx), empty)
+		conn, err := c.getConnection(ctx)
+
 		if err == nil {
-			level.Debug(c.logger).Log("msg", "selftest was successful")
-			return nil
+			service := metricsService.NewMetricsServiceClient(conn)
+			empty := &metricsService.ExportMetricsServiceRequest{}
+
+			_, err = service.Export(c.grpcMetadata(ctx), empty)
+			if err == nil {
+				level.Debug(c.logger).Log("msg", "selftest was successful")
+				return nil
+			}
 		}
 
 		select {
@@ -189,7 +179,7 @@ func (c *Client) Selftest() error {
 			return ctx.Err()
 		default:
 			if isRecoverable(err) {
-				level.Debug(c.logger).Log("msg", "selftest recoverable error, still trying", "err", err)
+				level.Info(c.logger).Log("msg", "selftest recoverable error, still trying", "err", err)
 				continue
 			}
 		}
@@ -208,12 +198,14 @@ func (c *Client) Store(req *metricsService.ExportMetricsServiceRequest) error {
 		return nil
 	}
 
-	conn, err := c.getConnection()
+	// Note the call to getConnection() applies its own timeout for Dial().
+	ctx := context.Background()
+	conn, err := c.getConnection(ctx)
 	if err != nil {
 		return err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 
 	service := metricsService.NewMetricsServiceClient(conn)
@@ -238,7 +230,7 @@ func (c *Client) Store(req *metricsService.ExportMetricsServiceRequest) error {
 				level.Debug(c.logger).Log(
 					"msg", "Failure calling Export",
 					"err", truncateErrorString(err))
-				errors <- maybeRetry(err)
+				errors <- err
 				return
 			}
 
@@ -263,22 +255,6 @@ func (c *Client) Close() error {
 		return nil
 	}
 	return c.conn.Close()
-}
-
-func maybeRetry(err error) error {
-	status, ok := status.FromError(err)
-	if !ok {
-		return fmt.Errorf("unexpected error from OpenTelemetry service: %w", err)
-	}
-	switch status.Code() {
-	case codes.DeadlineExceeded, codes.Canceled, codes.ResourceExhausted,
-		codes.Aborted, codes.OutOfRange, codes.Unavailable, codes.DataLoss:
-		// See https://github.com/open-telemetry/opentelemetry-specification/
-		// blob/master/specification/protocol/otlp.md#response
-		return recoverableError{err}
-	default:
-		return err
-	}
 }
 
 func (c *Client) grpcMetadata(ctx context.Context) context.Context {

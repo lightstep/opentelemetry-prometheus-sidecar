@@ -255,7 +255,7 @@ func main() {
 	)
 
 	// Perform a test of the outbound connection before starting.
-	if err := selfTest(logger, scf); err != nil {
+	if err := selfTest(logger, scf, cfg.StartupTimeout.Duration); err != nil {
 		level.Error(logger).Log("msg", "selftest failed, not starting", "err", err)
 		os.Exit(1)
 	}
@@ -442,10 +442,14 @@ func parseFilters(logger log.Logger, filters []string) ([][]*labels.Matcher, err
 	return matchers, nil
 }
 
-func selfTest(logger log.Logger, scf otlp.StorageClientFactory) error {
+func selfTest(logger log.Logger, scf otlp.StorageClientFactory, timeout time.Duration) error {
 	client := scf.New()
 
-	if err := client.Selftest(); err != nil {
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	if err := client.Selftest(ctx); err != nil {
 		_ = client.Close()
 		return fmt.Errorf("could not send test opentelemetry.ExportMetricsServiceRequest request: %w", err)
 	}

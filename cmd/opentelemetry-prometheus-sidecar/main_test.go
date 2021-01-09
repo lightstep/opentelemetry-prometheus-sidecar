@@ -42,6 +42,10 @@ func TestStartupInterrupt(t *testing.T) {
 
 	ts := newTestServer(t)
 	go func() {
+		// By sleeping 5 seconds here, we require the
+		// sidecar's selftest to try and fail for 5 seconds
+		// before succeeding, after which the interrupt is
+		// delivered here.
 		time.Sleep(5 * time.Second)
 		runMetricsService(ts)
 	}()
@@ -73,6 +77,7 @@ func TestStartupInterrupt(t *testing.T) {
 	var stoppedErr error
 
 Loop:
+	// This loop sleeps allows least 10 seconds to pass.
 	for x := 0; x < 10; x++ {
 		// error=nil means the sidecar has started so can send the interrupt signal and wait for the grace shutdown.
 		if _, err := http.Get("http://localhost:9091/metrics"); err == nil {
@@ -105,6 +110,11 @@ Loop:
 	} else if stoppedErr != nil && stoppedErr.Error() != "signal: interrupt" { // TODO - find a better way to detect when the process didn't exit as expected!
 		t.Errorf("opentelemetry-prometheus-sidecar exited with an unexpected error:%v", stoppedErr)
 	}
+
+	// Because the fake endpoint was started after the start of
+	// the test, we should see some gRPC warnings the connection up
+	// until --startup.timeout takes effect.
+	require.Contains(t, berr.String(), "connect: connection refused")
 }
 
 func TestParseFilters(t *testing.T) {
@@ -146,7 +156,7 @@ func TestParseFilters(t *testing.T) {
 }
 
 func TestStartupUnhealthyEndpoint(t *testing.T) {
-	// Tests that the selftest detects an unhealthy endpoint
+	// Tests that the selftest detects an unhealthy endpoint during the selftest.
 	if testing.Short() {
 		t.Skip("skipping test in short mode.")
 	}
@@ -155,7 +165,8 @@ func TestStartupUnhealthyEndpoint(t *testing.T) {
 		os.Args[0],
 		append(e2eTestMainCommonFlags,
 			"--prometheus.wal=testdata/wal",
-			"--destination.timeout=2s",
+			"--startup.timeout=5s",
+			"--destination.timeout=1s",
 		)...)
 
 	cmd.Env = append(os.Environ(), "RUN_MAIN=1")
@@ -173,5 +184,6 @@ func TestStartupUnhealthyEndpoint(t *testing.T) {
 	t.Logf("stdout: %v\n", bout.String())
 	t.Logf("stderr: %v\n", berr.String())
 
+	require.Contains(t, berr.String(), "selftest failed, not starting")
 	require.Contains(t, berr.String(), "selftest failed, not starting")
 }

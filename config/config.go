@@ -32,6 +32,7 @@ import (
 
 const (
 	DefaultStartupDelay       = time.Minute
+	DefaultStartupTimeout     = time.Minute
 	DefaultWALDirectory       = "data/wal"
 	DefaultAdminListenAddress = "0.0.0.0:9091"
 	DefaultPrometheusEndpoint = "http://127.0.0.1:9090/"
@@ -105,6 +106,7 @@ type MainConfig struct {
 	Security       SecurityConfig         `json:"security"`
 	Diagnostics    OTLPConfig             `json:"diagnostics"`
 	StartupDelay   DurationConfig         `json:"startup_delay"`
+	StartupTimeout DurationConfig         `json:"startup_timeout"`
 	Filters        []string               `json:"filters"`
 	MetricRenames  []MetricRenamesConfig  `json:"metric_renames"`
 	StaticMetadata []StaticMetadataConfig `json:"static_metadata"`
@@ -144,6 +146,9 @@ func DefaultMainConfig() MainConfig {
 		},
 		StartupDelay: DurationConfig{
 			DefaultStartupDelay,
+		},
+		StartupTimeout: DurationConfig{
+			DefaultStartupTimeout,
 		},
 	}
 }
@@ -209,6 +214,9 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 
 	a.Flag("startup.delay", "Delay at startup to allow Prometheus its initial scrape. Default: "+DefaultStartupDelay.String()).
 		DurationVar(&cfg.StartupDelay.Duration)
+
+	a.Flag("startup.timeout", "Timeout at startup to allow the endpoint to become available. Default: "+DefaultStartupTimeout.String()).
+		DurationVar(&cfg.StartupTimeout.Duration)
 
 	a.Flag(promlogflag.LevelFlagName, promlogflag.LevelFlagHelp).StringVar(&cfg.LogConfig.Level)
 	a.Flag(promlogflag.FormatFlagName, promlogflag.FormatFlagHelp).StringVar(&cfg.LogConfig.Format)

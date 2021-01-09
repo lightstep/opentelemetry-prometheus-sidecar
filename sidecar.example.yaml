@@ -91,6 +91,10 @@ static_metadata:
 # write-ahead-log entries after startup:
 startup_delay: 30s
 
+# Startup timeout determines how long to wait for the endpoint to
+# become available once before entering the initial run state.
+startup_timeout: 300s
+
 # Control the format and level of console-logging output:
 log_config:
   level: debug
