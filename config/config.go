@@ -32,7 +32,7 @@ import (
 
 const (
 	DefaultStartupDelay       = time.Minute
-	DefaultStartupTimeout     = time.Minute
+	DefaultStartupTimeout     = 5 * time.Minute
 	DefaultWALDirectory       = "data/wal"
 	DefaultAdminListenAddress = "0.0.0.0:9091"
 	DefaultPrometheusEndpoint = "http://127.0.0.1:9090/"

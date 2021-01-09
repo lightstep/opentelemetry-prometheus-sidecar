@@ -157,8 +157,6 @@ func (c *Client) getConnection(ctx context.Context) (*grpc.ClientConn, error) {
 
 // Selftest sends an empty request the endpoint.
 func (c *Client) Selftest(ctx context.Context) error {
-	level.Debug(c.logger).Log("msg", "starting selftest")
-
 	// Loop until the context is canceled, allowing for retryable failures.
 	for {
 		conn, err := c.getConnection(ctx)
@@ -169,7 +167,6 @@ func (c *Client) Selftest(ctx context.Context) error {
 
 			_, err = service.Export(c.grpcMetadata(ctx), empty)
 			if err == nil {
-				level.Debug(c.logger).Log("msg", "selftest was successful")
 				return nil
 			}
 		}

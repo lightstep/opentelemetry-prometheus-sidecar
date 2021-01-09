@@ -445,6 +445,8 @@ func parseFilters(logger log.Logger, filters []string) ([][]*labels.Matcher, err
 func selfTest(logger log.Logger, scf otlp.StorageClientFactory, timeout time.Duration) error {
 	client := scf.New()
 
+	level.Info(logger).Log("msg", "starting selftest")
+
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -458,5 +460,6 @@ func selfTest(logger log.Logger, scf otlp.StorageClientFactory, timeout time.Dur
 		return fmt.Errorf("error closing test client: %w", err)
 	}
 
+	level.Info(logger).Log("msg", "selftest was successful")
 	return nil
 }

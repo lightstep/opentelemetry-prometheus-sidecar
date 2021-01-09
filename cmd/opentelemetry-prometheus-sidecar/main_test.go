@@ -55,7 +55,6 @@ func TestStartupInterrupt(t *testing.T) {
 		os.Args[0],
 		append(e2eTestMainCommonFlags,
 			"--prometheus.wal=testdata/wal",
-			"--destination.timeout=30s",
 		)...)
 
 	cmd.Env = append(os.Environ(), "RUN_MAIN=1")
