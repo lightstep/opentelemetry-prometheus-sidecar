@@ -113,7 +113,7 @@ tarball: promu
 	@$(PROMU) tarball --prefix $(PREFIX) $(BIN_DIR)
 
 docker: build-linux-amd64
-	@echo ">> building docker image"
+	@echo ">> building docker image $(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_TAG)"
 	docker build -t "$(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_TAG)" .
 
 assets:
