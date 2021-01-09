@@ -99,7 +99,7 @@ func (c *Client) getConnection(ctx context.Context) (*grpc.ClientConn, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 
-	useAuth := c.url.Scheme == "https"
+	useAuth := c.url.Scheme != "http"
 	level.Debug(c.logger).Log(
 		"msg", "new otlp connection",
 		"auth", useAuth,

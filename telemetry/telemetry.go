@@ -123,11 +123,18 @@ func WithHeaders(headers map[string]string) Option {
 	}
 }
 
+func DefaultLogger(opts ...level.Option) log.Logger {
+	if opts == nil {
+		opts = append(opts, level.AllowAll())
+	}
+	logWriter := log.NewLogfmtLogger(log.NewSyncWriter(os.Stdout))
+	return level.NewFilter(logWriter, opts...)
+}
+
 func newConfig(opts ...Option) Config {
 	var c Config
-	logWriter := log.NewLogfmtLogger(log.NewSyncWriter(os.Stdout))
 	c.Propagators = []string{"b3"}
-	c.logger = level.NewFilter(logWriter, level.AllowInfo())
+	c.logger = DefaultLogger(level.AllowInfo())
 
 	var defaultOpts []Option
 
