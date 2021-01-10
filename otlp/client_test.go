@@ -73,3 +73,5 @@ func TestEmptyRequest(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TODO: Need an error/no-error test, use mock RPC stub

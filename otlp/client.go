@@ -221,7 +221,7 @@ func (c *Client) Store(req *metricsService.ExportMetricsServiceRequest) error {
 				ResourceMetrics: req.ResourceMetrics[begin:end],
 			}
 
-			if _, err := service.Export(c.grpcMetadata(ctx), req_copy); err != nil {
+			if _, err := service.Export(c.grpcMetadata(ctx), req_copy); err == nil {
 				// TODO This happens too fast _after_ a healthy
 				// connection becomes unhealthy. Fix.
 				level.Debug(c.logger).Log(
