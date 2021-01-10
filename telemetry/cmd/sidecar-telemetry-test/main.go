@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"net"
 	"net/url"
 	"os"
@@ -65,6 +66,10 @@ func Main() error {
 			"service.name": "sidecar-telemetry-test",
 		}),
 	).Shutdown(context.Background())
+
+	otel.Handle(fmt.Errorf("printing OTel error"))
+
+	log.Print("printing STDLOG error")
 
 	level.Info(logger).Log("msg", "sending OTLP", "endpoint", endpointURL)
 
