@@ -128,7 +128,11 @@ func DefaultLogger(opts ...level.Option) log.Logger {
 		opts = append(opts, level.AllowAll())
 	}
 	logWriter := log.NewLogfmtLogger(log.NewSyncWriter(os.Stdout))
-	return level.NewFilter(logWriter, opts...)
+	return log.With(level.NewFilter(logWriter, opts...),
+		"ts", log.TimestampFormat(
+			func() time.Time { return time.Now().UTC() },
+			"2006-01-02T15:04:05.000Z07:00",
+		))
 }
 
 func newConfig(opts ...Option) Config {

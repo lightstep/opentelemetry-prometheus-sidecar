@@ -3,13 +3,13 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"net"
 	"net/url"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"go.opentelemetry.io/otel"
 )
@@ -18,9 +18,7 @@ var logger = telemetry.DefaultLogger()
 
 func main() {
 	if err := Main(); err != nil {
-		// @@@ LOG NOT WORKING: use logger after fix
-		log.Printf("%s: %s\n", os.Args[0], err)
-		fmt.Printf("%s: %s\n", os.Args[0], err)
+		level.Error(logger).Log("msg", err)
 		os.Exit(1)
 	}
 }
@@ -63,16 +61,17 @@ func Main() error {
 		telemetry.WithExporterEndpoint(address),
 		telemetry.WithExporterInsecure(insecure),
 		telemetry.WithHeaders(headers),
+		telemetry.WithResourceAttributes(map[string]string{
+			"service.name": "sidecar-telemetry-test",
+		}),
 	).Shutdown(context.Background())
 
-	log.Println("sending OTLP to", endpointURL)
-	fmt.Println("sending OTLP to", endpointURL)
+	level.Info(logger).Log("msg", "sending OTLP", "endpoint", endpointURL)
 
 	tracer := otel.Tracer("sidecar-telemetry-test")
 	for {
 		_, span := tracer.Start(context.Background(), "ping")
-		defer span.End()
-
 		time.Sleep(time.Second)
+		span.End()
 	}
 }
