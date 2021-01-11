@@ -39,8 +39,7 @@ import (
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/targets"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
-	"github.com/oklog/oklog/pkg/group"
-	"github.com/pkg/errors"
+	"github.com/oklog/run"
 	"github.com/prometheus/common/promlog"
 	"github.com/prometheus/common/version"
 	promconfig "github.com/prometheus/prometheus/config"
@@ -60,6 +59,9 @@ import (
 // - the gRPC instrumentation package does not include metrics (but will eventually)
 //
 // TODO(jmacd): Await or add gRPC metrics instrumentation  in the upstream package.
+
+// TODO(jmacd): Note that https://github.com/mwitkow/go-conntrack was removed, may
+// be useful after other matters are resolved.
 
 func main() {
 	if os.Getenv("DEBUG") != "" {
@@ -254,7 +256,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	var g group.Group
+	var g run.Group
 	{
 		ctx, cancel := context.WithCancel(context.Background())
 		g.Add(func() error {
@@ -429,7 +431,7 @@ func parseFilters(logger log.Logger, filters []string) ([][]*labels.Matcher, err
 	for _, f := range filters {
 		m, err := parser.ParseMetricSelector(f)
 		if err != nil {
-			return nil, errors.Errorf("cannot parse filter '%s': %q", f, err)
+			return nil, fmt.Errorf("cannot parse filter '%s': %w", f, err)
 		}
 		matchers = append(matchers, m)
 	}
