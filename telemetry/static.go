@@ -78,10 +78,10 @@ func (dl *deferLogger) Log(kvs ...interface{}) error {
 func init() {
 	verboseLevel.Store(int(0))
 
+	// Note: the NewStdlibAdapter requires one of the file options for correctness.
+	stdlog.SetFlags(stdlog.Ldate | stdlog.Ltime | stdlog.Lmicroseconds | stdlog.Lshortfile)
 	stdlog.SetOutput(log.NewStdlibAdapter(
 		log.With(staticLogger, "component", "stdlog"),
-		log.FileKey(""),
-		log.TimestampKey(""),
 	))
 
 	otel.SetErrorHandler(newForOTel(log.With(staticLogger, "component", "otel")))

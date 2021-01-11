@@ -23,6 +23,7 @@ import (
 
 	"github.com/ghodss/yaml"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/pkg/errors"
 	promlogflag "github.com/prometheus/common/promlog/flag"
 	"github.com/prometheus/common/version"
@@ -37,8 +38,6 @@ const (
 	DefaultAdminListenAddress = "0.0.0.0:9091"
 	DefaultPrometheusEndpoint = "http://127.0.0.1:9090/"
 	DefaultMaxPointAge        = time.Hour * 25
-	DefaultExportTimeout      = time.Second * 60
-	DefaultReportingPeriod    = time.Second * 30
 
 	briefDescription = `
 The OpenTelemetry Prometheus sidecar runs alongside the
@@ -132,12 +131,12 @@ func DefaultMainConfig() MainConfig {
 		Destination: OTLPConfig{
 			Headers:    map[string]string{},
 			Attributes: map[string]string{},
-			Timeout:    DurationConfig{DefaultExportTimeout},
+			Timeout:    DurationConfig{telemetry.DefaultExportTimeout},
 		},
 		Diagnostics: OTLPConfig{
 			Headers:    map[string]string{},
 			Attributes: map[string]string{},
-			Timeout:    DurationConfig{DefaultExportTimeout},
+			Timeout:    DurationConfig{telemetry.DefaultExportTimeout},
 		},
 		LogConfig: LogConfig{
 			Level:   "info",

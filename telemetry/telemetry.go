@@ -23,7 +23,6 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/pkg/errors"
 	hostMetrics "go.opentelemetry.io/contrib/instrumentation/host"
 	runtimeMetrics "go.opentelemetry.io/contrib/instrumentation/runtime"
@@ -38,6 +37,11 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/sdk/trace"
 	"google.golang.org/grpc/credentials"
+)
+
+const (
+	DefaultExportTimeout   = time.Second * 60
+	DefaultReportingPeriod = time.Second * 30
 )
 
 type (
@@ -119,11 +123,22 @@ func WithHeaders(headers map[string]string) Option {
 	}
 }
 
+func DefaultLogger(opts ...level.Option) log.Logger {
+	if opts == nil {
+		opts = append(opts, level.AllowAll())
+	}
+	logWriter := log.NewLogfmtLogger(log.NewSyncWriter(os.Stdout))
+	return log.With(level.NewFilter(logWriter, opts...),
+		"ts", log.TimestampFormat(
+			func() time.Time { return time.Now().UTC() },
+			"2006-01-02T15:04:05.000Z07:00",
+		))
+}
+
 func newConfig(opts ...Option) Config {
 	var c Config
-	logWriter := log.NewLogfmtLogger(log.NewSyncWriter(os.Stdout))
 	c.Propagators = []string{"b3"}
-	c.logger = level.NewFilter(logWriter, level.AllowInfo())
+	c.logger = DefaultLogger(level.AllowInfo())
 
 	var defaultOpts []Option
 
@@ -132,10 +147,10 @@ func newConfig(opts ...Option) Config {
 	}
 
 	if c.ExportTimeout <= 0 {
-		c.ExportTimeout = config.DefaultExportTimeout
+		c.ExportTimeout = DefaultExportTimeout
 	}
 	if c.MetricReportingPeriod <= 0 {
-		c.MetricReportingPeriod = config.DefaultReportingPeriod
+		c.MetricReportingPeriod = DefaultReportingPeriod
 	}
 
 	var err error

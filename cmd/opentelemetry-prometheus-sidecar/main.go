@@ -39,8 +39,7 @@ import (
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/targets"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
-	conntrack "github.com/mwitkow/go-conntrack"
-	"github.com/oklog/oklog/pkg/group"
+	"github.com/oklog/run"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/promlog"
 	"github.com/prometheus/common/version"
@@ -61,6 +60,9 @@ import (
 // - the gRPC instrumentation package does not include metrics (but will eventually)
 //
 // TODO(jmacd): Await or add gRPC metrics instrumentation  in the upstream package.
+
+// TODO(jmacd): Note that https://github.com/mwitkow/go-conntrack was removed, may
+// be useful after other matters are resolved.
 
 func main() {
 	if os.Getenv("DEBUG") != "" {
@@ -162,7 +164,7 @@ func main() {
 			telemetry.WithHeaders(cfg.Diagnostics.Headers),
 			telemetry.WithResourceAttributes(cfg.Diagnostics.Attributes),
 			telemetry.WithExportTimeout(cfg.Diagnostics.Timeout.Duration),
-			telemetry.WithMetricReportingPeriod(config.DefaultReportingPeriod),
+			telemetry.WithMetricReportingPeriod(telemetry.DefaultReportingPeriod),
 		).Shutdown(context.Background())
 	}
 
@@ -249,18 +251,13 @@ func main() {
 		cfg.Prometheus.MaxPointAge.Duration,
 	)
 
-	// Monitor outgoing connections on default transport with conntrack.
-	http.DefaultTransport.(*http.Transport).DialContext = conntrack.NewDialContextFunc(
-		conntrack.DialWithTracing(),
-	)
-
 	// Perform a test of the outbound connection before starting.
 	if err := selfTest(logger, scf, cfg.StartupTimeout.Duration); err != nil {
 		level.Error(logger).Log("msg", "selftest failed, not starting", "err", err)
 		os.Exit(1)
 	}
 
-	var g group.Group
+	var g run.Group
 	{
 		ctx, cancel := context.WithCancel(context.Background())
 		g.Add(func() error {

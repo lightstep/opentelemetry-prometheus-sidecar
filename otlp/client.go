@@ -39,6 +39,33 @@ import (
 
 const (
 	MaxTimeseriesesPerRequest = 200
+
+	// serviceConfig copied from OTel-Go.
+	// https://github.com/open-telemetry/opentelemetry-go/blob/5ed96e92446d2d58d131e0672da613a84c16af7a/exporters/otlp/grpcoptions.go#L37
+	serviceConfig = `{
+	"methodConfig":[{
+		"name":[
+			{ "service":"opentelemetry.proto.collector.metrics.v1.MetricsService" },
+			{ "service":"opentelemetry.proto.collector.trace.v1.TraceService" }
+		],
+		"retryPolicy":{
+			"MaxAttempts":5,
+			"InitialBackoff":"0.3s",
+			"MaxBackoff":"5s",
+			"BackoffMultiplier":2,
+			"RetryableStatusCodes":[
+				"UNAVAILABLE",
+				"CANCELLED",
+				"DEADLINE_EXCEEDED",
+				"RESOURCE_EXHAUSTED",
+				"ABORTED",
+				"OUT_OF_RANGE",
+				"UNAVAILABLE",
+				"DATA_LOSS"
+			]
+		}
+	}]
+}`
 )
 
 var (
@@ -99,7 +126,7 @@ func (c *Client) getConnection(ctx context.Context) (*grpc.ClientConn, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 
-	useAuth := c.url.Scheme == "https"
+	useAuth := c.url.Scheme != "http"
 	level.Debug(c.logger).Log(
 		"msg", "new otlp connection",
 		"auth", useAuth,
@@ -109,9 +136,9 @@ func (c *Client) getConnection(ctx context.Context) (*grpc.ClientConn, error) {
 	dopts := []grpc.DialOption{
 		grpc.WithBalancerName(roundrobin.Name),
 		grpc.WithBlock(), // Wait for the connection to be established before using it.
-		// TODO: experiment grpc.WithReturnConnectionError(),
 		grpc.WithUserAgent(userAgent),
 		grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
+		grpc.WithDefaultServiceConfig(serviceConfig),
 	}
 	if useAuth {
 		var tcfg tls.Config
@@ -144,14 +171,22 @@ func (c *Client) getConnection(ctx context.Context) (*grpc.ClientConn, error) {
 		address = net.JoinHostPort(address, c.url.Port())
 	}
 	conn, err := grpc.DialContext(ctx, address, dopts...)
-	c.conn = conn
 	if err != nil {
 		level.Debug(c.logger).Log(
 			"msg", "connection status",
 			"address", address,
 			"err", err,
 		)
+		return nil, err
 	}
+	// Note: Set the connection when there is not an error. The
+	// upstream Stackdriver Prometheus sidecar sets the connection
+	// unconditionally, which is probably also correct, however we
+	// have seen a connection problem in some environments and
+	// will not set the connection after error until those reports
+	// are explained.
+	c.conn = conn
+
 	return conn, err
 }
 
@@ -221,7 +256,7 @@ func (c *Client) Store(req *metricsService.ExportMetricsServiceRequest) error {
 				ResourceMetrics: req.ResourceMetrics[begin:end],
 			}
 
-			if _, err := service.Export(c.grpcMetadata(ctx), req_copy); err == nil {
+			if _, err := service.Export(c.grpcMetadata(ctx), req_copy); err != nil {
 				// TODO This happens too fast _after_ a healthy
 				// connection becomes unhealthy. Fix.
 				level.Debug(c.logger).Log(

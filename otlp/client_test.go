@@ -73,3 +73,9 @@ func TestEmptyRequest(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// Note: There is no test that the client correctly chooses the
+// correct branch after the call to service.Export in Client.Store().
+// This is deficient, however we are planning to replace this code
+// with the OTel-Go OTLP Exporter, after which such a test would have
+// to be rewritten from scratch.
