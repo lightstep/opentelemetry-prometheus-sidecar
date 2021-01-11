@@ -6,12 +6,10 @@ require (
 	github.com/d4l3k/messagediff v1.2.1 // indirect
 	github.com/ghodss/yaml v1.0.0
 	github.com/go-kit/kit v0.10.0
-	github.com/go-logfmt/logfmt v0.5.0 // indirect
 	github.com/gogo/protobuf v1.3.1
 	github.com/golang/protobuf v1.4.3
 	github.com/google/go-cmp v0.5.4
 	github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry v0.0.0-00010101000000-000000000000
-	github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f
 	github.com/oklog/oklog v0.3.2
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/common v0.14.0

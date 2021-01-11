@@ -39,7 +39,6 @@ import (
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/targets"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
-	conntrack "github.com/mwitkow/go-conntrack"
 	"github.com/oklog/oklog/pkg/group"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/promlog"
@@ -247,11 +246,6 @@ func main() {
 		queueManager,
 		cfg.OpenTelemetry.MetricsPrefix,
 		cfg.Prometheus.MaxPointAge.Duration,
-	)
-
-	// Monitor outgoing connections on default transport with conntrack.
-	http.DefaultTransport.(*http.Transport).DialContext = conntrack.NewDialContextFunc(
-		conntrack.DialWithTracing(),
 	)
 
 	// Perform a test of the outbound connection before starting.
