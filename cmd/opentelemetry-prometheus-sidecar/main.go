@@ -40,6 +40,7 @@ import (
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/targets"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/oklog/run"
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/promlog"
 	"github.com/prometheus/common/version"
 	promconfig "github.com/prometheus/prometheus/config"
@@ -431,7 +432,7 @@ func parseFilters(logger log.Logger, filters []string) ([][]*labels.Matcher, err
 	for _, f := range filters {
 		m, err := parser.ParseMetricSelector(f)
 		if err != nil {
-			return nil, fmt.Errorf("cannot parse filter '%s': %w", f, err)
+			return nil, errors.Errorf("cannot parse filter '%s': %q", f, err)
 		}
 		matchers = append(matchers, m)
 	}
