@@ -171,14 +171,22 @@ func (c *Client) getConnection(ctx context.Context) (*grpc.ClientConn, error) {
 		address = net.JoinHostPort(address, c.url.Port())
 	}
 	conn, err := grpc.DialContext(ctx, address, dopts...)
-	c.conn = conn
 	if err != nil {
 		level.Debug(c.logger).Log(
 			"msg", "connection status",
 			"address", address,
 			"err", err,
 		)
+		return nil, err
 	}
+	// Note: Set the connection when there is not an error. The
+	// upstream Stackdriver Prometheus sidecar sets the connection
+	// unconditionally, which is probably also correct, however we
+	// have seen a connection problem in some environments and
+	// will not set the connection after error until those reports
+	// are explained.
+	c.conn = conn
+
 	return conn, err
 }
 
@@ -248,7 +256,7 @@ func (c *Client) Store(req *metricsService.ExportMetricsServiceRequest) error {
 				ResourceMetrics: req.ResourceMetrics[begin:end],
 			}
 
-			if _, err := service.Export(c.grpcMetadata(ctx), req_copy); err == nil {
+			if _, err := service.Export(c.grpcMetadata(ctx), req_copy); err != nil {
 				// TODO This happens too fast _after_ a healthy
 				// connection becomes unhealthy. Fix.
 				level.Debug(c.logger).Log(
