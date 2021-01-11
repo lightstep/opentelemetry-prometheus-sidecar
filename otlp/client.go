@@ -39,6 +39,33 @@ import (
 
 const (
 	MaxTimeseriesesPerRequest = 200
+
+	// serviceConfig copied from OTel-Go.
+	// https://github.com/open-telemetry/opentelemetry-go/blob/5ed96e92446d2d58d131e0672da613a84c16af7a/exporters/otlp/grpcoptions.go#L37
+	serviceConfig = `{
+	"methodConfig":[{
+		"name":[
+			{ "service":"opentelemetry.proto.collector.metrics.v1.MetricsService" },
+			{ "service":"opentelemetry.proto.collector.trace.v1.TraceService" }
+		],
+		"retryPolicy":{
+			"MaxAttempts":5,
+			"InitialBackoff":"0.3s",
+			"MaxBackoff":"5s",
+			"BackoffMultiplier":2,
+			"RetryableStatusCodes":[
+				"UNAVAILABLE",
+				"CANCELLED",
+				"DEADLINE_EXCEEDED",
+				"RESOURCE_EXHAUSTED",
+				"ABORTED",
+				"OUT_OF_RANGE",
+				"UNAVAILABLE",
+				"DATA_LOSS"
+			]
+		}
+	}]
+}`
 )
 
 var (
@@ -109,9 +136,9 @@ func (c *Client) getConnection(ctx context.Context) (*grpc.ClientConn, error) {
 	dopts := []grpc.DialOption{
 		grpc.WithBalancerName(roundrobin.Name),
 		grpc.WithBlock(), // Wait for the connection to be established before using it.
-		// TODO: experiment grpc.WithReturnConnectionError(),
 		grpc.WithUserAgent(userAgent),
 		grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
+		grpc.WithDefaultServiceConfig(serviceConfig),
 	}
 	if useAuth {
 		var tcfg tls.Config
