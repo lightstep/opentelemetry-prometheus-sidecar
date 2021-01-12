@@ -1,6 +1,6 @@
-LABEL maintainer "Lightstep Engineering <engineering@lightstep.com>"
-
 FROM golang:1.15 as gotools
+
+LABEL maintainer "Lightstep Engineering <engineering@lightstep.com>"
 
 WORKDIR /gobuild/prometheus-sidecar
 

@@ -1,5 +1,7 @@
 FROM golang:1.15 as gotools
 
+LABEL maintainer "Lightstep Engineering <engineering@lightstep.com>"
+
 WORKDIR /gobuild
 
 RUN go get github.com/fullstorydev/grpcurl/...
@@ -26,8 +28,6 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o sidecar-telemetry-test ./c
 # FROM gcr.io/distroless/static:latest
 FROM  praqma/network-multitool:latest
 
-
-LABEL maintainer "Lightstep Engineering <engineering@lightstep.com>"
 
 COPY otlp-proto.protoset /protoset/otlp-proto
 
