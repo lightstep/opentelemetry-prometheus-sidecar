@@ -2,6 +2,8 @@ module github.com/lightstep/opentelemetry-prometheus-sidecar
 
 replace github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry => ./telemetry
 
+go 1.15
+
 require (
 	github.com/d4l3k/messagediff v1.2.1 // indirect
 	github.com/ghodss/yaml v1.0.0
@@ -38,5 +40,3 @@ require (
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 	gopkg.in/d4l3k/messagediff.v1 v1.2.1
 )
-
-go 1.14

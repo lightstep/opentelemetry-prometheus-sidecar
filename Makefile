@@ -11,130 +11,41 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Ensure GOBIN is not set during build so that promu is installed to the correct path
-unexport GOBIN
+GO                ?= go
+GOFMT             ?= $(GO)fmt
+PKGS              ?= ./...
+DOCKER_IMAGE_NAME ?= opentelemetry-prometheus-sidecar
+DOCKER_IMAGE_TAG  ?= $(subst /,-,$(shell git rev-parse --abbrev-ref HEAD))
 
-GO           ?= go
-GOFMT        ?= $(GO)fmt
-FIRST_GOPATH := $(firstword $(subst :, ,$(shell $(GO) env GOPATH)))
-GOHOSTOS     ?= $(shell $(GO) env GOHOSTOS)
-GOHOSTARCH   ?= $(shell $(GO) env GOHOSTARCH)
-
-# Enforce Go modules support just in case the directory is inside GOPATH (and for Travis CI).
-GO111MODULE := on
-# Always use the local vendor/ directory to satisfy the dependencies.  This is required by `promu`.
-GOOPTS := $(GOOPTS) -mod=vendor
-
-PROMU        := $(FIRST_GOPATH)/bin/promu
-STATICCHECK  := $(FIRST_GOPATH)/bin/staticcheck
-GOVERALLS    := $(FIRST_GOPATH)/bin/goveralls
-pkgs          = ./...
-
-ifeq (arm, $(GOHOSTARCH))
-	GOHOSTARM ?= $(shell GOARM= $(GO) env GOARM)
-	GO_BUILD_PLATFORM ?= $(GOHOSTOS)-$(GOHOSTARCH)v$(GOHOSTARM)
-else
-	GO_BUILD_PLATFORM ?= $(GOHOSTOS)-$(GOHOSTARCH)
-endif
-
-PROMU_VERSION ?= 0.6.1
-PROMU_URL     := https://github.com/prometheus/promu/releases/download/v$(PROMU_VERSION)/promu-$(PROMU_VERSION).$(GO_BUILD_PLATFORM).tar.gz
-
-PREFIX                  ?= $(shell pwd)
-BIN_DIR                 ?= $(shell pwd)
-# Private repo.
-DOCKER_IMAGE_NAME       ?= opentelemetry-prometheus-sidecar
-DOCKER_IMAGE_TAG        ?= $(subst /,-,$(shell git rev-parse --abbrev-ref HEAD))
-
-ifdef DEBUG
-	bindata_flags = -debug
-endif
-
-all: vendor build test
-
-style:
-	@echo ">> checking code style"
-	@! $(GOFMT) -d $(shell find . -path ./vendor -prune -o -name '*.go' -print) | grep '^'
+all: build
 
 deps:
 	@echo ">> getting dependencies"
 	$(GO) mod download
 
-vendor:
-	@echo ">> building vendor dir"
-	$(GO) mod vendor
-
 test-short:
 	@echo ">> running short tests"
-	GO111MODULE=$(GO111MODULE) $(GO) test -short $(GOOPTS) $(pkgs)
+	$(GO) test -short $(GOOPTS) ${PKGS}
 
-test:
+test: deps
 	@echo ">> running all tests"
-	GO111MODULE=$(GO111MODULE) $(GO) test $(GOOPTS) $(pkgs)
-	GO111MODULE=$(GO111MODULE) $(GO) test -race $(GOOPTS) $(pkgs)
-
-cover:
-	@echo ">> running all tests with coverage"
-	GO111MODULE=$(GO111MODULE) $(GO) test -coverprofile=coverage.out $(GOOPTS) $(pkgs)
+	@$(GO) test $(GOOPTS) ${PKGS}
+	$(GO) test -race $(GOOPTS) ${PKGS}
 
 format:
 	@echo ">> formatting code"
-	# Replace gofmt call once we bump to a more recent Go that supports `-mod=vendor`, probably 1.14.
-	# GO111MODULE=$(GO111MODULE) $(GO) fmt $(GOOPTS) $(pkgs)
-	# Avoid formatting anything under vendor/.
-	$(GOFMT) -l -w $(shell find . -path ./vendor -prune -o -name '*.go' -print)
+	$(GOFMT) -l -w ${PKGS}
 
 vet:
 	@echo ">> vetting code"
-	GO111MODULE=$(GO111MODULE) $(GO) vet $(GOOPTS) $(pkgs)
+	@$(GO) vet $(GOOPTS) ${PKGS}
 
-# TODO: Reenable staticcheck after removing deprecation warnings.
-staticcheck: $(STATICCHECK)
-	@echo ">> running staticcheck"
-	$(STATICCHECK) $(pkgs)
-
-goveralls: cover $(GOVERALLS)
-ifndef COVERALLS_TOKEN
-	$(error COVERALLS_TOKEN is undefined, follow https://docs.coveralls.io/go to create one and go to https://coveralls.io to retrieve existing ones)
-endif
-	@echo ">> running goveralls"
-	$(GOVERALLS) -coverprofile=coverage.out -service=travis-ci -repotoken "${COVERALLS_TOKEN}"
-
-build: promu vendor
+build: test
 	@echo ">> building binaries"
-	GO111MODULE=$(GO111MODULE) $(PROMU) build --prefix $(PREFIX)
+	$(GO) build $(GOOPTS) ${PKGS}
 
-build-linux-amd64: promu vendor
-	@echo ">> building linux amd64 binaries"
-	@GO111MODULE=$(GO111MODULE) GOOS=linux GOARCH=amd64 $(PROMU) build --prefix $(PREFIX)
-
-tarball: promu
-	@echo ">> building release tarball"
-	@$(PROMU) tarball --prefix $(PREFIX) $(BIN_DIR)
-
-docker: build-linux-amd64
+docker:
 	@echo ">> building docker image"
 	docker build -t "$(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_TAG)" .
 
-assets:
-	@echo ">> writing assets"
-	$(GO) get -u github.com/jteeuwen/go-bindata/...
-	go-bindata $(bindata_flags) -pkg ui -o web/ui/bindata.go -ignore '(.*\.map|bootstrap\.js|bootstrap-theme\.css|bootstrap\.css)'  web/ui/templates/... web/ui/static/...
-	$(GO) fmt ./web/ui
-
-promu:
-	@echo ">> fetching promu"
-	$(eval PROMU_TMP := $(shell mktemp -d))
-	# TODO this download is expensive, can we use a docker image of promu?
-	curl -s -L $(PROMU_URL) | tar -xvzf - -C $(PROMU_TMP)
-	mkdir -p $(FIRST_GOPATH)/bin
-	cp $(PROMU_TMP)/promu-$(PROMU_VERSION).$(GO_BUILD_PLATFORM)/promu $(FIRST_GOPATH)/bin/promu
-	rm -r $(PROMU_TMP)
-
-$(FIRST_GOPATH)/bin/staticcheck:
-	GOOS= GOARCH= $(GO) get -u honnef.co/go/tools/cmd/staticcheck
-
-$(FIRST_GOPATH)/bin/goveralls:
-	GOOS= GOARCH= $(GO) get -u github.com/mattn/goveralls
-
-.PHONY: all style deps format build test vendor vet assets tarball docker promu staticcheck $(FIRST_GOPATH)/bin/staticcheck goveralls $(FIRST_GOPATH)/bin/goveralls
+.PHONY: all deps test-short test format vet build vet docker
