@@ -8,7 +8,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+## [0.9.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.9.0) - 2021-01-15
+
 ### Changed
+
+- Additional sanitization of HTTP2 headers. (#67)
+- Remove gRPC WithLoadBalancerName() option in favor of default service config. (#64)
 
 ## [0.8.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.8.0) - 2021-01-11
 
