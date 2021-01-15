@@ -450,6 +450,72 @@ static_metadata:
 			"",
 		},
 		{
+			"trim header double quotes around both key/val",
+			"",
+			[]string{"--destination.header=\"key=abcdef\""},
+			func() config.MainConfig {
+				cfg := config.DefaultMainConfig()
+				cfg.Destination.Headers["key"] = "abcdef"
+				return cfg
+			}(),
+			"",
+		},
+		{
+			"trim header double quotes around key only",
+			"",
+			[]string{"--destination.header=\"key\"=abcdef"},
+			func() config.MainConfig {
+				cfg := config.DefaultMainConfig()
+				cfg.Destination.Headers["key"] = "abcdef"
+				return cfg
+			}(),
+			"",
+		},
+		{
+			"trim header double quotes around val only",
+			"",
+			[]string{"--destination.header=key=\"abcdef\""},
+			func() config.MainConfig {
+				cfg := config.DefaultMainConfig()
+				cfg.Destination.Headers["key"] = "abcdef"
+				return cfg
+			}(),
+			"",
+		},
+		{
+			"trim header single quotes around both key/val",
+			"",
+			[]string{"--destination.header='key=abcdef'"},
+			func() config.MainConfig {
+				cfg := config.DefaultMainConfig()
+				cfg.Destination.Headers["key"] = "abcdef"
+				return cfg
+			}(),
+			"",
+		},
+		{
+			"trim header single quotes around key only",
+			"",
+			[]string{"--destination.header='key'=abcdef"},
+			func() config.MainConfig {
+				cfg := config.DefaultMainConfig()
+				cfg.Destination.Headers["key"] = "abcdef"
+				return cfg
+			}(),
+			"",
+		},
+		{
+			"trim header single quotes around val only",
+			"",
+			[]string{"--destination.header=key='abcdef'"},
+			func() config.MainConfig {
+				cfg := config.DefaultMainConfig()
+				cfg.Destination.Headers["key"] = "abcdef"
+				return cfg
+			}(),
+			"",
+		},
+		{
 			"check header newlines",
 			"",
 			[]string{"--destination.header=key=abc\ndef"},

@@ -256,28 +256,57 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 		}
 	}
 
-	if err := checkEmptyKeys("destination attribute", cfg.Destination.Attributes); err != nil {
+	if err := sanitizeValues("destination attribute", cfg.Destination.Attributes); err != nil {
 		return MainConfig{}, nil, nil, err
 	}
-	if err := checkEmptyKeys("destination header", cfg.Destination.Headers); err != nil {
+	if err := sanitizeValues("destination header", cfg.Destination.Headers); err != nil {
 		return MainConfig{}, nil, nil, err
+	}
+
+	if cfg.Diagnostics.Endpoint != "" {
+		if err := sanitizeValues("diagnostics attribute", cfg.Diagnostics.Attributes); err != nil {
+			return MainConfig{}, nil, nil, err
+		}
+		if err := sanitizeValues("diagnostics header", cfg.Diagnostics.Headers); err != nil {
+			return MainConfig{}, nil, nil, err
+		}
 	}
 
 	return cfg, metricRenames, staticMetadata, nil
 }
 
-func checkEmptyKeys(kind string, values map[string]string) error {
-	for key, value := range values {
+func sanitize(val string) string {
+	if len(val) == 0 {
+		return val
+	}
+	val = strings.TrimSpace(val)
+	if strings.Contains(val, "\"") {
+		val = strings.ReplaceAll(val, "\"", "")
+	}
+	if strings.Contains(val, "'") {
+		val = strings.ReplaceAll(val, "'", "")
+	}
+	return val
+}
+
+func sanitizeValues(kind string, values map[string]string) error {
+	for origKey, value := range values {
+		key := sanitize(origKey)
 		if key == "" {
 			return fmt.Errorf("empty %s key", kind)
 		}
-		value = strings.TrimSpace(value)
+		if key != origKey {
+			delete(values, origKey)
+		}
+
+		value = sanitize(value)
 
 		if strings.Contains(value, "\n") {
 			return fmt.Errorf("invalid newline in %s value: %s", kind, key)
 		}
 		values[key] = value
 	}
+
 	return nil
 }
 
