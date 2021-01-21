@@ -8,6 +8,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+## [0.10.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.10.0) - 2021-01-21
+
+- Fixes bug in WAL-tailer `openSegment()` method. (#71)
+
 ## [0.9.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.9.0) - 2021-01-15
 
 ### Changed
