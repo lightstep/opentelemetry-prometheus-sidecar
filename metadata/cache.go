@@ -22,9 +22,11 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/textparse"
 )
@@ -38,56 +40,44 @@ type Cache struct {
 
 	metadata       map[string]*cacheEntry
 	seenJobs       map[string]struct{}
-	staticMetadata map[string]*Entry
+	staticMetadata map[string]*config.MetadataConfig
+	regexpMetadata []*regexpEntry
 }
 
-type (
-	Kind      int
-	ValueType int
-)
-
-const (
-	GAUGE      Kind = 1
-	CUMULATIVE Kind = 2
-	DELTA      Kind = 3
-
-	DOUBLE       ValueType = 1
-	INT64        ValueType = 2
-	DISTRIBUTION ValueType = 3
-	HISTOGRAM    ValueType = 4
-)
+type regexpEntry struct {
+	Regexp *regexp.Regexp
+	Entry  *config.MetadataConfig
+}
 
 // DefaultEndpointPath is the default HTTP path on which Prometheus serves
 // the target metadata endpoint.
 const DefaultEndpointPath = "api/v1/targets/metadata"
 
-// The old metric type value for textparse.MetricTypeUnknown that is used in
-// Prometheus 2.4 and earlier.
-const MetricTypeUntyped = "untyped"
-
-type Entry struct {
-	Metric     string
-	MetricType textparse.MetricType
-	ValueType  ValueType
-	Help       string
-}
-
 // NewCache returns a new cache that gets populated by the metadata endpoint
 // at the given URL.
 // It uses the default endpoint path if no specific path is provided.
-func NewCache(client *http.Client, promURL *url.URL, staticMetadata []*Entry) *Cache {
+func NewCache(client *http.Client, promURL *url.URL, staticMetadata []*config.MetadataConfig) *Cache {
 	if client == nil {
 		client = http.DefaultClient
 	}
 	c := &Cache{
 		promURL:        promURL,
 		client:         client,
-		staticMetadata: map[string]*Entry{},
+		staticMetadata: map[string]*config.MetadataConfig{},
 		metadata:       map[string]*cacheEntry{},
 		seenJobs:       map[string]struct{}{},
 	}
 	for _, m := range staticMetadata {
-		c.staticMetadata[m.Metric] = m
+		if m.Name != "" {
+			c.staticMetadata[m.Name] = m
+		}
+		if m.Regexp != "" {
+			r := regexp.MustCompile(m.Regexp)
+			c.regexpMetadata = append(c.regexpMetadata, &regexpEntry{
+				Regexp: r,
+				Entry:  m,
+			})
+		}
 	}
 	return c
 }
@@ -95,7 +85,7 @@ func NewCache(client *http.Client, promURL *url.URL, staticMetadata []*Entry) *C
 const retryInterval = 30 * time.Second
 
 type cacheEntry struct {
-	*Entry
+	Entry     *config.MetadataConfig
 	found     bool
 	lastFetch time.Time
 }
@@ -109,10 +99,20 @@ func (e *cacheEntry) shouldRefetch() bool {
 // is not in the cache, it blocks until we have retrieved it from the Prometheus server.
 // If no metadata is found in the Prometheus server, a matching entry from the
 // static metadata or nil is returned.
-func (c *Cache) Get(ctx context.Context, job, instance, metric string) (*Entry, error) {
+func (c *Cache) Get(ctx context.Context, job, instance, metric string) (*config.MetadataConfig, error) {
 	if md, ok := c.staticMetadata[metric]; ok {
 		return md, nil
 	}
+
+	for _, re := range c.regexpMetadata {
+		if re.Regexp.MatchString(metric) {
+			entry := *re.Entry
+			entry.Name = metric
+			entry.Regexp = ""
+			return &entry, nil
+		}
+	}
+
 	md, ok := c.metadata[metric]
 	if !ok || md.shouldRefetch() {
 		// If we are seeing the job for the first time, preemptively get a full
@@ -125,8 +125,8 @@ func (c *Cache) Get(ctx context.Context, job, instance, metric string) (*Entry, 
 			for _, md := range mds {
 				// Only set if we haven't seen the metric before. Changes to metadata
 				// are discouraged.
-				if _, ok := c.metadata[md.Metric]; !ok {
-					c.metadata[md.Metric] = md
+				if _, ok := c.metadata[md.Entry.Name]; !ok {
+					c.metadata[md.Entry.Name] = md
 				}
 			}
 			c.seenJobs[job] = struct{}{}
@@ -146,7 +146,10 @@ func (c *Cache) Get(ctx context.Context, job, instance, metric string) (*Entry, 
 	// contain at least one `:` character. In that case we can generally assume that
 	// it is a gauge. We leave the help text empty.
 	if strings.Contains(metric, ":") {
-		entry := &Entry{Metric: metric, MetricType: textparse.MetricTypeGauge}
+		entry := &config.MetadataConfig{
+			Name:      metric,
+			PointKind: config.GaugeKind,
+		}
 		return entry, nil
 	}
 	return nil, nil
@@ -199,12 +202,17 @@ func (c *Cache) fetchMetric(ctx context.Context, job, instance, metric string) (
 	}
 	d := apiResp.Data[0]
 
-	// Convert legacy "untyped" type used before Prometheus 2.5.
-	if d.Type == MetricTypeUntyped {
-		d.Type = textparse.MetricTypeUnknown
+	pk, err := config.ParsePointKind(string(d.Type))
+	if err != nil {
+		return nil, err
 	}
+
 	return &cacheEntry{
-		Entry:     &Entry{Metric: metric, MetricType: d.Type, Help: d.Help},
+		Entry: &config.MetadataConfig{
+			Name:        metric,
+			PointKind:   pk,
+			Description: d.Help,
+		},
 		lastFetch: now,
 		found:     true,
 	}, nil
@@ -235,12 +243,17 @@ func (c *Cache) fetchBatch(ctx context.Context, job, instance string) (map[strin
 	result := make(map[string]*cacheEntry, len(apiResp.Data)+len(internalMetrics))
 
 	for _, md := range apiResp.Data {
-		// Convert legacy "untyped" type used before Prometheus 2.5.
-		if md.Type == MetricTypeUntyped {
-			md.Type = textparse.MetricTypeUnknown
+		pk, err := config.ParsePointKind(string(md.Type))
+		if err != nil {
+			return nil, err
 		}
+
 		result[md.Metric] = &cacheEntry{
-			Entry:     &Entry{Metric: md.Metric, MetricType: md.Type, Help: md.Help},
+			Entry: &config.MetadataConfig{
+				Name:        md.Metric,
+				PointKind:   pk,
+				Description: md.Help,
+			},
 			lastFetch: now,
 			found:     true,
 		}
@@ -248,37 +261,47 @@ func (c *Cache) fetchBatch(ctx context.Context, job, instance string) (map[strin
 	// Prometheus's scraping layer writes a few internal metrics, which we won't get
 	// metadata for via the API. We populate hardcoded metadata for them.
 	for _, md := range internalMetrics {
-		result[md.Metric] = &cacheEntry{Entry: md, lastFetch: now, found: true}
+		result[md.Name] = &cacheEntry{
+			Entry:     md,
+			lastFetch: now,
+			found:     true,
+		}
+
 	}
 	return result, nil
 }
 
-var internalMetrics = map[string]*Entry{
-	"up": &Entry{
-		Metric:     "up",
-		MetricType: textparse.MetricTypeGauge,
-		ValueType:  DOUBLE,
-		Help:       "Up indicates whether the last target scrape was successful"},
-	"scrape_samples_scraped": &Entry{
-		Metric:     "scrape_samples_scraped",
-		MetricType: textparse.MetricTypeGauge,
-		ValueType:  DOUBLE,
-		Help:       "How many samples were scraped during the last successful scrape"},
-	"scrape_duration_seconds": &Entry{
-		Metric:     "scrape_duration_seconds",
-		MetricType: textparse.MetricTypeGauge,
-		ValueType:  DOUBLE,
-		Help:       "Duration of the last scrape"},
-	"scrape_samples_post_metric_relabeling": &Entry{
-		Metric:     "scrape_samples_post_metric_relabeling",
-		MetricType: textparse.MetricTypeGauge,
-		ValueType:  DOUBLE,
-		Help:       "How many samples were ingested after relabeling"},
-	"scrape_series_added": &Entry{
-		Metric:     "scrape_series_added",
-		MetricType: textparse.MetricTypeGauge,
-		ValueType:  DOUBLE,
-		Help:       "Number of new series in the last successful scrape"},
+var internalMetrics = map[string]*config.MetadataConfig{
+	"up": &config.MetadataConfig{
+		Name:        "up",
+		PointKind:   "gauge",
+		NumberType:  "double",
+		Description: "Up indicates whether the last target scrape was successful",
+	},
+	"scrape_samples_scraped": &config.MetadataConfig{
+		Name:        "scrape_samples_scraped",
+		PointKind:   "gauge",
+		NumberType:  "double",
+		Description: "How many samples were scraped during the last successful scrape",
+	},
+	"scrape_duration_seconds": &config.MetadataConfig{
+		Name:        "scrape_duration_seconds",
+		PointKind:   "gauge",
+		NumberType:  "double",
+		Description: "Duration of the last scrape",
+	},
+	"scrape_samples_post_metric_relabeling": &config.MetadataConfig{
+		Name:        "scrape_samples_post_metric_relabeling",
+		PointKind:   "gauge",
+		NumberType:  "double",
+		Description: "How many samples were ingested after relabeling",
+	},
+	"scrape_series_added": &config.MetadataConfig{
+		Name:        "scrape_series_added",
+		PointKind:   "gauge",
+		NumberType:  "double",
+		Description: "Number of new series in the last successful scrape",
+	},
 }
 
 type apiResponse struct {

@@ -22,7 +22,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
-	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/targets"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -51,11 +51,11 @@ var (
 // tsDesc has complete, proto-independent data about a metric data
 // point.
 type tsDesc struct {
-	Name      string
-	Labels    labels.Labels // Sorted
-	Resource  labels.Labels // Sorted
-	Kind      metadata.Kind
-	ValueType metadata.ValueType
+	Name       string
+	Labels     labels.Labels // Sorted
+	Resource   labels.Labels // Sorted
+	PointKind  config.PointKind
+	NumberType config.NumberType
 }
 
 type seriesGetter interface {
@@ -95,7 +95,7 @@ type seriesCache struct {
 
 type seriesCacheEntry struct {
 	desc     *tsDesc
-	metadata *metadata.Entry
+	metadata *config.MetadataConfig
 	lset     labels.Labels
 	suffix   string
 	hash     uint64
@@ -381,7 +381,7 @@ func (c *seriesCache) refresh(ctx context.Context, ref uint64) error {
 	}
 	// Handle label modifications for histograms early so we don't build the label map twice.
 	// We have to remove the 'le' label which defines the bucket boundary.
-	if meta.MetricType == textparse.MetricTypeHistogram {
+	if meta.PointKind == config.HistogramKind {
 		for i, l := range entryLabels {
 			if l.Name == "le" {
 				entryLabels = append(entryLabels[:i], entryLabels[i+1:]...)
@@ -396,42 +396,36 @@ func (c *seriesCache) refresh(ctx context.Context, ref uint64) error {
 	}
 	sort.Sort(&ts.Labels)
 
-	switch meta.MetricType {
-	case textparse.MetricTypeCounter:
-		ts.Kind = metadata.CUMULATIVE
-		ts.ValueType = metadata.DOUBLE
-		if meta.ValueType != 0 {
-			ts.ValueType = meta.ValueType
-		}
+	switch meta.PointKind {
+	case config.CumulativeKind:
+		ts.PointKind = config.CumulativeKind
+		ts.NumberType = meta.NumberType
 		if baseMetricName != "" && suffix == metricSuffixTotal {
 			ts.Name = c.getMetricName(c.metricsPrefix, baseMetricName)
 		}
-	case textparse.MetricTypeGauge, textparse.MetricTypeUnknown:
-		ts.Kind = metadata.GAUGE
-		ts.ValueType = metadata.DOUBLE
-		if meta.ValueType != 0 {
-			ts.ValueType = meta.ValueType
-		}
+	case config.GaugeKind:
+		ts.PointKind = config.GaugeKind
+		ts.NumberType = meta.NumberType
 	case textparse.MetricTypeSummary:
 		switch suffix {
 		case metricSuffixSum:
-			ts.Kind = metadata.CUMULATIVE
-			ts.ValueType = metadata.DOUBLE
+			ts.PointKind = config.CumulativeKind
+			ts.NumberType = config.DoubleType
 		case metricSuffixCount:
-			ts.Kind = metadata.CUMULATIVE
-			ts.ValueType = metadata.INT64
+			ts.PointKind = config.CumulativeKind
+			ts.NumberType = config.IntType
 		case "": // Actual quantiles.
-			ts.Kind = metadata.GAUGE
-			ts.ValueType = metadata.DOUBLE
+			ts.PointKind = config.GaugeKind
+			ts.NumberType = config.DoubleType
 		default:
 			return errors.Errorf("unexpected metric name suffix %q", suffix)
 		}
 	case textparse.MetricTypeHistogram:
 		ts.Name = c.getMetricName(c.metricsPrefix, baseMetricName)
-		ts.Kind = metadata.CUMULATIVE
-		ts.ValueType = metadata.DISTRIBUTION
+		ts.PointKind = config.HistogramKind
+		ts.NumberType = config.DoubleType
 	default:
-		return errors.Errorf("unexpected metric type %s", meta.MetricType)
+		return errors.Errorf("unexpected point kind %s", meta.PointKind)
 	}
 
 	entry.desc = &ts

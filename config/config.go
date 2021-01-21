@@ -18,16 +18,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/ghodss/yaml"
-	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/pkg/errors"
 	promlogflag "github.com/prometheus/common/promlog/flag"
 	"github.com/prometheus/common/version"
-	"github.com/prometheus/prometheus/pkg/textparse"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
 
@@ -51,11 +50,68 @@ type MetricRenamesConfig struct {
 	To   string `json:"to"`
 }
 
-type StaticMetadataConfig struct {
-	Metric    string `json:"metric"`
-	Type      string `json:"type"`
-	ValueType string `json:"value_type"`
-	Help      string `json:"help"`
+// PointKind is the kind of OTLP data point, with recognized values:
+//
+// 1. "monotonic-delta-sum" a.k.a. "delta"
+// 2. "monotonic-cumulative-sum" a.k.a. "cumulative"
+// 3. "non-monotonic-delta-sum" a.k.a. "delta-gauge"
+// 4. "non-monotonic-cumulative-sum" a.k.a. "cumulative-gauge"
+// 5. "gauge"
+// 6. histogram (implied to be cumulative)
+// 7. summary
+//
+// Cases 1-5 address scalar point conversions.
+//
+// Note that cases (1), (3), and (4) allow translation from Prometheus
+// into OTLP's richer data for sum data points.
+//
+// Cases (2) and (5) map into Prometheus-default behaviors, therefore
+// can be used correct the wrong choice of Prometheus instrument, for
+// example.
+//
+// Cases (6) and (7) can be used to declare the expected point kind,
+// but not to change structured points into scalar points or scalar
+// points into structured points.
+type PointKind string
+
+// NumberType is integer or floating point.
+type NumberType string
+
+const (
+	DoubleType NumberType = "double"
+	IntType    NumberType = "int"
+
+	DeltaKind                  PointKind = "delta"
+	CumulativeKind             PointKind = "cumulative"
+	NonMonotonicDeltaKind      PointKind = "non-monotonic-delta"
+	NonMonotonicCumulativeKind PointKind = "non-monotonic-cumulative"
+	GaugeKind                  PointKind = "gauge"
+	HistogramKind              PointKind = "histogram"
+	SummaryKind                PointKind = "summary"
+)
+
+type MetadataConfig struct {
+	// Name is the metric's exact name.  This field is exclusive
+	// with Regexp.
+	Name string `json:"name"`
+
+	// Regexp is a regexp matching a metric's name.  This field is
+	// exclusive with Name.
+	Regexp string `json:"regexp"`
+
+	// PointKind is the point kind.
+	PointKind PointKind `json:"point_kind"`
+
+	// NumberType indicates the correct numeric type to use with
+	// recognized values "integer", "int64", "double", and
+	// "float64".
+	NumberType NumberType `json:"number_type"`
+
+	// Description is attached as the metric description.
+	Description string `json:"description"`
+
+	// Unit as attached as the unit string.
+	Unit string `json:"unit"`
 }
 
 type SecurityConfig struct {
@@ -98,18 +154,18 @@ type MainConfig struct {
 	// Note: These fields are ordered so that JSON and YAML
 	// marshal in order of importance.
 
-	Destination    OTLPConfig             `json:"destination"`
-	Prometheus     PromConfig             `json:"prometheus"`
-	OpenTelemetry  OTelConfig             `json:"opentelemetry"`
-	Admin          AdminConfig            `json:"admin"`
-	Security       SecurityConfig         `json:"security"`
-	Diagnostics    OTLPConfig             `json:"diagnostics"`
-	StartupDelay   DurationConfig         `json:"startup_delay"`
-	StartupTimeout DurationConfig         `json:"startup_timeout"`
-	Filters        []string               `json:"filters"`
-	MetricRenames  []MetricRenamesConfig  `json:"metric_renames"`
-	StaticMetadata []StaticMetadataConfig `json:"static_metadata"`
-	LogConfig      LogConfig              `json:"log_config"`
+	Destination    OTLPConfig            `json:"destination"`
+	Prometheus     PromConfig            `json:"prometheus"`
+	OpenTelemetry  OTelConfig            `json:"opentelemetry"`
+	Admin          AdminConfig           `json:"admin"`
+	Security       SecurityConfig        `json:"security"`
+	Diagnostics    OTLPConfig            `json:"diagnostics"`
+	StartupDelay   DurationConfig        `json:"startup_delay"`
+	StartupTimeout DurationConfig        `json:"startup_timeout"`
+	Filters        []string              `json:"filters"`
+	MetricRenames  []MetricRenamesConfig `json:"metric_renames"`
+	StaticMetadata []MetadataConfig      `json:"static_metadata"`
+	LogConfig      LogConfig             `json:"log_config"`
 
 	// This field cannot be parsed inside a configuration file,
 	// only can be set by command-line flag.:
@@ -153,7 +209,7 @@ func DefaultMainConfig() MainConfig {
 }
 
 // Configure is a separate unit of code for testing purposes.
-func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]string, []*metadata.Entry, error) {
+func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]string, []*MetadataConfig, error) {
 	cfg := DefaultMainConfig()
 
 	a := kingpin.New(filepath.Base(args[0]), briefDescription)
@@ -230,7 +286,7 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 
 	var (
 		metricRenames  map[string]string
-		staticMetadata []*metadata.Entry
+		staticMetadata []*MetadataConfig
 	)
 
 	if cfg.ConfigFilename != "" {
@@ -310,47 +366,82 @@ func sanitizeValues(kind string, values map[string]string) error {
 	return nil
 }
 
-func parseConfigFile(data []byte, cfg *MainConfig) (map[string]string, []*metadata.Entry, error) {
+func parseConfigFile(data []byte, cfg *MainConfig) (map[string]string, []*MetadataConfig, error) {
 	if err := yaml.Unmarshal(data, cfg); err != nil {
 		return nil, nil, errors.Wrap(err, "invalid YAML")
 	}
 	return processMainConfig(cfg)
 }
 
-func processMainConfig(cfg *MainConfig) (map[string]string, []*metadata.Entry, error) {
+func ParsePointKind(pk string) (PointKind, error) {
+	// This must to include the Prometheus metric type names
+	// (e.g., "gauge", "counter", "histogram"), but maps to OTLP
+	// point kinds.
+	switch strings.ToLower(pk) {
+	case "gauge", "untyped", "unknown", "": // Default case.
+		return GaugeKind, nil
+	case "cumulative", "monotonic-cumulative", "counter":
+		return CumulativeKind, nil
+	case "delta", "monotonic-delta":
+		return DeltaKind, nil
+	case "non-monotonic-delta":
+		return NonMonotonicDeltaKind, nil
+	case "non-monotonic-cumulative":
+		return NonMonotonicCumulativeKind, nil
+	case "histogram", "gaugehistogram":
+		// TODO: 'gaugehistogram' should be distinct
+		return HistogramKind, nil
+	case "summary":
+		return SummaryKind, nil
+	default:
+		// Note: this includes "info" and "stateset". TODO: Fix.
+		return GaugeKind, errors.Errorf("invalid point kind %q", pk)
+	}
+}
+
+func ParseNumberType(nt string) (NumberType, error) {
+	switch strings.ToLower(nt) {
+	case "float64", "double", "":
+		return DoubleType, nil
+	case "int64", "integer":
+		return IntType, nil
+	default:
+		return DoubleType, errors.Errorf("invalid number type %q", nt)
+	}
+}
+
+func processMainConfig(cfg *MainConfig) (map[string]string, []*MetadataConfig, error) {
 	renameMapping := map[string]string{}
 	for _, r := range cfg.MetricRenames {
 		renameMapping[r.From] = r.To
 	}
-	staticMetadata := []*metadata.Entry{}
-	for _, sm := range cfg.StaticMetadata {
-		switch sm.Type {
-		case metadata.MetricTypeUntyped:
-			// Convert "untyped" to the "unknown" type used internally as of Prometheus 2.5.
-			sm.Type = textparse.MetricTypeUnknown
-		case textparse.MetricTypeCounter, textparse.MetricTypeGauge, textparse.MetricTypeHistogram,
-			textparse.MetricTypeSummary, textparse.MetricTypeUnknown:
-		default:
-			return nil, nil, errors.Errorf("invalid metric type %q", sm.Type)
+	var staticMetadata []*MetadataConfig
+	for _, parsed := range cfg.StaticMetadata {
+		sm := parsed
+
+		if (sm.Name == "") == (sm.Regexp == "") {
+			return nil, nil, errors.Errorf("provide one of name or regexp fields %q, %q", sm.Name, sm.Regexp)
 		}
-		var valueType metadata.ValueType
-		switch sm.ValueType {
-		case "double", "":
-			valueType = metadata.DOUBLE
-		case "int64":
-			valueType = metadata.INT64
-		default:
-			return nil, nil, errors.Errorf("invalid value type %q", sm.ValueType)
+
+		if sm.Regexp != "" {
+			if _, err := regexp.Compile(sm.Regexp); err != nil {
+				return nil, nil, errors.Wrapf(err, "compile regexp %q", sm.Regexp)
+			}
 		}
-		staticMetadata = append(
-			staticMetadata,
-			&metadata.Entry{
-				Metric:     sm.Metric,
-				MetricType: textparse.MetricType(sm.Type),
-				ValueType:  valueType,
-				Help:       sm.Help,
-			},
-		)
+
+		pk, err := ParsePointKind(string(sm.PointKind))
+		if err != nil {
+			return nil, nil, err
+		}
+		sm.PointKind = pk
+
+		nt, err := ParseNumberType(string(sm.NumberType))
+		if err != nil {
+			return nil, nil, err
+		}
+		sm.NumberType = nt
+
+		staticMetadata = append(staticMetadata, &sm)
 	}
 	return renameMapping, staticMetadata, nil
 }

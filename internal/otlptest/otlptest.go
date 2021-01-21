@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	otlppb "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/collector/metrics/v1"
 	otlpcommon "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/common/v1"
 	otlpmetrics "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
 	otlpresource "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/resource/v1"
-	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
 )
 
 var (
@@ -251,8 +251,8 @@ type Visitor func(
 	resource *otlpresource.Resource,
 	// metricName is the name of the metric instrument
 	metricName string,
-	// kind is the metricdb kind associated with this measurement
-	kind metadata.Kind,
+	// kind is the OTLP point kind associated with this measurement
+	kind config.PointKind,
 	// monotonic is meaningful for both DELTA and CUMULATIVE, not
 	// GAUGE, and only when represented as a scalar value.  This
 	// information is not conveyed via OTLP-v0.5 for the histogram
@@ -305,7 +305,7 @@ func (vs *VisitorState) Visit(
 				switch t := m.Data.(type) {
 				case *otlpmetrics.Metric_IntGauge:
 					if t.IntGauge != nil {
-						kind := metadata.GAUGE
+						kind := config.GaugeKind
 						for _, p := range t.IntGauge.DataPoints {
 							vs.pointCount++
 							noticeError(m, visitor(res, m.Name, kind, false, p))
@@ -314,7 +314,7 @@ func (vs *VisitorState) Visit(
 					}
 				case *otlpmetrics.Metric_DoubleGauge:
 					if t.DoubleGauge != nil {
-						kind := metadata.GAUGE
+						kind := config.GaugeKind
 						for _, p := range t.DoubleGauge.DataPoints {
 							vs.pointCount++
 							noticeError(m, visitor(res, m.Name, kind, false, p))
@@ -365,14 +365,14 @@ func (vs *VisitorState) Visit(
 	return firstError
 }
 
-func toModelKind(temp otlpmetrics.AggregationTemporality) metadata.Kind {
+func toModelKind(temp otlpmetrics.AggregationTemporality) config.PointKind {
 	if temp == otlpmetrics.AggregationTemporality_AGGREGATION_TEMPORALITY_DELTA {
-		return metadata.DELTA
+		return config.DeltaKind
 	} else if temp == otlpmetrics.AggregationTemporality_AGGREGATION_TEMPORALITY_CUMULATIVE {
-		return metadata.CUMULATIVE
+		return config.CumulativeKind
 	}
 	// This is an error case, there are only two valid
 	// temporalities.  Fall back to GAUGE instead of producing an
 	// error.
-	return metadata.GAUGE
+	return config.GaugeKind
 }

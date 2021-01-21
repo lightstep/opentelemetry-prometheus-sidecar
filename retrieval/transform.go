@@ -22,7 +22,7 @@ import (
 	"time"
 
 	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
-	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/version"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -90,15 +90,15 @@ func (b *sampleBuilder) next(ctx context.Context, samples []record.RefSample) (*
 
 	var resetTimestamp int64
 
-	switch entry.metadata.MetricType {
-	case textparse.MetricTypeCounter:
+	switch entry.metadata.PointKind {
+	case config.CumulativeKind:
 		var value float64
 		resetTimestamp, value, ok = b.series.getResetAdjusted(sample.Ref, sample.T, sample.V)
 		if !ok {
 			return nil, 0, tailSamples, nil
 		}
 
-		if entry.metadata.ValueType == metadata.INT64 {
+		if entry.metadata.NumberType == config.IntType {
 			point.Data = &metric_pb.Metric_IntSum{
 				IntSum: monotonicIntegerPoint(labels, resetTimestamp, sample.T, value),
 			}
@@ -109,7 +109,7 @@ func (b *sampleBuilder) next(ctx context.Context, samples []record.RefSample) (*
 		}
 
 	case textparse.MetricTypeGauge, textparse.MetricTypeUnknown:
-		if entry.metadata.ValueType == metadata.INT64 {
+		if entry.metadata.NumberType == config.IntType {
 			point.Data = &metric_pb.Metric_IntGauge{
 				IntGauge: intGauge(labels, sample.T, sample.V),
 			}
@@ -150,9 +150,9 @@ func (b *sampleBuilder) next(ctx context.Context, samples []record.RefSample) (*
 	case textparse.MetricTypeHistogram:
 		// We pass in the original lset for matching since Prometheus's target label must
 		// be the same as well.
-		// Note: Always using DoubleHistogram points, ignores entry.metadata.ValueType.
+		// Note: Always using DoubleHistogram points, ignores entry.metadata.NumberType.
 		var value *metric_pb.DoubleHistogramDataPoint
-		value, resetTimestamp, tailSamples, err = b.buildHistogram(ctx, entry.metadata.Metric, entry.lset, samples)
+		value, resetTimestamp, tailSamples, err = b.buildHistogram(ctx, entry.metadata.Name, entry.lset, samples)
 		if value == nil || err != nil {
 			return nil, 0, tailSamples, err
 		}
@@ -173,7 +173,7 @@ func (b *sampleBuilder) next(ctx context.Context, samples []record.RefSample) (*
 		}
 
 	default:
-		return nil, 0, samples[1:], errors.Errorf("unexpected metric type %s", entry.metadata.MetricType)
+		return nil, 0, samples[1:], errors.Errorf("unexpected metric type %s", entry.metadata.Name)
 	}
 
 	if !b.series.updateSampleInterval(entry.hash, resetTimestamp, sample.T) {
