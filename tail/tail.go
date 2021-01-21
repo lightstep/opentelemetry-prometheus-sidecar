@@ -207,6 +207,9 @@ func (t *Tailer) Read(b []byte) (int, error) {
 	}
 }
 
+// openSegment finds a WAL segment with a name that parses to n. This
+// way we do not need to know how wide the segment filename is (i.e.,
+// how many zeros to pad with).
 func openSegment(dir string, n int) (io.ReadCloser, error) {
 	files, err := ioutil.ReadDir(dir)
 	if err != nil {
@@ -214,11 +217,8 @@ func openSegment(dir string, n int) (io.ReadCloser, error) {
 	}
 	for _, entry := range files {
 		k, err := strconv.Atoi(entry.Name())
-		if err != nil || k < n {
+		if err != nil || k != n {
 			continue
-		}
-		if k > n {
-			return nil, errors.Errorf("next segment %d too high, expected %d", n, k)
 		}
 		return wal.OpenReadSegment(filepath.Join(dir, entry.Name()))
 	}
