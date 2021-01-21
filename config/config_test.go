@@ -35,7 +35,7 @@ type (
 	DurationConfig       = config.DurationConfig
 	OTelConfig           = config.OTelConfig
 	MetricRenamesConfig  = config.MetricRenamesConfig
-	StaticMetadataConfig = config.StaticMetadataConfig
+	StaticMetadataConfig = config.MetadataConfig
 )
 
 func TestProcessFileConfig(t *testing.T) {
@@ -43,14 +43,14 @@ func TestProcessFileConfig(t *testing.T) {
 		name           string
 		yaml           string
 		renameMappings map[string]string
-		staticMetadata []*metadata.Entry
+		staticMetadata []*config.MetadataConfig
 		errText        string
 	}{
 		{
 			"empty",
 			"",
 			map[string]string{},
-			[]*metadata.Entry{},
+			[]*config.MetadataConfig{},
 			"",
 		},
 		{
@@ -72,10 +72,10 @@ static_metadata:
   value_type: double
 `,
 			map[string]string{"from": "to"},
-			[]*metadata.Entry{
-				&metadata.Entry{Metric: "int64_counter", MetricType: textparse.MetricTypeCounter, ValueType: metadata.INT64, Help: "help1"},
-				&metadata.Entry{Metric: "double_gauge", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE, Help: "help2"},
-				&metadata.Entry{Metric: "default_gauge", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
+			[]*config.MetadataConfig{
+				&config.MetadataConfig{Name: "int64_counter", PointKind: textparse.MetricTypeCounter, ValueType: metadata.INT64, Help: "help1"},
+				&config.MetadataConfig{Name: "double_gauge", PointKind: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE, Help: "help2"},
+				&config.MetadataConfig{Name: "default_gauge", PointKind: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
 			},
 			"",
 		},
@@ -427,12 +427,12 @@ static_metadata:
 					{From: "old_metric", To: "new_metric"},
 					{From: "mistake", To: "correct"},
 				},
-				StaticMetadata: []StaticMetadataConfig{
+				StaticMetadata: []MetadataConfig{
 					{
-						Metric:    "network_bps",
-						Type:      "counter",
-						ValueType: "int64",
-						Help:      "Number of bits transferred by this process.",
+						Name:        "network_bps",
+						PointKind:   "counter",
+						NumberType:  "int64",
+						Description: "Number of bits transferred by this process.",
 					},
 				},
 			},
