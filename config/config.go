@@ -17,6 +17,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"time"
@@ -269,6 +270,39 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 		}
 		if err := sanitizeValues("diagnostics header", cfg.Diagnostics.Headers); err != nil {
 			return MainConfig{}, nil, nil, err
+		}
+	}
+
+	// We avoided using the kingpin support for URL flags because
+	// it leads to special cases merging configs and because URL
+	// parsing succeeds in cases w/o a scheme, needs to be
+	// validated anyway.
+	type namedURL struct {
+		name       string
+		value      string
+		allowEmpty bool
+	}
+	for _, pair := range []namedURL{
+		{"destination.endpoint", cfg.Destination.Endpoint, false},
+		{"diagnostics.endpoint", cfg.Diagnostics.Endpoint, true},
+		{"prometheus.endpoint", cfg.Prometheus.Endpoint, false},
+	} {
+		if pair.allowEmpty && pair.value == "" {
+			continue
+		}
+		if pair.value == "" {
+			return MainConfig{}, nil, nil, fmt.Errorf("endpoint must be set: %s", pair.name)
+		}
+		url, err := url.Parse(pair.value)
+		if err != nil {
+			return MainConfig{}, nil, nil, fmt.Errorf("invalid endpoint: %s: %s: %w", pair.name, pair.value, err)
+		}
+
+		switch url.Scheme {
+		case "http", "https":
+			// Good!
+		default:
+			return MainConfig{}, nil, nil, fmt.Errorf("endpoints must use http or https: %s: %s", pair.name, pair.value)
 		}
 	}
 

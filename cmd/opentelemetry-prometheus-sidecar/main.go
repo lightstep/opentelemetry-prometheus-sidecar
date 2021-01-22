@@ -104,42 +104,6 @@ func main() {
 		level.Debug(logger).Log("config", string(data))
 	}
 
-	// We avoided using the kingpin support for URL flags because
-	// it leads to special cases merging configs and because URL
-	// parsing succeeds in cases w/o a scheme, needs to be
-	// validated anyway.
-	type namedURL struct {
-		name       string
-		value      string
-		allowEmpty bool
-	}
-	for _, pair := range []namedURL{
-		{"destination.endpoint", cfg.Destination.Endpoint, false},
-		{"diagnostics.endpoint", cfg.Diagnostics.Endpoint, true},
-		{"prometheus.endpoint", cfg.Prometheus.Endpoint, false},
-	} {
-		if pair.allowEmpty && pair.value == "" {
-			continue
-		}
-		if pair.value == "" {
-			level.Error(logger).Log("msg", "endpoint must be set", "name", pair.name)
-			os.Exit(2)
-		}
-		url, err := url.Parse(pair.value)
-		if err != nil {
-			level.Error(logger).Log("msg", "invalid endpoint", "name", pair.name, "endpoint", pair.value, "error", err)
-			os.Exit(2)
-		}
-
-		switch url.Scheme {
-		case "http", "https":
-			// Good!
-		default:
-			level.Error(logger).Log("msg", "endpoints must use http or https", "name", pair.name, "endpoint", pair.value)
-			os.Exit(2)
-		}
-	}
-
 	telemetry.StaticSetup(logger)
 
 	if cfg.Diagnostics.Endpoint != "" {
