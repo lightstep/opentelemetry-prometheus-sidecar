@@ -30,7 +30,7 @@ func Example() {
         //   "destination": {
         //     "endpoint": "https://otlp.io:443",
         //     "headers": {
-        //       "Access-Token": "aabbccdd...wwxxyyzz"
+        //       "access-token": "aabbccdd...wwxxyyzz"
         //     },
         //     "attributes": {
         //       "environment": "public",
@@ -59,7 +59,7 @@ func Example() {
         //   "diagnostics": {
         //     "endpoint": "https://otlp.io:443",
         //     "headers": {
-        //       "Access-Token": "wwxxyyzz...aabbccdd"
+        //       "access-token": "wwxxyyzz...aabbccdd"
         //     },
         //     "attributes": {
         //       "environment": "internal"

@@ -137,10 +137,10 @@ destination:
   endpoint: http://womp.womp
   attributes:
     a: b
-    c: d
+    C: d
   headers:
     e: f
-    g: h
+    G: h
   timeout: 14s
 
 prometheus:
@@ -166,7 +166,7 @@ startup_timeout: 1777s
 					Endpoint: "http://womp.womp",
 					Attributes: map[string]string{
 						"a": "b",
-						"c": "d",
+						"C": "d",
 					},
 					Headers: map[string]string{
 						"e": "f",
