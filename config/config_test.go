@@ -397,7 +397,7 @@ static_metadata:
 						"service.name": "demo",
 					},
 					Headers: map[string]string{
-						"Lightstep-Access-Token": "aabbccdd...wwxxyyzz",
+						"lightstep-access-token": "aabbccdd...wwxxyyzz",
 					},
 					Timeout: DurationConfig{
 						600 * time.Second,
@@ -406,7 +406,7 @@ static_metadata:
 				Diagnostics: OTLPConfig{
 					Endpoint: "https://diagnose.me",
 					Headers: map[string]string{
-						"A": "B",
+						"a": "B",
 					},
 					Attributes: map[string]string{
 						"C": "D",
