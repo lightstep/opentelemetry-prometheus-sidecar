@@ -28,7 +28,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
 	metricsService "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/collector/metrics/v1"
-	"github.com/prometheus/common/version"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/grpc"
@@ -102,17 +102,20 @@ func NewClient(conf *ClientConfig) *Client {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
+	copyHeaders := map[string][]string{
+		telemetry.TelemetryReportingAgentKey: []string{telemetry.TelemetryReportingAgentMainValue},
+	}
+	for k, v := range conf.Headers {
+		copyHeaders[k] = append(copyHeaders[k], v...)
+	}
 	return &Client{
 		logger:           logger,
 		url:              conf.URL,
 		timeout:          conf.Timeout,
 		rootCertificates: conf.RootCertificates,
-		headers:          conf.Headers,
+		headers:          copyHeaders,
 	}
 }
-
-// version.* is populated for 'promu' builds, so this will look broken in unit tests.
-var userAgent = fmt.Sprintf("OpenTelemetryPrometheus/%s", version.Version)
 
 // getConnection will dial a new connection if one is not set.  When
 // dialing, this function uses its a new context and the same timeout
@@ -134,7 +137,6 @@ func (c *Client) getConnection(ctx context.Context) (*grpc.ClientConn, error) {
 
 	dopts := []grpc.DialOption{
 		grpc.WithBlock(), // Wait for the connection to be established before using it.
-		grpc.WithUserAgent(userAgent),
 		grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
 		grpc.WithDefaultServiceConfig(serviceConfig),
 	}
