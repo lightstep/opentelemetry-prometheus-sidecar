@@ -59,8 +59,10 @@ func Main() error {
 
 	defer telemetry.ConfigureOpentelemetry(
 		telemetry.WithLogger(logger),
-		telemetry.WithExporterEndpoint(address),
-		telemetry.WithExporterInsecure(insecure),
+		telemetry.WithSpanExporterEndpoint(address),
+		telemetry.WithSpanExporterInsecure(insecure),
+		telemetry.WithMetricsExporterEndpoint(address),
+		telemetry.WithMetricsExporterInsecure(insecure),
 		telemetry.WithHeaders(headers),
 		telemetry.WithResourceAttributes(map[string]string{
 			"service.name": "sidecar-telemetry-test",

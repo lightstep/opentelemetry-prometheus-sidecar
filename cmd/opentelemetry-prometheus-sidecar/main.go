@@ -36,6 +36,7 @@ import (
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/otlp"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/retrieval"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/supervisor"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/targets"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
@@ -63,6 +64,8 @@ import (
 
 // TODO(jmacd): Note that https://github.com/mwitkow/go-conntrack was removed, may
 // be useful after other matters are resolved.
+
+const supervisorEnv = "MAIN_SUPERVISOR"
 
 func main() {
 	if os.Getenv("DEBUG") != "" {
@@ -94,25 +97,41 @@ func main() {
 
 	telemetry.StaticSetup(logger)
 
+	isSupervisor := !cfg.DisableSupervisor && os.Getenv(supervisorEnv) == ""
+
 	if cfg.Diagnostics.Endpoint != "" {
 		endpoint, _ := url.Parse(cfg.Diagnostics.Endpoint)
 		hostport := endpoint.Hostname()
 		if len(endpoint.Port()) > 0 {
 			hostport = net.JoinHostPort(hostport, endpoint.Port())
 		}
+
+		insecure := endpoint.Scheme == "http"
+		metricsHostport := hostport
+
 		// Set a service.name resource if none is set.
 		const serviceNameKey = "service.name"
-		if _, ok := cfg.Diagnostics.Attributes[serviceNameKey]; !ok {
-			cfg.Diagnostics.Attributes[serviceNameKey] = "opentelemetry-prometheus-sidecar"
+		svcName := cfg.Diagnostics.Attributes[serviceNameKey]
+		if svcName == "" {
+			svcName = "opentelemetry-prometheus-sidecar"
 		}
+
+		if isSupervisor {
+			// Disable metrics in the supervisor
+			metricsHostport = ""
+			svcName = svcName + "-supervisor"
+		}
+
+		cfg.Diagnostics.Attributes[serviceNameKey] = svcName
 
 		// TODO: Configure metric reporting interval, trace batching interval,
 		// currently there is no such setting.
-
 		defer telemetry.ConfigureOpentelemetry(
 			telemetry.WithLogger(logger),
-			telemetry.WithExporterEndpoint(hostport),
-			telemetry.WithExporterInsecure(endpoint.Scheme == "http"),
+			telemetry.WithSpanExporterEndpoint(hostport),
+			telemetry.WithSpanExporterInsecure(insecure),
+			telemetry.WithMetricsExporterEndpoint(metricsHostport),
+			telemetry.WithMetricsExporterInsecure(insecure),
 			telemetry.WithHeaders(cfg.Diagnostics.Headers),
 			telemetry.WithResourceAttributes(cfg.Diagnostics.Attributes),
 			telemetry.WithExportTimeout(cfg.Diagnostics.Timeout.Duration),
@@ -120,16 +139,27 @@ func main() {
 		).Shutdown(context.Background())
 	}
 
-	level.Info(logger).Log(
-		"msg", "Starting OpenTelemetry Prometheus sidecar",
-		"version", version.Info(),
-		"build_context", version.BuildContext(),
-		"host_details", Uname(),
-		"fd_limits", FdLimits(),
-	)
+	if isSupervisor {
+		level.Info(logger).Log(
+			"msg", "Starting OpenTelemetry Prometheus sidecar",
+			"version", version.Info(),
+			"build_context", version.BuildContext(),
+			"host_details", Uname(),
+			"fd_limits", FdLimits(),
+		)
 
-	if data, err := json.Marshal(cfg); err == nil {
-		level.Debug(logger).Log("config", string(data))
+		if data, err := json.Marshal(cfg); err == nil {
+			level.Debug(logger).Log("config", string(data))
+		}
+
+		os.Setenv(supervisorEnv, "active")
+
+		supervisor.Start(os.Args)
+		panic("unreachable")
+	}
+
+	if !cfg.DisableSupervisor {
+		level.Info(logger).Log("msg", "Running under supervisor")
 	}
 
 	// We instantiate a context here since the tailer is used by two other components.
