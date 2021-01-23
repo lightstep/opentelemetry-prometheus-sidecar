@@ -137,10 +137,10 @@ destination:
   endpoint: http://womp.womp
   attributes:
     a: b
-    c: d
+    C: d
   headers:
     e: f
-    g: h
+    G: h
   timeout: 14s
 
 prometheus:
@@ -165,7 +165,7 @@ startup_timeout: 1777s
 					Endpoint: "http://womp.womp",
 					Attributes: map[string]string{
 						"a": "b",
-						"c": "d",
+						"C": "d",
 					},
 					Headers: map[string]string{
 						"e": "f",
@@ -398,7 +398,7 @@ static_metadata:
 						"service.name": "demo",
 					},
 					Headers: map[string]string{
-						"Lightstep-Access-Token": "aabbccdd...wwxxyyzz",
+						"lightstep-access-token": "aabbccdd...wwxxyyzz",
 					},
 					Timeout: DurationConfig{
 						600 * time.Second,
@@ -407,7 +407,7 @@ static_metadata:
 				Diagnostics: OTLPConfig{
 					Endpoint: "https://diagnose.me",
 					Headers: map[string]string{
-						"A": "B",
+						"a": "B",
 					},
 					Attributes: map[string]string{
 						"C": "D",
