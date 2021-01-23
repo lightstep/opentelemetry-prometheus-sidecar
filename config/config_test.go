@@ -148,7 +148,6 @@ prometheus:
 
 startup_delay: 1333s
 startup_timeout: 1777s
-
 `,
 			nil,
 			MainConfig{
@@ -247,6 +246,7 @@ log_config:
 				"--prometheus.wal", "wal-eeee",
 				"--log.level=warning",
 				"--diagnostics.endpoint", "https://look.here",
+				"--disable-diagnostics",
 				`--filter=l1{l2="v3"}`,
 				"--filter", `l4{l5="v6"}`,
 			},
@@ -289,6 +289,7 @@ log_config:
 						60 * time.Second,
 					},
 				},
+				DisableDiagnostics: true,
 				LogConfig: LogConfig{
 					Level:  "warning",
 					Format: "json",

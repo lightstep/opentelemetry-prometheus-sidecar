@@ -111,6 +111,8 @@ type MainConfig struct {
 	StaticMetadata []StaticMetadataConfig `json:"static_metadata"`
 	LogConfig      LogConfig              `json:"log_config"`
 
+	DisableDiagnostics bool `json:"disable_diagnostics"`
+
 	// This field cannot be parsed inside a configuration file,
 	// only can be set by command-line flag.:
 	ConfigFilename string `json:"-" yaml:"-"`
@@ -221,6 +223,9 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 	a.Flag(promlogflag.FormatFlagName, promlogflag.FormatFlagHelp).StringVar(&cfg.LogConfig.Format)
 	a.Flag("log.verbose", "Verbose logging level: 0 = off, 1 = some, 2 = more; 1 is automatically added when log.level is 'debug'; impacts logging from the gRPC library in particular").
 		IntVar(&cfg.LogConfig.Verbose)
+
+	a.Flag("disable-diagnostics", "Disable diagnostics by default; if unset, diagnostics will be auto-configured to the primary destination").
+		BoolVar(&cfg.DisableDiagnostics)
 
 	_, err := a.Parse(args[1:])
 	if err != nil {

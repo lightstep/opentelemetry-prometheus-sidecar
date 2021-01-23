@@ -149,16 +149,23 @@ func Main() bool {
 
 	telemetry.StaticSetup(logger)
 
-	if cfg.Diagnostics.Endpoint != "" {
-		endpoint, _ := url.Parse(cfg.Diagnostics.Endpoint)
+	// Determine the diagnostics configuration.
+	diagConfig := cfg.Diagnostics
+
+	if diagConfig.Endpoint == "" && !cfg.DisableDiagnostics {
+		diagConfig = cfg.Destination
+	}
+
+	if diagConfig.Endpoint != "" {
+		endpoint, _ := url.Parse(diagConfig.Endpoint)
 		hostport := endpoint.Hostname()
 		if len(endpoint.Port()) > 0 {
 			hostport = net.JoinHostPort(hostport, endpoint.Port())
 		}
 		// Set a service.name resource if none is set.
 		const serviceNameKey = "service.name"
-		if _, ok := cfg.Diagnostics.Attributes[serviceNameKey]; !ok {
-			cfg.Diagnostics.Attributes[serviceNameKey] = "opentelemetry-prometheus-sidecar"
+		if _, ok := diagConfig.Attributes[serviceNameKey]; !ok {
+			diagConfig.Attributes[serviceNameKey] = "opentelemetry-prometheus-sidecar"
 		}
 
 		// TODO: Configure metric reporting interval, trace batching interval,
@@ -168,9 +175,9 @@ func Main() bool {
 			telemetry.WithLogger(logger),
 			telemetry.WithExporterEndpoint(hostport),
 			telemetry.WithExporterInsecure(endpoint.Scheme == "http"),
-			telemetry.WithHeaders(cfg.Diagnostics.Headers),
-			telemetry.WithResourceAttributes(cfg.Diagnostics.Attributes),
-			telemetry.WithExportTimeout(cfg.Diagnostics.Timeout.Duration),
+			telemetry.WithHeaders(diagConfig.Headers),
+			telemetry.WithResourceAttributes(diagConfig.Attributes),
+			telemetry.WithExportTimeout(diagConfig.Timeout.Duration),
 			telemetry.WithMetricReportingPeriod(telemetry.DefaultReportingPeriod),
 		).Shutdown(context.Background())
 	}

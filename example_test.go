@@ -94,6 +94,7 @@ func Example() {
         //     "level": "debug",
         //     "format": "json",
         //     "verbose": 1
-        //   }
+        //   },
+        //   "disable_diagnostics": false
         // }
 }
