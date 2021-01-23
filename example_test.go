@@ -95,6 +95,6 @@ func Example() {
         //     "format": "json",
         //     "verbose": 1
         //   },
-	//   "disable_diagnostics": false
+        //   "disable_diagnostics": false
         // }
 }
