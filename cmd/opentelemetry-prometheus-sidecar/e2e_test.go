@@ -52,6 +52,8 @@ var (
 		"--destination.endpoint=https://127.0.0.1:19001",
 		"--destination.header",
 		fmt.Sprint(e2eTestHeaderName, "=", e2eTestHeaderValue),
+		"--disable-supervisor",
+		"--disable-diagnostics",
 	}
 )
 

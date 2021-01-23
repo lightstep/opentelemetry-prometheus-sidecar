@@ -24,7 +24,6 @@ import (
 
 	"github.com/ghodss/yaml"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
-	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/pkg/errors"
 	promlogflag "github.com/prometheus/common/promlog/flag"
 	"github.com/prometheus/common/version"
@@ -33,18 +32,38 @@ import (
 )
 
 const (
-	DefaultStartupDelay       = time.Minute
-	DefaultStartupTimeout     = 5 * time.Minute
-	DefaultWALDirectory       = "data/wal"
 	DefaultAdminListenAddress = "0.0.0.0:9091"
 	DefaultPrometheusEndpoint = "http://127.0.0.1:9090/"
-	DefaultMaxPointAge        = time.Hour * 25
+	DefaultWALDirectory       = "data/wal"
+
+	DefaultExportTimeout   = time.Second * 60
+	DefaultMaxPointAge     = time.Hour * 25
+	DefaultReportingPeriod = time.Second * 30
+	DefaultStartupDelay    = time.Minute
+	DefaultStartupTimeout  = time.Minute * 5
 
 	briefDescription = `
 The OpenTelemetry Prometheus sidecar runs alongside the
 Prometheus (https://prometheus.io/) Server and sends metrics data to
 an OpenTelemetry (https://opentelemetry.io) Protocol endpoint.
 `
+
+	AgentKey = "telemetry-reporting-agent"
+)
+
+var (
+	AgentPrimeValue = fmt.Sprint(
+		"opentelemetry-prometheus-sidecar-main/",
+		version.Version,
+	)
+	AgentSecondaryValue = fmt.Sprint(
+		"opentelemetry-prometheus-sidecar-telemetry/",
+		version.Version,
+	)
+	AgentSupervisorValue = fmt.Sprint(
+		"opentelemetry-prometheus-sidecar-supervisor/",
+		version.Version,
+	)
 )
 
 type MetricRenamesConfig struct {
@@ -135,12 +154,12 @@ func DefaultMainConfig() MainConfig {
 		Destination: OTLPConfig{
 			Headers:    map[string]string{},
 			Attributes: map[string]string{},
-			Timeout:    DurationConfig{telemetry.DefaultExportTimeout},
+			Timeout:    DurationConfig{DefaultExportTimeout},
 		},
 		Diagnostics: OTLPConfig{
 			Headers:    map[string]string{},
 			Attributes: map[string]string{},
-			Timeout:    DurationConfig{telemetry.DefaultExportTimeout},
+			Timeout:    DurationConfig{DefaultExportTimeout},
 		},
 		LogConfig: LogConfig{
 			Level:   "info",

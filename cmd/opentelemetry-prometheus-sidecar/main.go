@@ -131,13 +131,16 @@ func Main() bool {
 			svcName = "opentelemetry-prometheus-sidecar"
 		}
 
+		agentName := config.AgentSecondaryValue
 		if isSupervisor {
 			// Disable metrics in the supervisor
 			metricsHostport = ""
 			svcName = svcName + "-supervisor"
+			agentName = config.AgentSupervisorValue
 		}
 
 		diagConfig.Attributes[serviceNameKey] = svcName
+		diagConfig.Headers[config.AgentKey] = agentName
 
 		// TODO: Configure metric reporting interval, trace batching interval,
 		// currently there is no such setting.
@@ -150,7 +153,7 @@ func Main() bool {
 			telemetry.WithHeaders(diagConfig.Headers),
 			telemetry.WithResourceAttributes(diagConfig.Attributes),
 			telemetry.WithExportTimeout(diagConfig.Timeout.Duration),
-			telemetry.WithMetricReportingPeriod(telemetry.DefaultReportingPeriod),
+			telemetry.WithMetricReportingPeriod(config.DefaultReportingPeriod),
 		).Shutdown(context.Background())
 	}
 
@@ -171,6 +174,8 @@ func Main() bool {
 
 		return supervisor.Start(os.Args, logger)
 	}
+
+	cfg.Destination.Headers[config.AgentKey] = config.AgentPrimeValue
 
 	if !cfg.DisableSupervisor {
 		level.Info(logger).Log("msg", "Running under supervisor")

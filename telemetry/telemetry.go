@@ -23,8 +23,8 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/pkg/errors"
-	"github.com/prometheus/common/version"
 	hostMetrics "go.opentelemetry.io/contrib/instrumentation/host"
 	runtimeMetrics "go.opentelemetry.io/contrib/instrumentation/runtime"
 	"go.opentelemetry.io/contrib/propagators/b3"
@@ -38,24 +38,6 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/sdk/trace"
 	"google.golang.org/grpc/credentials"
-)
-
-const (
-	DefaultExportTimeout   = time.Second * 60
-	DefaultReportingPeriod = time.Second * 30
-
-	TelemetryReportingAgentKey = "telemetry-reporting-agent"
-)
-
-var (
-	TelemetryReportingAgentMainValue = fmt.Sprint(
-		"opentelemetry-prometheus-sidecar/",
-		version.Version,
-	)
-	TelemetryReportingAgentSelfValue = fmt.Sprint(
-		"opentelemetry-prometheus-sidecar-self/",
-		version.Version,
-	)
 )
 
 type (
@@ -179,10 +161,10 @@ func newConfig(opts ...Option) Config {
 	}
 
 	if c.ExportTimeout <= 0 {
-		c.ExportTimeout = DefaultExportTimeout
+		c.ExportTimeout = config.DefaultExportTimeout
 	}
 	if c.MetricReportingPeriod <= 0 {
-		c.MetricReportingPeriod = DefaultReportingPeriod
+		c.MetricReportingPeriod = config.DefaultReportingPeriod
 	}
 
 	var err error
@@ -232,16 +214,10 @@ func newExporter(endpoint string, insecure bool, headers map[string]string) *otl
 	if insecure {
 		secureOption = otlp.WithInsecure()
 	}
-	copyHeaders := map[string]string{
-		TelemetryReportingAgentKey: TelemetryReportingAgentSelfValue,
-	}
-	for k, v := range headers {
-		copyHeaders[k] = v
-	}
 	return otlp.NewUnstartedExporter(
 		secureOption,
 		otlp.WithAddress(endpoint),
-		otlp.WithHeaders(copyHeaders),
+		otlp.WithHeaders(headers),
 	)
 }
 
