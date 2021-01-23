@@ -151,10 +151,10 @@ destination:
   endpoint: http://womp.womp
   attributes:
     a: b
-    c: d
+    C: d
   headers:
     e: f
-    g: h
+    G: h
   timeout: 14s
 
 prometheus:
@@ -162,7 +162,6 @@ prometheus:
 
 startup_delay: 1333s
 startup_timeout: 1777s
-
 `,
 			nil,
 			MainConfig{
@@ -180,7 +179,7 @@ startup_timeout: 1777s
 					Endpoint: "http://womp.womp",
 					Attributes: map[string]string{
 						"a": "b",
-						"c": "d",
+						"C": "d",
 					},
 					Headers: map[string]string{
 						"e": "f",
@@ -261,6 +260,7 @@ log_config:
 				"--prometheus.wal", "wal-eeee",
 				"--log.level=warning",
 				"--diagnostics.endpoint", "https://look.here",
+				"--disable-diagnostics",
 				`--filter=l1{l2="v3"}`,
 				"--filter", `l4{l5="v6"}`,
 			},
@@ -303,6 +303,7 @@ log_config:
 						60 * time.Second,
 					},
 				},
+				DisableDiagnostics: true,
 				LogConfig: LogConfig{
 					Level:  "warning",
 					Format: "json",
@@ -411,7 +412,7 @@ static_metadata:
 						"service.name": "demo",
 					},
 					Headers: map[string]string{
-						"Lightstep-Access-Token": "aabbccdd...wwxxyyzz",
+						"lightstep-access-token": "aabbccdd...wwxxyyzz",
 					},
 					Timeout: DurationConfig{
 						600 * time.Second,
@@ -420,7 +421,7 @@ static_metadata:
 				Diagnostics: OTLPConfig{
 					Endpoint: "https://diagnose.me",
 					Headers: map[string]string{
-						"A": "B",
+						"a": "B",
 					},
 					Attributes: map[string]string{
 						"C": "D",

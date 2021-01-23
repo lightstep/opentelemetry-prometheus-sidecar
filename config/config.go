@@ -112,7 +112,8 @@ type MainConfig struct {
 	StaticMetadata []StaticMetadataConfig `json:"static_metadata"`
 	LogConfig      LogConfig              `json:"log_config"`
 
-	DisableSupervisor bool `json:"disable_supervisor"`
+	DisableSupervisor  bool `json:"disable_supervisor"`
+	DisableDiagnostics bool `json:"disable_diagnostics"`
 
 	// This field cannot be parsed inside a configuration file,
 	// only can be set by command-line flag.:
@@ -227,6 +228,8 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 
 	a.Flag("disable-supervisor", "Disable the supervisor.").
 		BoolVar(&cfg.DisableSupervisor)
+	a.Flag("disable-diagnostics", "Disable diagnostics by default; if unset, diagnostics will be auto-configured to the primary destination").
+		BoolVar(&cfg.DisableDiagnostics)
 
 	_, err := a.Parse(args[1:])
 	if err != nil {
@@ -262,18 +265,18 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 		}
 	}
 
-	if err := sanitizeValues("destination attribute", cfg.Destination.Attributes); err != nil {
+	if err := sanitizeValues("destination attribute", false, cfg.Destination.Attributes); err != nil {
 		return MainConfig{}, nil, nil, err
 	}
-	if err := sanitizeValues("destination header", cfg.Destination.Headers); err != nil {
+	if err := sanitizeValues("destination header", true, cfg.Destination.Headers); err != nil {
 		return MainConfig{}, nil, nil, err
 	}
 
 	if cfg.Diagnostics.Endpoint != "" {
-		if err := sanitizeValues("diagnostics attribute", cfg.Diagnostics.Attributes); err != nil {
+		if err := sanitizeValues("diagnostics attribute", false, cfg.Diagnostics.Attributes); err != nil {
 			return MainConfig{}, nil, nil, err
 		}
-		if err := sanitizeValues("diagnostics header", cfg.Diagnostics.Headers); err != nil {
+		if err := sanitizeValues("diagnostics header", true, cfg.Diagnostics.Headers); err != nil {
 			return MainConfig{}, nil, nil, err
 		}
 	}
@@ -328,9 +331,12 @@ func sanitize(val string) string {
 	return val
 }
 
-func sanitizeValues(kind string, values map[string]string) error {
+func sanitizeValues(kind string, downcaseKeys bool, values map[string]string) error {
 	for origKey, value := range values {
 		key := sanitize(origKey)
+		if downcaseKeys {
+			key = strings.ToLower(key)
+		}
 		if key == "" {
 			return fmt.Errorf("empty %s key", kind)
 		}

@@ -24,6 +24,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
+	"github.com/prometheus/common/version"
 	hostMetrics "go.opentelemetry.io/contrib/instrumentation/host"
 	runtimeMetrics "go.opentelemetry.io/contrib/instrumentation/runtime"
 	"go.opentelemetry.io/contrib/propagators/b3"
@@ -42,6 +43,19 @@ import (
 const (
 	DefaultExportTimeout   = time.Second * 60
 	DefaultReportingPeriod = time.Second * 30
+
+	TelemetryReportingAgentKey = "telemetry-reporting-agent"
+)
+
+var (
+	TelemetryReportingAgentMainValue = fmt.Sprint(
+		"opentelemetry-prometheus-sidecar/",
+		version.Version,
+	)
+	TelemetryReportingAgentSelfValue = fmt.Sprint(
+		"opentelemetry-prometheus-sidecar-self/",
+		version.Version,
+	)
 )
 
 type (
@@ -218,10 +232,16 @@ func newExporter(endpoint string, insecure bool, headers map[string]string) *otl
 	if insecure {
 		secureOption = otlp.WithInsecure()
 	}
+	copyHeaders := map[string]string{
+		TelemetryReportingAgentKey: TelemetryReportingAgentSelfValue,
+	}
+	for k, v := range headers {
+		copyHeaders[k] = v
+	}
 	return otlp.NewUnstartedExporter(
 		secureOption,
 		otlp.WithAddress(endpoint),
-		otlp.WithHeaders(headers),
+		otlp.WithHeaders(copyHeaders),
 	)
 }
 

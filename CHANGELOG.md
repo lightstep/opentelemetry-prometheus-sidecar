@@ -8,7 +8,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+- Enable self-diagnostics using the OTel-Go SDK, using the primary destination
+  by default if none is configured.  Disable this behavior with --disable-diagnostics. (#72)
+- Auto-downcase headers for http2 compliance. (#73)
 - Ensures the sidecar will exit non-zero on errors. (#74)
+- Adds a supervisor. (#75)
 
 ## [0.10.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.10.0) - 2021-01-21
 
