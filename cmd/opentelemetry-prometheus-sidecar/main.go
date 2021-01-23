@@ -65,6 +65,13 @@ import (
 // be useful after other matters are resolved.
 
 func main() {
+	if !Main() {
+		os.Exit(1)
+	}
+}
+
+func Main() bool {
+
 	if os.Getenv("DEBUG") != "" {
 		runtime.SetBlockProfileRate(20)
 		runtime.SetMutexProfileFraction(20)
@@ -73,7 +80,7 @@ func main() {
 	cfg, metricRenames, staticMetadata, err := config.Configure(os.Args, ioutil.ReadFile)
 	if err != nil {
 		usage(err)
-		os.Exit(2)
+		return false
 	}
 
 	vlevel := cfg.LogConfig.Verbose
@@ -123,12 +130,12 @@ func main() {
 		}
 		if pair.value == "" {
 			level.Error(logger).Log("msg", "endpoint must be set", "name", pair.name)
-			os.Exit(2)
+			return false
 		}
 		url, err := url.Parse(pair.value)
 		if err != nil {
 			level.Error(logger).Log("msg", "invalid endpoint", "name", pair.name, "endpoint", pair.value, "error", err)
-			os.Exit(2)
+			return false
 		}
 
 		switch url.Scheme {
@@ -136,7 +143,7 @@ func main() {
 			// Good!
 		default:
 			level.Error(logger).Log("msg", "endpoints must use http or https", "name", pair.name, "endpoint", pair.value)
-			os.Exit(2)
+			return false
 		}
 	}
 
@@ -186,7 +193,7 @@ func main() {
 	filters, err := parseFilters(logger, cfg.Filters)
 	if err != nil {
 		level.Error(logger).Log("msg", "error parsing --filter", "err", err)
-		os.Exit(2)
+		return false
 	}
 
 	// Parse was validated already, ignore error.
@@ -195,7 +202,7 @@ func main() {
 	targetsURL, err := promURL.Parse(targets.DefaultAPIEndpoint)
 	if err != nil {
 		level.Error(logger).Log("msg", "error parsing --prometheus.endpoint", "err", err)
-		os.Exit(2)
+		return false
 	}
 
 	targetCache := targets.NewCache(
@@ -215,7 +222,7 @@ func main() {
 	tailer, err := tail.Tail(ctx, cfg.Prometheus.WAL)
 	if err != nil {
 		level.Error(logger).Log("msg", "tailing WAL failed", "err", err)
-		os.Exit(1)
+		return false
 	}
 	promconfig.DefaultQueueConfig.MaxSamplesPerSend = otlp.MaxTimeseriesesPerRequest
 	// We want the queues to have enough buffer to ensure consistent flow with full batches
@@ -242,7 +249,7 @@ func main() {
 	)
 	if err != nil {
 		level.Error(logger).Log("msg", "creating queue manager failed", "err", err)
-		os.Exit(1)
+		return false
 	}
 
 	prometheusReader := retrieval.NewPrometheusReader(
@@ -261,7 +268,7 @@ func main() {
 	// Perform a test of the outbound connection before starting.
 	if err := selfTest(logger, scf, cfg.StartupTimeout.Duration); err != nil {
 		level.Error(logger).Log("msg", "selftest failed, not starting", "err", err)
-		os.Exit(1)
+		return false
 	}
 
 	var g run.Group
@@ -372,8 +379,13 @@ func main() {
 	}
 	if err := g.Run(); err != nil {
 		level.Error(logger).Log("err", err)
+		return false
 	}
-	level.Info(logger).Log("msg", "See you next time!")
+
+	// Note: It's unclear if this code path can execute, presently
+	// there's no intentionally graceful shutdown.
+	level.Info(logger).Log("msg", "shutting down")
+	return true
 }
 
 func usage(err error) {
