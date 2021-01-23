@@ -173,7 +173,8 @@ startup_timeout: 1777s
 					},
 				},
 				Admin: AdminConfig{
-					ListenAddress: config.DefaultAdminListenAddress,
+					ListenIP: config.DefaultAdminListenIP,
+					Port:     config.DefaultAdminPort,
 				},
 				Destination: OTLPConfig{
 					Endpoint: "http://womp.womp",
@@ -273,7 +274,8 @@ log_config:
 					},
 				},
 				Admin: AdminConfig{
-					ListenAddress: config.DefaultAdminListenAddress,
+					ListenIP: config.DefaultAdminListenIP,
+					Port:     config.DefaultAdminPort,
 				},
 				Destination: OTLPConfig{
 					Endpoint: "http://womp.womp",
@@ -350,7 +352,8 @@ log_config:
   format: json
 
 admin:
-  listen_address: 0.0.0.0:10000
+  listen_ip: 0.0.0.0
+  port: 9999
 
 security:
   root_certificates:
@@ -387,7 +390,8 @@ static_metadata:
 					},
 				},
 				Admin: AdminConfig{
-					ListenAddress: "0.0.0.0:10000",
+					ListenIP: config.DefaultAdminListenIP,
+					Port:     9999,
 				},
 				StartupDelay: DurationConfig{
 					30 * time.Second,

@@ -32,15 +32,17 @@ import (
 )
 
 const (
-	DefaultAdminListenAddress = "0.0.0.0:9091"
+	DefaultAdminPort          = 9091
+	DefaultAdminListenIP      = "0.0.0.0"
 	DefaultPrometheusEndpoint = "http://127.0.0.1:9090/"
 	DefaultWALDirectory       = "data/wal"
 
-	DefaultExportTimeout   = time.Second * 60
-	DefaultMaxPointAge     = time.Hour * 25
-	DefaultReportingPeriod = time.Second * 30
-	DefaultStartupDelay    = time.Minute
-	DefaultStartupTimeout  = time.Minute * 5
+	DefaultExportTimeout    = time.Second * 60
+	DefaultMaxPointAge      = time.Hour * 25
+	DefaultReportingPeriod  = time.Second * 30
+	DefaultStartupDelay     = time.Minute
+	DefaultStartupTimeout   = time.Minute * 5
+	DefaultSupervisorPeriod = time.Minute
 
 	briefDescription = `
 The OpenTelemetry Prometheus sidecar runs alongside the
@@ -52,7 +54,7 @@ an OpenTelemetry (https://opentelemetry.io) Protocol endpoint.
 )
 
 var (
-	AgentPrimeValue = fmt.Sprint(
+	AgentMainValue = fmt.Sprint(
 		"opentelemetry-prometheus-sidecar-main/",
 		version.Version,
 	)
@@ -111,7 +113,8 @@ type OTelConfig struct {
 }
 
 type AdminConfig struct {
-	ListenAddress string `json:"listen_address"`
+	ListenIP string `json:"listen_ip"`
+	Port     int    `json:"port"`
 }
 
 type MainConfig struct {
@@ -149,7 +152,8 @@ func DefaultMainConfig() MainConfig {
 			MaxPointAge: DurationConfig{DefaultMaxPointAge},
 		},
 		Admin: AdminConfig{
-			ListenAddress: DefaultAdminListenAddress,
+			Port:     DefaultAdminPort,
+			ListenIP: DefaultAdminListenIP,
 		},
 		Destination: OTLPConfig{
 			Headers:    map[string]string{},
@@ -219,8 +223,10 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 	a.Flag("prometheus.max-point-age", "Skip points older than this, to assist recovery. Default: "+DefaultMaxPointAge.String()).
 		DurationVar(&cfg.Prometheus.MaxPointAge.Duration)
 
-	a.Flag("admin.listen-address", "Administrative HTTP address this process listens on. Default: "+DefaultAdminListenAddress).
-		StringVar(&cfg.Admin.ListenAddress)
+	a.Flag("admin.port", "Administrative port this process listens on. Default: "+fmt.Sprint(DefaultAdminPort)).
+		IntVar(&cfg.Admin.Port)
+	a.Flag("admin.listen-ip", "Administrative IP address this process listens on. Default: "+DefaultAdminListenIP).
+		StringVar(&cfg.Admin.ListenIP)
 
 	a.Flag("security.root-certificate", "Root CA certificate to use for TLS connections, in PEM format (e.g., root.crt). May be repeated.").
 		StringsVar(&cfg.Security.RootCertificates)
@@ -313,6 +319,7 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 		{"destination.endpoint", cfg.Destination.Endpoint, false},
 		{"diagnostics.endpoint", cfg.Diagnostics.Endpoint, true},
 		{"prometheus.endpoint", cfg.Prometheus.Endpoint, false},
+		{"admin.endpoint", fmt.Sprint("http://", cfg.Admin.ListenIP, ":", cfg.Admin.Port), false},
 	} {
 		if pair.allowEmpty && pair.value == "" {
 			continue

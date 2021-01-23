@@ -15,26 +15,70 @@
 package supervisor
 
 import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
+	"time"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/health"
 	"github.com/pkg/errors"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/label"
+	"go.opentelemetry.io/otel/trace"
 )
 
-func Start(args []string, logger log.Logger) bool {
-	if err := start(args, logger); err != nil {
-		level.Error(logger).Log("msg", "sidecar failed", "err", err)
+var (
+	tracer = otel.Tracer("github.com/lightstep/opentelemetry-prometheus-sidecar/supervisor")
+)
+
+type (
+	Config struct {
+		Logger log.Logger
+		Admin  config.AdminConfig
+	}
+
+	Supervisor struct {
+		logger   log.Logger
+		endpoint string
+		client   *http.Client
+	}
+)
+
+func New(cfg Config) *Supervisor {
+	admin := cfg.Admin
+	endpoint := fmt.Sprint("http://", admin.ListenIP, ":", admin.Port, "/-/health")
+	client := &http.Client{
+		Transport: otelhttp.NewTransport(http.DefaultTransport),
+	}
+	return &Supervisor{
+		logger:   cfg.Logger,
+		endpoint: endpoint,
+		client:   client,
+	}
+}
+
+func (s *Supervisor) Run(args []string) bool {
+	if err := s.start(args); err != nil {
+		level.Error(s.logger).Log("msg", "sidecar failed", "err", err)
 		return false
 	}
+
 	return true
 }
 
-func start(args []string, logger log.Logger) error {
+func (s *Supervisor) start(args []string) error {
 	cmd := exec.Command(args[0], args[1:]...)
 
-	// @@@ TODO here
+	// TODO here tee and capture the output, use it.
+
 	cmd.Stderr = os.Stderr
 	cmd.Stdout = os.Stdout
 
@@ -42,14 +86,60 @@ func start(args []string, logger log.Logger) error {
 		return errors.Wrap(err, "supervisor exec")
 	}
 
+	go s.supervise()
+
 	err := cmd.Wait()
 
 	if err == nil {
-		level.Info(logger).Log("msg", "supervisor shutdown")
+		level.Info(s.logger).Log("msg", "exiting")
 		return nil
 	}
 
-	// TODO log it, etc
-
 	return err
+}
+
+func (s *Supervisor) supervise() {
+	for {
+		now := time.Now()
+
+		if err := s.healthcheck(); err != nil {
+			level.Error(s.logger).Log("msg", "healthcheck failed", "err", err)
+		}
+
+		if sleep := config.DefaultSupervisorPeriod - time.Since(now); sleep > 0 {
+			time.Sleep(sleep)
+		}
+	}
+}
+
+func (s *Supervisor) healthcheck() (err error) {
+	ctx, span := tracer.Start(context.Background(), "health-client")
+	defer span.End()
+	defer func() {
+		if err == nil {
+			return
+		}
+		span.SetStatus(codes.Error, err.Error())
+	}()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", s.endpoint, nil)
+	if err != nil {
+		return errors.Wrap(err, "build request")
+	}
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return errors.Wrap(err, "healtcheck query")
+	}
+	defer resp.Body.Close()
+
+	var hr health.Response
+	if err := json.NewDecoder(resp.Body).Decode(&hr); err != nil {
+		return errors.Wrap(err, "healtcheck response")
+	}
+
+	span.AddEvent("healthcheck",
+		trace.WithAttributes(label.String("status", hr.Status)),
+	)
+	return nil
 }

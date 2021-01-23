@@ -33,6 +33,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/health"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/otlp"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/retrieval"
@@ -111,6 +112,7 @@ func Main() bool {
 		diagConfig = cfg.Destination
 	}
 
+	// Should this process act as supervisor?
 	isSupervisor := !cfg.DisableSupervisor && os.Getenv(supervisorEnv) == ""
 
 	if diagConfig.Endpoint != "" {
@@ -172,10 +174,15 @@ func Main() bool {
 
 		os.Setenv(supervisorEnv, "active")
 
-		return supervisor.Start(os.Args, logger)
+		super := supervisor.New(supervisor.Config{
+			Logger: log.With(logger, "component", "supervisor"),
+			Admin:  cfg.Admin,
+		})
+
+		return super.Run(os.Args)
 	}
 
-	cfg.Destination.Headers[config.AgentKey] = config.AgentPrimeValue
+	cfg.Destination.Headers[config.AgentKey] = config.AgentMainValue
 
 	if !cfg.DisableSupervisor {
 		level.Info(logger).Log("msg", "Running under supervisor")
@@ -184,6 +191,9 @@ func Main() bool {
 	// We instantiate a context here since the tailer is used by two other components.
 	// The context will be used in the lifecycle of prometheusReader further down.
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	healthChecker := health.NewChecker()
 
 	httpClient := &http.Client{
 		Transport: otelhttp.NewTransport(http.DefaultTransport),
@@ -355,8 +365,13 @@ func Main() bool {
 	}
 	{
 		cancel := make(chan struct{})
+		mux := http.NewServeMux()
+		// Note: the health and ready handlers are not traced.
+		mux.Handle("/-/health", healthChecker.Health())
+		mux.Handle("/-/ready", healthChecker.Ready())
 		server := &http.Server{
-			Addr: cfg.Admin.ListenAddress,
+			Addr:    fmt.Sprint(cfg.Admin.ListenIP, ":", cfg.Admin.Port),
+			Handler: mux,
 		}
 		g.Add(
 			func() error {

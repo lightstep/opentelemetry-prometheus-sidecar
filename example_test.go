@@ -48,7 +48,8 @@ func Example() {
         //     "use_meta_labels": true
         //   },
         //   "admin": {
-        //     "listen_address": "0.0.0.0:10000"
+        //     "listen_ip": "0.0.0.0",
+	//     "port": 10000
         //   },
         //   "security": {
         //     "root_certificates": [

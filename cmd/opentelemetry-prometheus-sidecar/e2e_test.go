@@ -54,6 +54,7 @@ var (
 		fmt.Sprint(e2eTestHeaderName, "=", e2eTestHeaderValue),
 		"--disable-supervisor",
 		"--disable-diagnostics",
+		"--admin.port=9093",
 	}
 )
 
