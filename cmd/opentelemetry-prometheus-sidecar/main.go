@@ -92,18 +92,6 @@ func main() {
 	plc.Format.Set(cfg.LogConfig.Format)
 	logger := promlog.New(&plc)
 
-	level.Info(logger).Log(
-		"msg", "Starting OpenTelemetry Prometheus sidecar",
-		"version", version.Info(),
-		"build_context", version.BuildContext(),
-		"host_details", Uname(),
-		"fd_limits", FdLimits(),
-	)
-
-	if data, err := json.Marshal(cfg); err == nil {
-		level.Debug(logger).Log("config", string(data))
-	}
-
 	telemetry.StaticSetup(logger)
 
 	if cfg.Diagnostics.Endpoint != "" {
@@ -130,6 +118,18 @@ func main() {
 			telemetry.WithExportTimeout(cfg.Diagnostics.Timeout.Duration),
 			telemetry.WithMetricReportingPeriod(telemetry.DefaultReportingPeriod),
 		).Shutdown(context.Background())
+	}
+
+	level.Info(logger).Log(
+		"msg", "Starting OpenTelemetry Prometheus sidecar",
+		"version", version.Info(),
+		"build_context", version.BuildContext(),
+		"host_details", Uname(),
+		"fd_limits", FdLimits(),
+	)
+
+	if data, err := json.Marshal(cfg); err == nil {
+		level.Debug(logger).Log("config", string(data))
 	}
 
 	// We instantiate a context here since the tailer is used by two other components.
