@@ -15,21 +15,41 @@
 package supervisor
 
 import (
+	"os"
 	"os/exec"
 
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 )
 
-func Start(args []string) {
-	cmd := exec.Command(args[0], args[1:])
+func Start(args []string, logger log.Logger) bool {
+	if err := start(args, logger); err != nil {
+		level.Error(logger).Log("msg", "sidecar failed", "err", err)
+		return false
+	}
+	return true
+}
+
+func start(args []string, logger log.Logger) error {
+	cmd := exec.Command(args[0], args[1:]...)
+
+	// @@@ TODO here
+	cmd.Stderr = os.Stderr
+	cmd.Stdout = os.Stdout
 
 	if err := cmd.Start(); err != nil {
 		return errors.Wrap(err, "supervisor exec")
 	}
 
-	if err := cmd.Wait(); err != nil {
-		return errors.Wrap(err, "supervisor wait")
+	err := cmd.Wait()
+
+	if err == nil {
+		level.Info(logger).Log("msg", "supervisor shutdown")
+		return nil
 	}
 
-	return nil
+	// TODO log it, etc
+
+	return err
 }
