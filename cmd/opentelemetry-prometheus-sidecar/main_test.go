@@ -116,6 +116,21 @@ Loop:
 	require.Contains(t, berr.String(), "connect: connection refused")
 }
 
+func TestMainExitOnFailure(t *testing.T) {
+	cmd := exec.Command(
+		os.Args[0],
+		"--totally-bogus-flag-name=testdata/wal",
+	)
+
+	cmd.Env = append(os.Environ(), "RUN_MAIN=1")
+	var berr bytes.Buffer
+	cmd.Stderr = &berr
+	require.NoError(t, cmd.Start())
+
+	require.Error(t, cmd.Wait())
+	require.Contains(t, berr.String(), "totally-bogus-flag-name")
+}
+
 func TestParseFilters(t *testing.T) {
 	logger := log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
 	for _, tt := range []struct {
