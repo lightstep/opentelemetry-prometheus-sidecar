@@ -232,22 +232,13 @@ func Main() bool {
 	}()
 
 	// Check the progress file, ensure we can write this file.
-	startOffset, err := retrieval.ReadProgressFile(cfg.Prometheus.WAL)
+	startOffset, err := readWriteStartOffset(cfg, logger)
 	if err != nil {
-		level.Warn(logger).Log("msg", "reading progress file failed", "err", err)
-		startOffset = 0
-	}
-	// Write the file again once to ensure we have write permission on startup.
-	if err := retrieval.SaveProgressFile(cfg.Prometheus.WAL, startOffset); err != nil {
 		level.Error(logger).Log("msg", "cannot write progress file", "err", err)
 		return false
 	}
 
 	logStartup(cfg, logger)
-
-	if !cfg.DisableSupervisor {
-		level.Info(logger).Log("msg", "running under supervisor")
-	}
 
 	// Test for Prometheus and Outbound dependencies before starting.
 	if err := selfTest(ctx, promURL, scf, cfg.StartupTimeout.Duration, logger); err != nil {
@@ -261,6 +252,7 @@ func Main() bool {
 	// (1) Target cache
 	// (2) Prometheus reader
 	// (3) Queue manager
+	// TODO: Replace this with x/sync/errgroup
 	var g run.Group
 	{
 		g.Add(func() error {
@@ -293,21 +285,21 @@ func Main() bool {
 		)
 	}
 	{
-		cancel := make(chan struct{})
+		stopCh := make(chan struct{})
 		g.Add(
 			func() error {
 				if err := queueManager.Start(); err != nil {
 					return err
 				}
 				level.Info(logger).Log("msg", "OpenTelemetry client started")
-				<-cancel
+				<-stopCh
 				return nil
 			},
 			func(err error) {
 				if err := queueManager.Stop(); err != nil {
 					level.Error(logger).Log("msg", "Error stopping OpenTelemetry writer", "err", err)
 				}
-				close(cancel)
+				close(stopCh)
 			},
 		)
 	}
@@ -453,6 +445,10 @@ func logStartup(cfg config.MainConfig, logger log.Logger) {
 	if data, err := json.Marshal(cfg); err == nil {
 		level.Debug(logger).Log("config", string(data))
 	}
+
+	if !cfg.DisableSupervisor {
+		level.Info(logger).Log("msg", "running under supervisor")
+	}
 }
 
 func startSupervisor(cfg config.MainConfig, logger log.Logger) bool {
@@ -519,4 +515,17 @@ func newAdminServer(hc *health.Checker, acfg config.AdminConfig, logger log.Logg
 		Addr:    address,
 		Handler: mux,
 	}
+}
+
+// readWriteStartOffset reads the last (approxiate) progress position and re-writes
+// the progress file, to ensure we have write permission on startup.
+func readWriteStartOffset(cfg config.MainConfig, logger log.Logger) (int, error) {
+	startOffset, err := retrieval.ReadProgressFile(cfg.Prometheus.WAL)
+	if err != nil {
+		level.Warn(logger).Log("msg", "reading progress file failed", "err", err)
+		startOffset = 0
+	}
+
+	err = retrieval.SaveProgressFile(cfg.Prometheus.WAL, startOffset)
+	return startOffset, err
 }
