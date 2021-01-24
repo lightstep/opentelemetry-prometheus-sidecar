@@ -119,7 +119,7 @@ Loop:
 	require.Contains(t, berr.String(), "received SIGTERM, exiting")
 
 	// The selftest should have finished, since we waited for ready.
-	require.Contains(t, berr.String(), "outbound connection test was successful")
+	require.Contains(t, berr.String(), "selftest was successful")
 }
 
 func TestMainExitOnFailure(t *testing.T) {

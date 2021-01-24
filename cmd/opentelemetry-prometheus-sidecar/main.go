@@ -231,20 +231,29 @@ func Main() bool {
 		}
 	}()
 
+	// Check the progress file, ensure we can write this file.
+	startOffset, err := retrieval.ReadProgressFile(cfg.Prometheus.WAL)
+	if err != nil {
+		level.Warn(logger).Log("msg", "reading progress file failed", "err", err)
+		startOffset = 0
+	}
+	// Write the file again once to ensure we have write permission on startup.
+	if err := retrieval.SaveProgressFile(cfg.Prometheus.WAL, startOffset); err != nil {
+		level.Error(logger).Log("msg", "cannot write progress file", "err", err)
+		return false
+	}
+
 	logStartup(cfg, logger)
 
 	if !cfg.DisableSupervisor {
 		level.Info(logger).Log("msg", "running under supervisor")
 	}
 
-	// Perform a test of the outbound connection before starting.
-	if err := testOutboundConn(ctx, scf, cfg.StartupTimeout.Duration, logger); err != nil {
+	// Test for Prometheus and Outbound dependencies before starting.
+	if err := selfTest(ctx, promURL, scf, cfg.StartupTimeout.Duration, logger); err != nil {
 		level.Error(logger).Log("msg", "selftest failed, not starting", "err", err)
 		return false
 	}
-	// TODO: The above and two steps noted below should be done
-	// before readiness.  waitForPrometheus should apply the startup
-	// timeout.
 
 	healthChecker.SetReady(true)
 
@@ -264,19 +273,6 @@ func Main() bool {
 	{
 		g.Add(
 			func() error {
-				// TODO: Include nexts two steps in readiness check: (1) read/write
-				// progress file, (2) wait for Prometheus ready.
-				startOffset, err := retrieval.ReadProgressFile(cfg.Prometheus.WAL)
-				if err != nil {
-					level.Warn(logger).Log("msg", "reading progress file failed", "err", err)
-					startOffset = 0
-				}
-				// Write the file again once to ensure we have write permission on startup.
-				if err := retrieval.SaveProgressFile(cfg.Prometheus.WAL, startOffset); err != nil {
-					return err
-				}
-				waitForPrometheus(ctx, logger, promURL)
-
 				// Sleep to allow the first scrapes to complete.
 				select {
 				case <-time.After(cfg.StartupDelay.Duration):
@@ -356,7 +352,7 @@ func (s *otlpClientFactory) Name() string {
 	return s.url.String()
 }
 
-func waitForPrometheus(ctx context.Context, logger log.Logger, promURL *url.URL) {
+func waitForPrometheus(ctx context.Context, logger log.Logger, promURL *url.URL) bool {
 	tick := time.NewTicker(3 * time.Second)
 	defer tick.Stop()
 
@@ -366,18 +362,18 @@ func waitForPrometheus(ctx context.Context, logger log.Logger, promURL *url.URL)
 	for {
 		select {
 		case <-ctx.Done():
-			return
+			return false
 		case <-tick.C:
 			resp, err := http.Get(u.String())
 			if err != nil {
-				level.Warn(logger).Log("msg", "query Prometheus readiness", "err", err)
+				level.Warn(logger).Log("msg", "Prometheus readiness check", "err", err)
 				continue
 			}
 			if resp.StatusCode/100 == 2 {
-				return
+				return true
 			}
 
-			level.Warn(logger).Log("msg", "Prometheus not ready", "status", resp.Status)
+			level.Warn(logger).Log("msg", "Prometheus is not ready", "status", resp.Status)
 		}
 	}
 }
@@ -396,24 +392,34 @@ func parseFilters(logger log.Logger, filters []string) ([][]*labels.Matcher, err
 	return matchers, nil
 }
 
-func testOutboundConn(ctx context.Context, scf otlp.StorageClientFactory, timeout time.Duration, logger log.Logger) error {
+func selfTest(ctx context.Context, promURL *url.URL, scf otlp.StorageClientFactory, timeout time.Duration, logger log.Logger) error {
 	client := scf.New()
 
-	level.Info(logger).Log("msg", "starting outbound connection test")
+	level.Info(logger).Log("msg", "starting selftest")
 
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	if err := client.Selftest(ctx); err != nil {
-		_ = client.Close()
-		return fmt.Errorf("could not send test opentelemetry.ExportMetricsServiceRequest request: %w", err)
+	// Outbound connection test.
+	{
+		if err := client.Selftest(ctx); err != nil {
+			_ = client.Close()
+			return fmt.Errorf("could not send test opentelemetry.ExportMetricsServiceRequest request: %w", err)
+		}
+
+		if err := client.Close(); err != nil {
+			return fmt.Errorf("error closing test client: %w", err)
+		}
 	}
 
-	if err := client.Close(); err != nil {
-		return fmt.Errorf("error closing test client: %w", err)
+	// These tests are performed sequentially, to keep the logs simple.
+	// Note waitForPrometheus has no unrecoverable error conditions, so
+	// loops until success or the context is canceled.
+	if !waitForPrometheus(ctx, logger, promURL) {
+		return fmt.Errorf("Prometheus is not ready")
 	}
 
-	level.Info(logger).Log("msg", "outbound connection test was successful")
+	level.Info(logger).Log("msg", "selftest was successful")
 	return nil
 }
 
