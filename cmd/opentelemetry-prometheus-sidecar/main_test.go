@@ -79,7 +79,7 @@ Loop:
 	// This loop sleeps allows least 10 seconds to pass.
 	for x := 0; x < 10; x++ {
 		// error=nil means the sidecar has started so can send the interrupt signal and wait for the grace shutdown.
-		if _, err := http.Get("http://localhost:9091/metrics"); err == nil {
+		if _, err := http.Get(e2eReadyURL); err == nil {
 			startedOk = true
 			cmd.Process.Signal(os.Interrupt)
 			select {
@@ -114,6 +114,12 @@ Loop:
 	// the test, we should see some gRPC warnings the connection up
 	// until --startup.timeout takes effect.
 	require.Contains(t, berr.String(), "connect: connection refused")
+
+	// The process should have been interrupted.
+	require.Contains(t, berr.String(), "received SIGTERM, exiting")
+
+	// The selftest should have finished, since we waited for ready.
+	require.Contains(t, berr.String(), "selftest was successful")
 }
 
 func TestMainExitOnFailure(t *testing.T) {

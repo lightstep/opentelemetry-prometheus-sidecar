@@ -56,6 +56,8 @@ var (
 		"--disable-diagnostics",
 		"--admin.port=9093",
 	}
+
+	e2eReadyURL = "http://127.0.0.1:9093/-/ready"
 )
 
 const (

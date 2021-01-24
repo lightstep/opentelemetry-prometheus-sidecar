@@ -52,8 +52,6 @@ import (
 	grpcMetadata "google.golang.org/grpc/metadata"
 )
 
-// TODO(jmacd): Define a path for healthchecks.
-
 // Note on metrics instrumentation relative ot the original OpenCensus
 // instrumentation of this code base:
 //
@@ -75,123 +73,51 @@ func main() {
 }
 
 func Main() bool {
-
+	// Setup debugging helpers
 	if os.Getenv("DEBUG") != "" {
 		runtime.SetBlockProfileRate(20)
 		runtime.SetMutexProfileFraction(20)
 	}
 
+	// Configure a from flags and/or a config file.
 	cfg, metricRenames, staticMetadata, err := config.Configure(os.Args, ioutil.ReadFile)
 	if err != nil {
 		usage(err)
 		return false
 	}
 
-	vlevel := cfg.LogConfig.Verbose
-	if cfg.LogConfig.Level == "debug" {
-		vlevel++
-	}
+	// Should this process act as supervisor?  This uses the supervisor
+	// environment variable to avoid recursion.
+	isSupervisor := !cfg.DisableSupervisor && os.Getenv(supervisorEnv) == ""
 
-	if vlevel > 0 {
-		telemetry.SetVerboseLevel(vlevel)
-	}
+	// Configure logging and diagnostics.
+	logger := mainLogger(cfg)
 
-	var plc promlog.Config
-	plc.Level = &promlog.AllowedLevel{}
-	plc.Format = &promlog.AllowedFormat{}
-	plc.Level.Set(cfg.LogConfig.Level)
-	plc.Format.Set(cfg.LogConfig.Format)
-	logger := promlog.New(&plc)
-
-	telemetry.StaticSetup(logger)
-
-	// Determine the diagnostics configuration.
 	diagConfig := cfg.Diagnostics
 
 	if diagConfig.Endpoint == "" && !cfg.DisableDiagnostics {
 		diagConfig = cfg.Destination
 	}
 
-	// Should this process act as supervisor?
-	isSupervisor := !cfg.DisableSupervisor && os.Getenv(supervisorEnv) == ""
+	telemetry.StaticSetup(logger)
 
 	if diagConfig.Endpoint != "" {
-		endpoint, _ := url.Parse(diagConfig.Endpoint)
-		hostport := endpoint.Hostname()
-		if len(endpoint.Port()) > 0 {
-			hostport = net.JoinHostPort(hostport, endpoint.Port())
-		}
-
-		insecure := endpoint.Scheme == "http"
-		metricsHostport := hostport
-
-		// Set a service.name resource if none is set.
-		const serviceNameKey = "service.name"
-
-		svcName := diagConfig.Attributes[serviceNameKey]
-		if svcName == "" {
-			svcName = "opentelemetry-prometheus-sidecar"
-		}
-
-		agentName := config.AgentSecondaryValue
-		if isSupervisor {
-			// Disable metrics in the supervisor
-			metricsHostport = ""
-			svcName = svcName + "-supervisor"
-			agentName = config.AgentSupervisorValue
-		}
-
-		diagConfig.Attributes[serviceNameKey] = svcName
-		diagConfig.Headers[config.AgentKey] = agentName
-
-		// TODO: Configure metric reporting interval, trace batching interval,
-		// currently there is no such setting.
-		defer telemetry.ConfigureOpentelemetry(
-			telemetry.WithLogger(logger),
-			telemetry.WithSpanExporterEndpoint(hostport),
-			telemetry.WithSpanExporterInsecure(insecure),
-			telemetry.WithMetricsExporterEndpoint(metricsHostport),
-			telemetry.WithMetricsExporterInsecure(insecure),
-			telemetry.WithHeaders(diagConfig.Headers),
-			telemetry.WithResourceAttributes(diagConfig.Attributes),
-			telemetry.WithExportTimeout(diagConfig.Timeout.Duration),
-			telemetry.WithMetricReportingPeriod(config.DefaultReportingPeriod),
-		).Shutdown(context.Background())
+		tel := startTelemetry(diagConfig, isSupervisor, logger)
+		defer tel.Shutdown(context.Background())
 	}
 
+	// Start the supervisor.
 	if isSupervisor {
-		level.Info(logger).Log(
-			"msg", "Starting OpenTelemetry Prometheus sidecar",
-			"version", version.Info(),
-			"build_context", version.BuildContext(),
-			"host_details", Uname(),
-			"fd_limits", FdLimits(),
-		)
-
-		if data, err := json.Marshal(cfg); err == nil {
-			level.Debug(logger).Log("config", string(data))
-		}
-
-		os.Setenv(supervisorEnv, "active")
-
-		super := supervisor.New(supervisor.Config{
-			Logger: log.With(logger, "component", "supervisor"),
-			Admin:  cfg.Admin,
-		})
-
-		return super.Run(os.Args)
+		return startSupervisor(cfg, logger)
 	}
+
+	// Start the sidecar.
 
 	cfg.Destination.Headers[config.AgentKey] = config.AgentMainValue
 
-	if !cfg.DisableSupervisor {
-		level.Info(logger).Log("msg", "Running under supervisor")
-	}
-
-	// We instantiate a context here since the tailer is used by two other components.
-	// The context will be used in the lifecycle of prometheusReader further down.
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	// This context lasts the lifetime of the sidecar.
+	ctx, cancelMain := context.WithCancel(context.Background())
+	defer cancelMain()
 
 	healthChecker := health.NewChecker()
 
@@ -274,46 +200,65 @@ func Main() bool {
 		cfg.Prometheus.MaxPointAge.Duration,
 	)
 
+	// SIGTERM initiates a graceful shutdown.
+	go func() {
+		defer cancelMain()
+
+		term := make(chan os.Signal)
+		signal.Notify(term, os.Interrupt, syscall.SIGTERM)
+		select {
+		case <-term:
+			level.Warn(logger).Log("msg", "received SIGTERM, exiting...")
+		case <-ctx.Done():
+			break
+		}
+	}()
+
+	// Start the admin server.
+	go func() {
+		defer cancelMain()
+
+		server := newAdminServer(healthChecker, cfg.Admin, logger)
+
+		go func() {
+			level.Info(logger).Log("msg", "admin server started")
+			<-ctx.Done()
+			if err := server.Shutdown(context.Background()); err != nil {
+				level.Error(logger).Log("msg", "admin server shutdown", "err", err)
+			}
+		}()
+
+		if err := server.ListenAndServe(); err != http.ErrServerClosed {
+			level.Error(logger).Log("msg", "admin listener", "err", err)
+		}
+	}()
+
+	logStartup(cfg, logger)
+
+	if !cfg.DisableSupervisor {
+		level.Info(logger).Log("msg", "running under supervisor")
+	}
+
 	// Perform a test of the outbound connection before starting.
-	if err := selfTest(logger, scf, cfg.StartupTimeout.Duration); err != nil {
+	if err := selfTest(ctx, scf, cfg.StartupTimeout.Duration, logger); err != nil {
 		level.Error(logger).Log("msg", "selftest failed, not starting", "err", err)
 		return false
 	}
 
+	// Run three inter-depdendent components:
+	// (1) Target cache
+	// (2) Prometheus reader
+	// (3) Queue manager
 	var g run.Group
 	{
-		ctx, cancel := context.WithCancel(context.Background())
 		g.Add(func() error {
 			targetCache.Run(ctx)
 			return nil
 		}, func(error) {
-			cancel()
+			cancelMain()
 		})
 	}
 	{
-		term := make(chan os.Signal)
-		signal.Notify(term, os.Interrupt, syscall.SIGTERM)
-		cancel := make(chan struct{})
-		g.Add(
-			func() error {
-				// Don't forget to release the reloadReady channel so that waiting blocks can exit normally.
-				select {
-				case <-term:
-					level.Warn(logger).Log("msg", "Received SIGTERM, exiting gracefully...")
-				case <-cancel:
-					break
-				}
-				return nil
-			},
-			func(err error) {
-				close(cancel)
-			},
-		)
-	}
-	{
-		// We use the context we defined higher up instead of a local one like in the other actors.
-		// This is necessary since it's also used to manage the tailer's lifecycle, which the reader
-		// depends on to exit properly.
 		g.Add(
 			func() error {
 				startOffset, err := retrieval.ReadProgressFile(cfg.Prometheus.WAL)
@@ -326,12 +271,14 @@ func Main() bool {
 					return err
 				}
 				waitForPrometheus(ctx, logger, promURL)
-				// Sleep a fixed amount of time to allow the first scrapes to complete.
+
+				// Sleep to allow the first scrapes to complete.
 				select {
 				case <-time.After(cfg.StartupDelay.Duration):
 				case <-ctx.Done():
 					return nil
 				}
+
 				err = prometheusReader.Run(ctx, startOffset)
 				level.Info(logger).Log("msg", "Prometheus reader stopped")
 				return err
@@ -340,7 +287,7 @@ func Main() bool {
 				// Prometheus reader needs to be stopped before closing the TSDB
 				// so that it doesn't try to write samples to a closed storage.
 				level.Info(logger).Log("msg", "Stopping Prometheus reader...")
-				cancel()
+				cancelMain()
 			},
 		)
 	}
@@ -363,41 +310,12 @@ func Main() bool {
 			},
 		)
 	}
-	{
-		cancel := make(chan struct{})
-		mux := http.NewServeMux()
-		// Note: the health and ready handlers are not traced.
-		mux.Handle("/-/health", healthChecker.Health())
-		mux.Handle("/-/ready", healthChecker.Ready())
-		server := &http.Server{
-			Addr:    fmt.Sprint(cfg.Admin.ListenIP, ":", cfg.Admin.Port),
-			Handler: mux,
-		}
-		g.Add(
-			func() error {
-				level.Info(logger).Log("msg", "Web server started")
-				err := server.ListenAndServe()
-				if err != http.ErrServerClosed {
-					return err
-				}
-				<-cancel
-				return nil
-			},
-			func(err error) {
-				if err := server.Shutdown(context.Background()); err != nil {
-					level.Error(logger).Log("msg", "Error stopping web server", "err", err)
-				}
-				close(cancel)
-			},
-		)
-	}
 	if err := g.Run(); err != nil {
 		level.Error(logger).Log("err", err)
 		return false
 	}
 
-	// Note: It's unclear if this code path can execute, presently
-	// there's no intentionally graceful shutdown.
+	// SIGTERM causes graceful shutdown.
 	level.Info(logger).Log("msg", "shutting down")
 	return true
 }
@@ -472,12 +390,11 @@ func parseFilters(logger log.Logger, filters []string) ([][]*labels.Matcher, err
 	return matchers, nil
 }
 
-func selfTest(logger log.Logger, scf otlp.StorageClientFactory, timeout time.Duration) error {
+func selfTest(ctx context.Context, scf otlp.StorageClientFactory, timeout time.Duration, logger log.Logger) error {
 	client := scf.New()
 
 	level.Info(logger).Log("msg", "starting selftest")
 
-	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
@@ -492,4 +409,102 @@ func selfTest(logger log.Logger, scf otlp.StorageClientFactory, timeout time.Dur
 
 	level.Info(logger).Log("msg", "selftest was successful")
 	return nil
+}
+
+func mainLogger(cfg config.MainConfig) log.Logger {
+	vlevel := cfg.LogConfig.Verbose
+	if cfg.LogConfig.Level == "debug" {
+		vlevel++
+	}
+
+	if vlevel > 0 {
+		telemetry.SetVerboseLevel(vlevel)
+	}
+
+	var plc promlog.Config
+	plc.Level = &promlog.AllowedLevel{}
+	plc.Format = &promlog.AllowedFormat{}
+	plc.Level.Set(cfg.LogConfig.Level)
+	plc.Format.Set(cfg.LogConfig.Format)
+	return promlog.New(&plc)
+}
+
+func logStartup(cfg config.MainConfig, logger log.Logger) {
+	level.Info(logger).Log(
+		"msg", "Starting OpenTelemetry Prometheus sidecar",
+		"version", version.Info(),
+		"build_context", version.BuildContext(),
+		"host_details", Uname(),
+		"fd_limits", FdLimits(),
+	)
+
+	if data, err := json.Marshal(cfg); err == nil {
+		level.Debug(logger).Log("config", string(data))
+	}
+}
+
+func startSupervisor(cfg config.MainConfig, logger log.Logger) bool {
+	super := supervisor.New(supervisor.Config{
+		Logger: log.With(logger, "component", "supervisor"),
+		Admin:  cfg.Admin,
+	})
+
+	os.Setenv(supervisorEnv, "active")
+
+	return super.Run(os.Args)
+}
+
+func startTelemetry(diagConfig config.OTLPConfig, isSuper bool, logger log.Logger) *telemetry.Telemetry {
+	endpoint, _ := url.Parse(diagConfig.Endpoint)
+	hostport := endpoint.Hostname()
+	if len(endpoint.Port()) > 0 {
+		hostport = net.JoinHostPort(hostport, endpoint.Port())
+	}
+
+	insecure := endpoint.Scheme == "http"
+	metricsHostport := hostport
+
+	// Set a service.name resource if none is set.
+	const serviceNameKey = "service.name"
+
+	svcName := diagConfig.Attributes[serviceNameKey]
+	if svcName == "" {
+		svcName = "opentelemetry-prometheus-sidecar"
+	}
+
+	agentName := config.AgentSecondaryValue
+	if isSuper {
+		// Disable metrics in the supervisor
+		metricsHostport = ""
+		svcName = svcName + "-supervisor"
+		agentName = config.AgentSupervisorValue
+	}
+
+	diagConfig.Attributes[serviceNameKey] = svcName
+	diagConfig.Headers[config.AgentKey] = agentName
+
+	// TODO: Configure trace batching interval.
+
+	return telemetry.ConfigureOpentelemetry(
+		telemetry.WithLogger(logger),
+		telemetry.WithSpanExporterEndpoint(hostport),
+		telemetry.WithSpanExporterInsecure(insecure),
+		telemetry.WithMetricsExporterEndpoint(metricsHostport),
+		telemetry.WithMetricsExporterInsecure(insecure),
+		telemetry.WithHeaders(diagConfig.Headers),
+		telemetry.WithResourceAttributes(diagConfig.Attributes),
+		telemetry.WithExportTimeout(diagConfig.Timeout.Duration),
+		telemetry.WithMetricReportingPeriod(config.DefaultReportingPeriod),
+	)
+}
+
+func newAdminServer(hc *health.Checker, acfg config.AdminConfig, logger log.Logger) *http.Server {
+	mux := http.NewServeMux()
+	mux.Handle("/-/health", hc.Health())
+	mux.Handle("/-/ready", hc.Ready())
+	address := fmt.Sprint(acfg.ListenIP, ":", acfg.Port)
+	return &http.Server{
+		Addr:    address,
+		Handler: mux,
+	}
 }
