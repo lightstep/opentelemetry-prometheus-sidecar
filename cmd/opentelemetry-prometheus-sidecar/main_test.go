@@ -78,8 +78,8 @@ func TestStartupInterrupt(t *testing.T) {
 Loop:
 	// This loop sleeps allows least 10 seconds to pass.
 	for x := 0; x < 10; x++ {
-		// error=nil means the sidecar has started so can send the interrupt signal and wait for the grace shutdown.
-		if _, err := http.Get(e2eReadyURL); err == nil {
+		// Waits for the sidecar's /-/ready handler
+		if resp, err := http.Get(e2eReadyURL); err == nil && resp.StatusCode/100 == 2 {
 			startedOk = true
 			cmd.Process.Signal(os.Interrupt)
 			select {
@@ -119,7 +119,7 @@ Loop:
 	require.Contains(t, berr.String(), "received SIGTERM, exiting")
 
 	// The selftest should have finished, since we waited for ready.
-	require.Contains(t, berr.String(), "selftest was successful")
+	require.Contains(t, berr.String(), "outbound connection test was successful")
 }
 
 func TestMainExitOnFailure(t *testing.T) {

@@ -17,14 +17,20 @@ package health
 import (
 	"encoding/json"
 	"net/http"
+	"sync/atomic"
 )
 
 type (
 	Checker struct {
 		ready
+		healthy
 	}
 
 	ready struct {
+		atomic.Value
+	}
+
+	healthy struct {
 	}
 
 	Response struct {
@@ -33,26 +39,43 @@ type (
 )
 
 func NewChecker() *Checker {
-	return &Checker{}
+	c := &Checker{}
+	c.ready.Value.Store(false)
+	return c
 }
 
 func (c *Checker) Health() http.Handler {
-	// TODO: Real health checking.
-	return &c.ready
+	return &c.healthy
 }
 
 func (c *Checker) Ready() http.Handler {
-	// TODO: Real readiness checking.
 	return &c.ready
 }
 
+func (c *Checker) SetReady(ready bool) {
+	c.ready.Value.Store(ready)
+}
+
+func (h *healthy) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
+	// TODO: Real health checking.
+	ok(w, true)
+}
+
 func (r *ready) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
-	status := http.StatusOK
+	ok(w, r.Value.Load().(bool))
+}
+
+func ok(w http.ResponseWriter, ok bool) {
+	status := http.StatusServiceUnavailable
+
+	if ok {
+		status = http.StatusOK
+	}
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
 
-	json.NewEncoder(w).Encode(Response{
+	_ = json.NewEncoder(w).Encode(Response{
 		Status: http.StatusText(status),
 	})
 }

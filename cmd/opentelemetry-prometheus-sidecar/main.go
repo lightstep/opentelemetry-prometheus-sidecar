@@ -111,11 +111,7 @@ func Main() bool {
 		return startSupervisor(cfg, logger)
 	}
 
-	// Start the sidecar.
-
-	cfg.Destination.Headers[config.AgentKey] = config.AgentMainValue
-
-	// This context lasts the lifetime of the sidecar.
+	// Start the sidecar.  This context lasts the lifetime of the sidecar.
 	ctx, cancelMain := context.WithCancel(context.Background())
 	defer cancelMain()
 
@@ -167,6 +163,8 @@ func Main() bool {
 	promconfig.DefaultQueueConfig.Capacity = 3 * otlp.MaxTimeseriesesPerRequest
 
 	outputURL, _ := url.Parse(cfg.Destination.Endpoint)
+
+	cfg.Destination.Headers[config.AgentKey] = config.AgentMainValue
 
 	var scf otlp.StorageClientFactory = &otlpClientFactory{
 		logger:   log.With(logger, "component", "storage"),
@@ -240,10 +238,15 @@ func Main() bool {
 	}
 
 	// Perform a test of the outbound connection before starting.
-	if err := selfTest(ctx, scf, cfg.StartupTimeout.Duration, logger); err != nil {
+	if err := testOutboundConn(ctx, scf, cfg.StartupTimeout.Duration, logger); err != nil {
 		level.Error(logger).Log("msg", "selftest failed, not starting", "err", err)
 		return false
 	}
+	// TODO: The above and two steps noted below should be done
+	// before readiness.  waitForPrometheus should apply the startup
+	// timeout.
+
+	healthChecker.SetReady(true)
 
 	// Run three inter-depdendent components:
 	// (1) Target cache
@@ -261,6 +264,8 @@ func Main() bool {
 	{
 		g.Add(
 			func() error {
+				// TODO: Include nexts two steps in readiness check: (1) read/write
+				// progress file, (2) wait for Prometheus ready.
 				startOffset, err := retrieval.ReadProgressFile(cfg.Prometheus.WAL)
 				if err != nil {
 					level.Warn(logger).Log("msg", "reading progress file failed", "err", err)
@@ -371,6 +376,7 @@ func waitForPrometheus(ctx context.Context, logger log.Logger, promURL *url.URL)
 			if resp.StatusCode/100 == 2 {
 				return
 			}
+
 			level.Warn(logger).Log("msg", "Prometheus not ready", "status", resp.Status)
 		}
 	}
@@ -390,10 +396,10 @@ func parseFilters(logger log.Logger, filters []string) ([][]*labels.Matcher, err
 	return matchers, nil
 }
 
-func selfTest(ctx context.Context, scf otlp.StorageClientFactory, timeout time.Duration, logger log.Logger) error {
+func testOutboundConn(ctx context.Context, scf otlp.StorageClientFactory, timeout time.Duration, logger log.Logger) error {
 	client := scf.New()
 
-	level.Info(logger).Log("msg", "starting selftest")
+	level.Info(logger).Log("msg", "starting outbound connection test")
 
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -407,7 +413,7 @@ func selfTest(ctx context.Context, scf otlp.StorageClientFactory, timeout time.D
 		return fmt.Errorf("error closing test client: %w", err)
 	}
 
-	level.Info(logger).Log("msg", "selftest was successful")
+	level.Info(logger).Log("msg", "outbound connection test was successful")
 	return nil
 }
 
