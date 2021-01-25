@@ -48,7 +48,6 @@ import (
 	promconfig "github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	grpcMetadata "google.golang.org/grpc/metadata"
 )
 
@@ -118,7 +117,8 @@ func Main() bool {
 	healthChecker := health.NewChecker()
 
 	httpClient := &http.Client{
-		Transport: otelhttp.NewTransport(http.DefaultTransport),
+		// Note: The Sidecar->Prometheus HTTP connection is not traced.
+		// Transport: otelhttp.NewTransport(http.DefaultTransport),
 	}
 
 	filters, err := parseFilters(logger, cfg.Filters)
@@ -471,6 +471,7 @@ func startTelemetry(diagConfig config.OTLPConfig, isSuper bool, logger log.Logge
 
 	insecure := endpoint.Scheme == "http"
 	metricsHostport := hostport
+	spanHostport := hostport
 
 	// Set a service.name resource if none is set.
 	const serviceNameKey = "service.name"
@@ -486,6 +487,9 @@ func startTelemetry(diagConfig config.OTLPConfig, isSuper bool, logger log.Logge
 		metricsHostport = ""
 		svcName = svcName + "-supervisor"
 		agentName = config.AgentSupervisorValue
+	} else {
+		// Disable spans in the main process
+		spanHostport = ""
 	}
 
 	diagConfig.Attributes[serviceNameKey] = svcName
@@ -495,7 +499,7 @@ func startTelemetry(diagConfig config.OTLPConfig, isSuper bool, logger log.Logge
 
 	return telemetry.ConfigureOpentelemetry(
 		telemetry.WithLogger(logger),
-		telemetry.WithSpanExporterEndpoint(hostport),
+		telemetry.WithSpanExporterEndpoint(spanHostport),
 		telemetry.WithSpanExporterInsecure(insecure),
 		telemetry.WithMetricsExporterEndpoint(metricsHostport),
 		telemetry.WithMetricsExporterInsecure(insecure),
