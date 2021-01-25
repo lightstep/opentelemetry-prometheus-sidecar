@@ -28,7 +28,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
 	metricsService "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/collector/metrics/v1"
-	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -70,6 +70,14 @@ var (
 	pointsExported = sidecar.OTelMeterMust.NewInt64Counter(
 		"points.exported",
 		metric.WithDescription("count of exported metric points"),
+	)
+	exportDuration = telemetry.NewTimer(
+		"otlp.export.duration",
+		"duration of the otlp.Export() call",
+	)
+	connectDuration = telemetry.NewTimer(
+		"otlp.connect.duration",
+		"duration of the grpc.Dial() call",
 	)
 )
 
@@ -113,10 +121,12 @@ func NewClient(conf *ClientConfig) *Client {
 // getConnection will dial a new connection if one is not set.  When
 // dialing, this function uses its a new context and the same timeout
 // used for Store().
-func (c *Client) getConnection(ctx context.Context) (*grpc.ClientConn, error) {
+func (c *Client) getConnection(ctx context.Context) (_ *grpc.ClientConn, retErr error) {
 	if c.conn != nil {
 		return c.conn, nil
 	}
+
+	defer connectDuration.Start(ctx).Stop(&retErr)
 
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
@@ -130,8 +140,10 @@ func (c *Client) getConnection(ctx context.Context) (*grpc.ClientConn, error) {
 
 	dopts := []grpc.DialOption{
 		grpc.WithBlock(), // Wait for the connection to be established before using it.
-		grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
 		grpc.WithDefaultServiceConfig(serviceConfig),
+
+		// Note: The Sidecar->OTel gRPC connection is not traced:
+		// grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
 	}
 	if useAuth {
 		var tcfg tls.Config
@@ -249,7 +261,10 @@ func (c *Client) Store(req *metricsService.ExportMetricsServiceRequest) error {
 				ResourceMetrics: req.ResourceMetrics[begin:end],
 			}
 
-			if _, err := service.Export(c.grpcMetadata(ctx), req_copy); err != nil {
+			var err error
+			defer exportDuration.Start(ctx).Stop(&err)
+
+			if _, err = service.Export(c.grpcMetadata(ctx), req_copy); err != nil {
 				// TODO This happens too fast _after_ a healthy
 				// connection becomes unhealthy. Fix.
 				level.Debug(c.logger).Log(

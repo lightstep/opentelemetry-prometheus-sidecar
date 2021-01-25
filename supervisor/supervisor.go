@@ -56,6 +56,8 @@ func New(cfg Config) *Supervisor {
 	admin := cfg.Admin
 	endpoint := fmt.Sprint("http://", admin.ListenIP, ":", admin.Port, "/-/health")
 	client := &http.Client{
+		// Note: this connection is traced, even though we
+		// know the server side is also not traced.
 		Transport: otelhttp.NewTransport(http.DefaultTransport),
 	}
 	return &Supervisor{
