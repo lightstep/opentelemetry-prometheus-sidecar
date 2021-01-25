@@ -219,7 +219,7 @@ func Main() bool {
 		server := newAdminServer(healthChecker, cfg.Admin, logger)
 
 		go func() {
-			level.Info(logger).Log("msg", "admin server started")
+			level.Debug(logger).Log("msg", "starting admin server")
 			<-ctx.Done()
 			if err := server.Shutdown(context.Background()); err != nil {
 				level.Error(logger).Log("msg", "admin server shutdown", "err", err)
@@ -387,7 +387,7 @@ func parseFilters(logger log.Logger, filters []string) ([][]*labels.Matcher, err
 func selfTest(ctx context.Context, promURL *url.URL, scf otlp.StorageClientFactory, timeout time.Duration, logger log.Logger) error {
 	client := scf.New()
 
-	level.Info(logger).Log("msg", "starting selftest")
+	level.Debug(logger).Log("msg", "starting selftest")
 
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -411,7 +411,7 @@ func selfTest(ctx context.Context, promURL *url.URL, scf otlp.StorageClientFacto
 		return fmt.Errorf("Prometheus is not ready")
 	}
 
-	level.Info(logger).Log("msg", "selftest was successful")
+	level.Debug(logger).Log("msg", "selftest was successful")
 	return nil
 }
 
@@ -447,7 +447,7 @@ func logStartup(cfg config.MainConfig, logger log.Logger) {
 	}
 
 	if !cfg.DisableSupervisor {
-		level.Info(logger).Log("msg", "running under supervisor")
+		level.Debug(logger).Log("msg", "running under supervisor")
 	}
 }
 
