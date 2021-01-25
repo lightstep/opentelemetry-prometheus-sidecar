@@ -293,7 +293,7 @@ func Main() bool {
 	}
 
 	// SIGTERM causes graceful shutdown.
-	level.Info(logger).Log("msg", "shutting down")
+	level.Info(logger).Log("msg", "sidecar process exiting")
 	return true
 }
 

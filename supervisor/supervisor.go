@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"regexp"
 	"sync"
 	"time"
 
@@ -34,6 +35,7 @@ import (
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/pkg/errors"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/label"
 	"go.opentelemetry.io/otel/semconv"
 	"go.opentelemetry.io/otel/trace"
@@ -41,11 +43,15 @@ import (
 
 var (
 	tracer = otel.Tracer("github.com/lightstep/opentelemetry-prometheus-sidecar/supervisor")
+
+	stackdumpRE = regexp.MustCompile(`goroutine \d+ \[.+\]:\n`)
 )
 
 const (
 	healthURI = "/-/health"
 	readyURI  = "/-/ready"
+
+	supervisorBufferSize = 1 << 14
 )
 
 type (
@@ -96,7 +102,9 @@ func (s *Supervisor) start(args []string) error {
 
 	cmd := exec.Command(args[0], args[1:]...)
 
-	stderrPipe := s.newPipe(ctx, "stderr", os.Stderr)
+	var wg sync.WaitGroup
+
+	stderrPipe := s.newPipe(ctx, "stderr", os.Stderr, &wg)
 	defer stderrPipe.Close()
 
 	cmd.Stderr = stderrPipe
@@ -106,36 +114,52 @@ func (s *Supervisor) start(args []string) error {
 		return errors.Wrap(err, "supervisor exec")
 	}
 
-	go s.supervise(ctx)
+	wg.Add(1)
+	go s.supervise(ctx, &wg)
 
 	err := cmd.Wait()
 
+	cancelMain()       // Shutdown the healtchecker via context.
+	stderrPipe.Close() // Close the pipe writer, reader reads through EOF.
+	wg.Wait()          // Wait for both goroutines.
+	s.finalSpan(err)   // Send a final span, includes possible stack dump.
+
 	if err == nil {
-		level.Info(s.logger).Log("msg", "exiting")
+		level.Info(s.logger).Log("msg", "sidecar supervisor exiting")
 		return nil
 	}
-
 	return err
 }
 
-func (s *Supervisor) supervise(ctx context.Context) {
+func (s *Supervisor) supervise(ctx context.Context, wg *sync.WaitGroup) {
+	defer wg.Done()
+
 	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-
-		if err := s.healthcheck(ctx); err != nil {
-			level.Error(s.logger).Log("msg", "healthcheck failed", "err", err)
-		}
-
 		sleep := config.DefaultSupervisorPeriod
 		ready, _ := s.checkTarget()
 		if !ready {
 			sleep = config.DefaultHealthCheckTimeout
 		}
-		time.Sleep(sleep)
+
+		// Sleep or be canceled.
+		if func() bool {
+			tick := time.NewTicker(sleep)
+			defer tick.Stop()
+			select {
+			case <-ctx.Done():
+				return true
+			case <-tick.C:
+				return false
+			}
+		}() {
+			return
+		}
+
+		if err := s.healthcheck(ctx); err != nil {
+			if err != context.Canceled {
+				level.Error(s.logger).Log("msg", "healthcheck failed", "err", err)
+			}
+		}
 	}
 }
 
@@ -183,39 +207,67 @@ func (s *Supervisor) healthcheck(ctx context.Context) (err error) {
 		level.Info(s.logger).Log("msg", "sidecar is not ready")
 	}
 
+	span.AddEvent("recent-logs", trace.WithAttributes(
+		label.Array("activity", s.copyLogs()),
+	))
+
 	span.SetAttributes(label.String("sidecar.health", hstat))
 	span.SetAttributes(semconv.HTTPAttributesFromHTTPStatusCode(resp.StatusCode)...)
 	span.SetStatus(semconv.SpanStatusFromHTTPStatusCode(resp.StatusCode))
+	return nil
+}
+
+func (s *Supervisor) finalSpan(err error) {
+	_, span := tracer.Start(context.Background(), "shutdown-report")
+	defer span.End()
 
 	span.AddEvent("recent-logs", trace.WithAttributes(
 		label.Array("activity", s.copyLogs()),
 	))
-	return nil
+
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "unexpected shutdown")
+		return
+	}
+	span.SetStatus(codes.Ok, "graceful shutdown")
 }
 
-func (s *Supervisor) newPipe(ctx context.Context, name string, real io.Writer) *io.PipeWriter {
+func (s *Supervisor) newPipe(ctx context.Context, name string, real io.Writer, wg *sync.WaitGroup) *io.PipeWriter {
+	wg.Add(1)
+
 	rd, wr := io.Pipe()
 
-	go s.readOutput(ctx, name, real, rd)
+	go s.readOutput(ctx, name, real, rd, wg)
 
 	return wr
 }
 
-func (s *Supervisor) readOutput(ctx context.Context, name string, real io.Writer, rd *io.PipeReader) {
-	buffer := make([]byte, 16384)
+func (s *Supervisor) readOutput(_ context.Context, name string, real io.Writer, rd *io.PipeReader, wg *sync.WaitGroup) {
+	// Note: We disregard the context here in order to read and
+	// copy the stream until reaching EOF.  The other end of the
+	// pipe will close the pipe Writer when the context is
+	// canceled.
+	defer wg.Done()
+
+	buffer := make([]byte, supervisorBufferSize)
 	defer rd.Close()
 
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
+	seenStackdump := false
+	var stackdump bytes.Buffer
+	defer func() {
+		if stackdump.Len() > 0 {
+			s.addLogLine(stackdump.String())
 		}
+	}()
 
+	for {
 		nread, err := rd.Read(buffer)
 
 		if err != nil {
-			level.Info(s.logger).Log("msg", "read sidecar output", "err", err)
+			if err != io.EOF {
+				level.Info(s.logger).Log("msg", "read sidecar output", "err", err)
+			}
 			return
 		}
 
@@ -229,12 +281,20 @@ func (s *Supervisor) readOutput(ctx context.Context, name string, real io.Writer
 			writeBuf = writeBuf[n:]
 		}
 
-		scanner := bufio.NewScanner(bytes.NewReader(buffer[0:nread]))
+		output := buffer[0:nread]
+
+		if seenStackdump || s.isStackdump(output) {
+			seenStackdump = true
+			_, _ = stackdump.Write(output)
+			continue
+		}
+
+		scanner := bufio.NewScanner(bytes.NewReader(output))
 		for scanner.Scan() {
 			s.addLogLine(scanner.Text())
 		}
 		if err := scanner.Err(); err != nil {
-			level.Debug(s.logger).Log("msg", "parse error scanning sidecar log", "err", err)
+			level.Info(s.logger).Log("msg", "parse error scanning sidecar log", "err", err)
 		}
 	}
 }
@@ -276,4 +336,8 @@ func (s *Supervisor) noteReady() {
 	defer s.lock.Unlock()
 
 	s.readied = true
+}
+
+func (s *Supervisor) isStackdump(text []byte) bool {
+	return stackdumpRE.Find(text) != nil
 }

@@ -78,6 +78,10 @@ func (dl *deferLogger) Log(kvs ...interface{}) error {
 	return delegate.Log(kvs...)
 }
 
+func StaticLogger() log.Logger {
+	return staticLogger
+}
+
 func init() {
 	verboseLevel.Store(int(0))
 
