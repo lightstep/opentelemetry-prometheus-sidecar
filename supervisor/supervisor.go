@@ -42,6 +42,11 @@ var (
 	tracer = otel.Tracer("github.com/lightstep/opentelemetry-prometheus-sidecar/supervisor")
 )
 
+const (
+	healthURI = "/-/health"
+	readyURI  = "/-/ready"
+)
+
 type (
 	Config struct {
 		Logger log.Logger
@@ -52,6 +57,7 @@ type (
 		logger   log.Logger
 		endpoint string
 		client   *http.Client
+		readied  bool
 
 		lock      sync.Mutex
 		logBuffer []string
@@ -60,7 +66,7 @@ type (
 
 func New(cfg Config) *Supervisor {
 	admin := cfg.Admin
-	endpoint := fmt.Sprint("http://", admin.ListenIP, ":", admin.Port, "/-/health")
+	endpoint := fmt.Sprint("http://", admin.ListenIP, ":", admin.Port)
 	client := &http.Client{
 		// Note: this connection is not traced, even though we
 		// use a span around the healthcheck.
@@ -112,24 +118,31 @@ func (s *Supervisor) start(args []string) error {
 }
 
 func (s *Supervisor) supervise(ctx context.Context) {
-	ticker := time.NewTicker(config.DefaultSupervisorPeriod)
-	defer ticker.Stop()
-
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
-			if err := s.healthcheck(); err != nil {
-				level.Error(s.logger).Log("msg", "healthcheck failed", "err", err)
-			}
+		default:
 		}
+
+		if err := s.healthcheck(ctx); err != nil {
+			level.Error(s.logger).Log("msg", "healthcheck failed", "err", err)
+		}
+
+		sleep := config.DefaultSupervisorPeriod
+		ready, _ := s.checkTarget()
+		if !ready {
+			sleep = config.DefaultHealthCheckTimeout
+		}
+		time.Sleep(sleep)
 	}
 }
 
-func (s *Supervisor) healthcheck() (err error) {
-	ctx, cancel := context.WithTimeout(context.Background(), config.DefaultHealthCheckTimeout)
+func (s *Supervisor) healthcheck(ctx context.Context) (err error) {
+	ctx, cancel := context.WithTimeout(ctx, config.DefaultHealthCheckTimeout)
 	defer cancel()
+
+	ready, target := s.checkTarget()
 
 	ctx, span := tracer.Start(ctx, "health-client")
 
@@ -140,7 +153,7 @@ func (s *Supervisor) healthcheck() (err error) {
 		span.End()
 	}()
 
-	req, err := http.NewRequestWithContext(ctx, "GET", s.endpoint, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", target, nil)
 	if err != nil {
 		return errors.Wrap(err, "build request")
 	}
@@ -151,15 +164,26 @@ func (s *Supervisor) healthcheck() (err error) {
 	}
 	defer resp.Body.Close()
 
-	var hr health.Response
-	if err := json.NewDecoder(resp.Body).Decode(&hr); err != nil {
-		return errors.Wrap(err, "decode response")
+	var hstat string
+	if ready {
+		var hr health.Response
+		if err := json.NewDecoder(resp.Body).Decode(&hr); err != nil {
+			return errors.Wrap(err, "decode response")
+		}
+		span.SetAttributes(label.String("sidecar.status", hr.Status))
+
+		hstat = "ok"
+	} else if resp.StatusCode/100 == 2 {
+		s.noteReady()
+		hstat = "first time ready"
+		level.Info(s.logger).Log("msg", "sidecar is ready")
+	} else {
+		hstat = "not ready yet"
+		level.Info(s.logger).Log("msg", "sidecar is not ready")
 	}
 
-	span.SetAttributes(append(
-		semconv.HTTPAttributesFromHTTPStatusCode(resp.StatusCode),
-		label.String("sidecar.health", hr.Status),
-	)...)
+	span.SetAttributes(label.String("sidecar.health", hstat))
+	span.SetAttributes(semconv.HTTPAttributesFromHTTPStatusCode(resp.StatusCode)...)
 	span.SetStatus(semconv.SpanStatusFromHTTPStatusCode(resp.StatusCode))
 
 	span.AddEvent("recent-logs", trace.WithAttributes(
@@ -234,4 +258,21 @@ func (s *Supervisor) copyLogs() []string {
 	cp := make([]string, len(s.logBuffer))
 	copy(cp, s.logBuffer)
 	return cp
+}
+
+func (s *Supervisor) checkTarget() (bool, string) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	if s.readied {
+		return true, s.endpoint + healthURI
+	}
+	return false, s.endpoint + readyURI
+}
+
+func (s *Supervisor) noteReady() {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	s.readied = true
 }
