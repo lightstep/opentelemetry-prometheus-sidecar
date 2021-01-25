@@ -45,6 +45,9 @@ const (
 	DefaultStartupTimeout     = time.Minute * 5
 	DefaultSupervisorPeriod   = time.Minute
 
+	DefaultSupervisorBufferSize  = 16384
+	DefaultSupervisorLogsHistory = 16
+
 	briefDescription = `
 The OpenTelemetry Prometheus sidecar runs alongside the
 Prometheus (https://prometheus.io/) Server and sends metrics data to
