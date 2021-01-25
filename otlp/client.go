@@ -167,6 +167,11 @@ func (c *Client) getConnection(ctx context.Context) (_ *grpc.ClientConn, retErr 
 				RootCAs:    certPool,
 			}
 		}
+		level.Debug(c.logger).Log(
+			"msg", "tls configured",
+			"server", c.url.Hostname(),
+			"root_certs", fmt.Sprint(c.rootCertificates),
+		)
 		dopts = append(dopts, grpc.WithTransportCredentials(credentials.NewTLS(&tcfg)))
 	} else {
 		dopts = append(dopts, grpc.WithInsecure())

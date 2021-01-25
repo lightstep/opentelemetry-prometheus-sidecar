@@ -299,9 +299,8 @@ func ConfigureOpentelemetry(opts ...Option) *Telemetry {
 		config: newConfig(opts...),
 	}
 
-	level.Debug(tel.config.logger).Log("msg", "debug logging enabled")
 	s, _ := json.MarshalIndent(tel.config, "", "\t")
-	level.Debug(tel.config.logger).Log("configuration", string(s))
+	level.Debug(tel.config.logger).Log("msg", "telemetry enabled", "cfg", string(s))
 
 	var startFuncs []func(context.Context) error
 
