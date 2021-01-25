@@ -66,16 +66,18 @@ func (r *ready) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 }
 
 func ok(w http.ResponseWriter, ok bool) {
-	status := http.StatusServiceUnavailable
+	code := http.StatusServiceUnavailable
+	status := "starting"
 
 	if ok {
-		status = http.StatusOK
+		code = http.StatusOK
+		status = "running"
 	}
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(status)
+	w.WriteHeader(code)
 
 	_ = json.NewEncoder(w).Encode(Response{
-		Status: http.StatusText(status),
+		Status: status,
 	})
 }
