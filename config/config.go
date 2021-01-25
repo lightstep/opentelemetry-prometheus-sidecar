@@ -37,12 +37,13 @@ const (
 	DefaultPrometheusEndpoint = "http://127.0.0.1:9090/"
 	DefaultWALDirectory       = "data/wal"
 
-	DefaultExportTimeout    = time.Second * 60
-	DefaultMaxPointAge      = time.Hour * 25
-	DefaultReportingPeriod  = time.Second * 30
-	DefaultStartupDelay     = time.Minute
-	DefaultStartupTimeout   = time.Minute * 5
-	DefaultSupervisorPeriod = time.Minute
+	DefaultExportTimeout      = time.Second * 60
+	DefaultHealthCheckTimeout = time.Second * 5
+	DefaultMaxPointAge        = time.Hour * 25
+	DefaultReportingPeriod    = time.Second * 30
+	DefaultStartupDelay       = time.Minute
+	DefaultStartupTimeout     = time.Minute * 5
+	DefaultSupervisorPeriod   = time.Minute
 
 	briefDescription = `
 The OpenTelemetry Prometheus sidecar runs alongside the

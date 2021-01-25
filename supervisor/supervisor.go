@@ -28,11 +28,9 @@ import (
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/health"
 	"github.com/pkg/errors"
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/label"
-	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/semconv"
 )
 
 var (
@@ -56,9 +54,9 @@ func New(cfg Config) *Supervisor {
 	admin := cfg.Admin
 	endpoint := fmt.Sprint("http://", admin.ListenIP, ":", admin.Port, "/-/health")
 	client := &http.Client{
-		// Note: this connection is traced, even though we
-		// know the server side is also not traced.
-		Transport: otelhttp.NewTransport(http.DefaultTransport),
+		// Note: this connection is not traced, even though we
+		// use a span around the healthcheck.
+		// Transport: otelhttp.NewTransport(http.DefaultTransport),
 	}
 	return &Supervisor{
 		logger:   cfg.Logger,
@@ -77,6 +75,9 @@ func (s *Supervisor) Run(args []string) bool {
 }
 
 func (s *Supervisor) start(args []string) error {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	cmd := exec.Command(args[0], args[1:]...)
 
 	// TODO here tee and capture the output, use it.
@@ -88,7 +89,7 @@ func (s *Supervisor) start(args []string) error {
 		return errors.Wrap(err, "supervisor exec")
 	}
 
-	go s.supervise()
+	go s.supervise(ctx)
 
 	err := cmd.Wait()
 
@@ -100,28 +101,33 @@ func (s *Supervisor) start(args []string) error {
 	return err
 }
 
-func (s *Supervisor) supervise() {
+func (s *Supervisor) supervise(ctx context.Context) {
+	ticker := time.NewTicker(config.DefaultSupervisorPeriod)
+	defer ticker.Stop()
+
 	for {
-		now := time.Now()
-
-		if err := s.healthcheck(); err != nil {
-			level.Error(s.logger).Log("msg", "healthcheck failed", "err", err)
-		}
-
-		if sleep := config.DefaultSupervisorPeriod - time.Since(now); sleep > 0 {
-			time.Sleep(sleep)
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := s.healthcheck(); err != nil {
+				level.Error(s.logger).Log("msg", "healthcheck failed", "err", err)
+			}
 		}
 	}
 }
 
 func (s *Supervisor) healthcheck() (err error) {
-	ctx, span := tracer.Start(context.Background(), "health-client")
-	defer span.End()
+	ctx, cancel := context.WithTimeout(context.Background(), config.DefaultHealthCheckTimeout)
+	defer cancel()
+
+	ctx, span := tracer.Start(ctx, "health-client")
+
 	defer func() {
-		if err == nil {
-			return
+		if err != nil {
+			span.RecordError(err)
 		}
-		span.SetStatus(codes.Error, err.Error())
+		span.End()
 	}()
 
 	req, err := http.NewRequestWithContext(ctx, "GET", s.endpoint, nil)
@@ -131,17 +137,20 @@ func (s *Supervisor) healthcheck() (err error) {
 
 	resp, err := s.client.Do(req)
 	if err != nil {
-		return errors.Wrap(err, "healtcheck query")
+		return errors.Wrap(err, "healtcheck GET")
 	}
 	defer resp.Body.Close()
 
 	var hr health.Response
 	if err := json.NewDecoder(resp.Body).Decode(&hr); err != nil {
-		return errors.Wrap(err, "healtcheck response")
+		return errors.Wrap(err, "decode response")
 	}
 
-	span.AddEvent("healthcheck",
-		trace.WithAttributes(label.String("status", hr.Status)),
-	)
+	span.SetAttributes(append(
+		semconv.HTTPAttributesFromHTTPStatusCode(resp.StatusCode),
+		label.String("sidecar.health", hr.Status),
+	)...)
+	span.SetStatus(semconv.SpanStatusFromHTTPStatusCode(resp.StatusCode))
+
 	return nil
 }
