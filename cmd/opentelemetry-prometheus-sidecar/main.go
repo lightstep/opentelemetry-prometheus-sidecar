@@ -24,10 +24,8 @@ import (
 	_ "net/http/pprof" // Comment this line to disable pprof endpoint.
 	"net/url"
 	"os"
-	"os/signal"
 	"path"
 	"runtime"
-	"syscall"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -111,7 +109,7 @@ func Main() bool {
 	}
 
 	// Start the sidecar.  This context lasts the lifetime of the sidecar.
-	ctx, cancelMain := context.WithCancel(context.Background())
+	ctx, cancelMain := telemetry.ContextWithSIGTERM(logger)
 	defer cancelMain()
 
 	healthChecker := health.NewChecker()
@@ -197,20 +195,6 @@ func Main() bool {
 		cfg.OpenTelemetry.MetricsPrefix,
 		cfg.Prometheus.MaxPointAge.Duration,
 	)
-
-	// SIGTERM initiates a graceful shutdown.
-	go func() {
-		defer cancelMain()
-
-		term := make(chan os.Signal)
-		signal.Notify(term, os.Interrupt, syscall.SIGTERM)
-		select {
-		case <-term:
-			level.Warn(logger).Log("msg", "received SIGTERM, exiting...")
-		case <-ctx.Done():
-			break
-		}
-	}()
 
 	// Start the admin server.
 	go func() {

@@ -31,6 +31,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/health"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/pkg/errors"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/label"
@@ -90,8 +91,8 @@ func (s *Supervisor) Run(args []string) bool {
 }
 
 func (s *Supervisor) start(args []string) error {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx, cancelMain := telemetry.ContextWithSIGTERM(s.logger)
+	defer cancelMain()
 
 	cmd := exec.Command(args[0], args[1:]...)
 
