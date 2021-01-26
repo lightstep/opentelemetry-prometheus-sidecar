@@ -15,6 +15,8 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"os/exec"
@@ -34,6 +36,28 @@ func TestMain(m *testing.M) {
 	main()
 }
 
+func runPrometheusService(ts *testServer) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/-/ready", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	address := fmt.Sprint("0.0.0.0:19093")
+	server := &http.Server{
+		Addr:    address,
+		Handler: mux,
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+
+	go server.ListenAndServe()
+
+	go func() {
+		<-ctx.Done()
+		server.Shutdown(ctx)
+	}()
+
+	ts.stops <- cancel
+}
+
 // As soon as prometheus starts responding to http request should be able to accept Interrupt signals for a gracefull shutdown.
 func TestStartupInterrupt(t *testing.T) {
 	if testing.Short() {
@@ -41,6 +65,8 @@ func TestStartupInterrupt(t *testing.T) {
 	}
 
 	ts := newTestServer(t)
+
+	runPrometheusService(ts)
 	go func() {
 		// By sleeping 5 seconds here, we require the
 		// sidecar's selftest to try and fail for 5 seconds
@@ -55,6 +81,7 @@ func TestStartupInterrupt(t *testing.T) {
 		os.Args[0],
 		append(e2eTestMainCommonFlags,
 			"--prometheus.wal=testdata/wal",
+			"--log.level=debug",
 		)...)
 
 	cmd.Env = append(os.Environ(), "RUN_MAIN=1")
@@ -106,7 +133,9 @@ Loop:
 	}
 	if err := cmd.Process.Kill(); err == nil {
 		t.Errorf("opentelemetry-prometheus-sidecar didn't shutdown gracefully after sending the Interrupt signal")
-	} else if stoppedErr != nil && stoppedErr.Error() != "signal: interrupt" { // TODO - find a better way to detect when the process didn't exit as expected!
+	} else if stoppedErr != nil && stoppedErr.Error() != "signal: interrupt" {
+		// TODO - find a better way to detect when the process didn't exit as expected!
+		// (See *os.ProcessState)
 		t.Errorf("opentelemetry-prometheus-sidecar exited with an unexpected error:%v", stoppedErr)
 	}
 
@@ -187,6 +216,7 @@ func TestStartupUnhealthyEndpoint(t *testing.T) {
 			"--prometheus.wal=testdata/wal",
 			"--startup.timeout=5s",
 			"--destination.timeout=1s",
+			"--log.level=debug",
 		)...)
 
 	cmd.Env = append(os.Environ(), "RUN_MAIN=1")
@@ -198,6 +228,12 @@ func TestStartupUnhealthyEndpoint(t *testing.T) {
 		t.Errorf("execution error: %v", err)
 		return
 	}
+	defer cmd.Wait()
+	defer cmd.Process.Kill()
+
+	ts := newTestServer(t)
+	defer ts.Stop()
+	runPrometheusService(ts)
 
 	cmd.Wait()
 

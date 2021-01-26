@@ -376,6 +376,13 @@ func selfTest(ctx context.Context, promURL *url.URL, scf otlp.StorageClientFacto
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
+	// These tests are performed sequentially, to keep the logs simple.
+	// Note waitForPrometheus has no unrecoverable error conditions, so
+	// loops until success or the context is canceled.
+	if !waitForPrometheus(ctx, logger, promURL) {
+		return fmt.Errorf("Prometheus is not ready")
+	}
+
 	// Outbound connection test.
 	{
 		if err := client.Selftest(ctx); err != nil {
@@ -386,13 +393,6 @@ func selfTest(ctx context.Context, promURL *url.URL, scf otlp.StorageClientFacto
 		if err := client.Close(); err != nil {
 			return fmt.Errorf("error closing test client: %w", err)
 		}
-	}
-
-	// These tests are performed sequentially, to keep the logs simple.
-	// Note waitForPrometheus has no unrecoverable error conditions, so
-	// loops until success or the context is canceled.
-	if !waitForPrometheus(ctx, logger, promURL) {
-		return fmt.Errorf("Prometheus is not ready")
 	}
 
 	level.Debug(logger).Log("msg", "selftest was successful")
