@@ -141,6 +141,9 @@ func TestE2E(t *testing.T) {
 
 	ts := newTestServer(t)
 
+	// start gRPC service
+	go runMetricsService(ts)
+
 	// Run prometheus
 	promCmd := exec.CommandContext(
 		ctx,
@@ -178,6 +181,7 @@ func TestE2E(t *testing.T) {
 			"--prometheus.wal", path.Join(dataDir, "wal"),
 			"--prometheus.endpoint=http://127.0.0.1:19000",
 			"--destination.attribute=service.name=Service",
+			"--log.level=debug",
 			"--startup.delay=1s")...,
 	)
 	sideCmd.Env = append(os.Environ(), "RUN_MAIN=1")
@@ -214,9 +218,6 @@ func TestE2E(t *testing.T) {
 		}
 		_ = s.ListenAndServe()
 	}()
-
-	// start gRPC service
-	go runMetricsService(ts)
 
 	// Gather results
 	var results []*metrics.ResourceMetrics
@@ -308,7 +309,7 @@ func runMetricsService(ts *testServer) {
 		log.Fatal("failed to append client certs")
 	}
 
-	listener, err := net.Listen("tcp", "0.0.0.0:19001")
+	listener, err := net.Listen("tcp", "127.0.0.1:19001")
 	if err != nil {
 		log.Fatalf("failed to listen: %s", err)
 	}
