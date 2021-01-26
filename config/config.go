@@ -42,6 +42,7 @@ const (
 	DefaultMaxPointAge        = time.Hour * 25
 	DefaultReportingPeriod    = time.Second * 30
 	DefaultStartupDelay       = time.Minute
+	DefaultShutdownDelay      = time.Minute
 	DefaultStartupTimeout     = time.Minute * 5
 	DefaultSupervisorPeriod   = time.Minute
 
