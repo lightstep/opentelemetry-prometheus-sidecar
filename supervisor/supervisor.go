@@ -116,6 +116,19 @@ func (s *Supervisor) start(args []string) error {
 
 	wg.Add(1)
 	go s.supervise(ctx, &wg)
+	go func() {
+		// As soon as this context is cancelled (possibly by a
+		// SIGTERM), deliver SIGTERM to the subordinate
+		// process.  The pipe reader below will continue reading
+		// until EOF.
+		<-ctx.Done()
+		cmd.Process.Signal(os.Interrupt)
+
+		// If the subordinate still doesn't exit, force the
+		// issue.  The `cmd.Wait()` below otherwise cannot proceed.
+		time.Sleep(config.DefaultShutdownDelay)
+		cmd.Process.Kill()
+	}()
 
 	err := cmd.Wait()
 
@@ -246,8 +259,8 @@ func (s *Supervisor) newPipe(ctx context.Context, name string, real io.Writer, w
 func (s *Supervisor) readOutput(_ context.Context, name string, real io.Writer, rd *io.PipeReader, wg *sync.WaitGroup) {
 	// Note: We disregard the context here in order to read and
 	// copy the stream until reaching EOF.  The other end of the
-	// pipe will close the pipe Writer when the context is
-	// canceled.
+	// pipe will close the pipe Writer when the remote process
+	// closes the output stream.
 	defer wg.Done()
 
 	buffer := make([]byte, supervisorBufferSize)
