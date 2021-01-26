@@ -49,12 +49,14 @@ func TestProcessFileConfig(t *testing.T) {
 		{
 			"empty",
 			"",
-			map[string]string{},
-			[]*metadata.Entry{},
-			"",
+			nil,
+			nil,
+			"endpoint must be set: destination.endpoint",
 		},
 		{
 			"smoke", `
+destination:
+  endpoint: http://otlp
 metric_renames:
 - from: from
   to:   to
@@ -100,23 +102,35 @@ static_metadata:
 				"--config-file=" + cfgFile,
 			}, readFunc)
 
-			if diff := cmp.Diff(tt.renameMappings, metricRenames); diff != "" {
-				t.Errorf("renameMappings mismatch: %v", diff)
-			}
-			if diff := cmp.Diff(tt.staticMetadata, staticMetadata); diff != "" {
-				t.Errorf("staticMetadata mismatch: %v", diff)
-			}
 			if tt.errText == "" {
 				require.NoError(t, err)
 			} else {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), tt.errText)
 			}
+			if diff := cmp.Diff(tt.renameMappings, metricRenames); diff != "" {
+				t.Errorf("renameMappings mismatch: %v", diff)
+			}
+			if diff := cmp.Diff(tt.staticMetadata, staticMetadata); diff != "" {
+				t.Errorf("staticMetadata mismatch: %v", diff)
+			}
 		})
 	}
 }
 
 func TestConfiguration(t *testing.T) {
+	// Add minimum settings to ensure tests will pass.
+	testConfig := func() config.MainConfig {
+		cfg := config.DefaultMainConfig()
+		cfg.Destination.Endpoint = "http://otlp"
+		return cfg
+	}
+	withFlags := func(fs ...string) []string {
+		return append([]string{
+			"--destination.endpoint=http://otlp",
+		}, fs...)
+	}
+
 	for _, tt := range []struct {
 		name       string
 		yaml       string
@@ -128,8 +142,8 @@ func TestConfiguration(t *testing.T) {
 			"empty",
 			"",
 			nil,
-			config.DefaultMainConfig(),
-			"",
+			config.MainConfig{},
+			"endpoint must be set: destination.endpoint",
 		},
 		{
 			"only_file", `
@@ -159,7 +173,8 @@ startup_timeout: 1777s
 					},
 				},
 				Admin: AdminConfig{
-					ListenAddress: config.DefaultAdminListenAddress,
+					ListenIP: config.DefaultAdminListenIP,
+					Port:     config.DefaultAdminPort,
 				},
 				Destination: OTLPConfig{
 					Endpoint: "http://womp.womp",
@@ -259,7 +274,8 @@ log_config:
 					},
 				},
 				Admin: AdminConfig{
-					ListenAddress: config.DefaultAdminListenAddress,
+					ListenIP: config.DefaultAdminListenIP,
+					Port:     config.DefaultAdminPort,
 				},
 				Destination: OTLPConfig{
 					Endpoint: "http://womp.womp",
@@ -336,7 +352,8 @@ log_config:
   format: json
 
 admin:
-  listen_address: 0.0.0.0:10000
+  listen_ip: 0.0.0.0
+  port: 9999
 
 security:
   root_certificates:
@@ -373,7 +390,8 @@ static_metadata:
 					},
 				},
 				Admin: AdminConfig{
-					ListenAddress: "0.0.0.0:10000",
+					ListenIP: config.DefaultAdminListenIP,
+					Port:     9999,
 				},
 				StartupDelay: DurationConfig{
 					30 * time.Second,
@@ -442,9 +460,9 @@ static_metadata:
 		{
 			"trim header whitespace",
 			"",
-			[]string{"--destination.header=key=\nabcdef\n"},
+			withFlags("--destination.header=key=\nabcdef\n"),
 			func() config.MainConfig {
-				cfg := config.DefaultMainConfig()
+				cfg := testConfig()
 				cfg.Destination.Headers["key"] = "abcdef"
 				return cfg
 			}(),
@@ -453,9 +471,9 @@ static_metadata:
 		{
 			"trim header double quotes around both key/val",
 			"",
-			[]string{"--destination.header=\"key=abcdef\""},
+			withFlags("--destination.header=\"key=abcdef\""),
 			func() config.MainConfig {
-				cfg := config.DefaultMainConfig()
+				cfg := testConfig()
 				cfg.Destination.Headers["key"] = "abcdef"
 				return cfg
 			}(),
@@ -464,9 +482,9 @@ static_metadata:
 		{
 			"trim header double quotes around key only",
 			"",
-			[]string{"--destination.header=\"key\"=abcdef"},
+			withFlags("--destination.header=\"key\"=abcdef"),
 			func() config.MainConfig {
-				cfg := config.DefaultMainConfig()
+				cfg := testConfig()
 				cfg.Destination.Headers["key"] = "abcdef"
 				return cfg
 			}(),
@@ -475,9 +493,9 @@ static_metadata:
 		{
 			"trim header double quotes around val only",
 			"",
-			[]string{"--destination.header=key=\"abcdef\""},
+			withFlags("--destination.header=key=\"abcdef\""),
 			func() config.MainConfig {
-				cfg := config.DefaultMainConfig()
+				cfg := testConfig()
 				cfg.Destination.Headers["key"] = "abcdef"
 				return cfg
 			}(),
@@ -486,9 +504,9 @@ static_metadata:
 		{
 			"trim header single quotes around both key/val",
 			"",
-			[]string{"--destination.header='key=abcdef'"},
+			withFlags("--destination.header='key=abcdef'"),
 			func() config.MainConfig {
-				cfg := config.DefaultMainConfig()
+				cfg := testConfig()
 				cfg.Destination.Headers["key"] = "abcdef"
 				return cfg
 			}(),
@@ -497,9 +515,9 @@ static_metadata:
 		{
 			"trim header single quotes around key only",
 			"",
-			[]string{"--destination.header='key'=abcdef"},
+			withFlags("--destination.header='key'=abcdef"),
 			func() config.MainConfig {
-				cfg := config.DefaultMainConfig()
+				cfg := testConfig()
 				cfg.Destination.Headers["key"] = "abcdef"
 				return cfg
 			}(),
@@ -508,9 +526,9 @@ static_metadata:
 		{
 			"trim header single quotes around val only",
 			"",
-			[]string{"--destination.header=key='abcdef'"},
+			withFlags("--destination.header=key='abcdef'"),
 			func() config.MainConfig {
-				cfg := config.DefaultMainConfig()
+				cfg := testConfig()
 				cfg.Destination.Headers["key"] = "abcdef"
 				return cfg
 			}(),
@@ -519,8 +537,8 @@ static_metadata:
 		{
 			"check header newlines",
 			"",
-			[]string{"--destination.header=key=abc\ndef"},
-			config.DefaultMainConfig(),
+			withFlags("--destination.header=key=abc\ndef"),
+			config.MainConfig{},
 			"invalid newline",
 		},
 	} {
@@ -539,10 +557,10 @@ static_metadata:
 			cfg.ConfigFilename = ""
 
 			if tt.errText == "" {
+				require.NoError(t, err)
 				if diff := cmp.Diff(tt.MainConfig, cfg); diff != "" {
 					t.Errorf("MainConfig mismatch: %v", diff)
 				}
-				require.NoError(t, err)
 			} else {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), tt.errText)

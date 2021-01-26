@@ -12,6 +12,17 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   by default if none is configured.  Disable this behavior with --disable-diagnostics. (#72)
 - Auto-downcase headers for http2 compliance. (#73)
 - Ensures the sidecar will exit non-zero on errors. (#74)
+- Adds a /-/ready endpoint, where readiness implies:
+  - Prometheus is ready
+  - Can write status file
+  - Export empty request succeeds. (#75)
+- Adds a /-/health endpoint, always returns OK. (#75)
+- Adds a supervisor:
+  - Performs periodic healthcheck
+  - Runs main() in a sub-process, tees stdout and stderr
+  - Records recent logs & healthcheck status in a span. (#75)
+- Disable spans in the sidecar, replace w/ 2 Float64ValueRecorders. (#75)
+
 
 ## [0.10.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.10.0) - 2021-01-21
 

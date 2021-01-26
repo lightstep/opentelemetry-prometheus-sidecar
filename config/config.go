@@ -17,13 +17,13 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/ghodss/yaml"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
-	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/pkg/errors"
 	promlogflag "github.com/prometheus/common/promlog/flag"
 	"github.com/prometheus/common/version"
@@ -32,18 +32,44 @@ import (
 )
 
 const (
-	DefaultStartupDelay       = time.Minute
-	DefaultStartupTimeout     = 5 * time.Minute
-	DefaultWALDirectory       = "data/wal"
-	DefaultAdminListenAddress = "0.0.0.0:9091"
+	DefaultAdminPort          = 9091
+	DefaultAdminListenIP      = "0.0.0.0"
 	DefaultPrometheusEndpoint = "http://127.0.0.1:9090/"
+	DefaultWALDirectory       = "data/wal"
+
+	DefaultExportTimeout      = time.Second * 60
+	DefaultHealthCheckTimeout = time.Second * 5
 	DefaultMaxPointAge        = time.Hour * 25
+	DefaultReportingPeriod    = time.Second * 30
+	DefaultStartupDelay       = time.Minute
+	DefaultStartupTimeout     = time.Minute * 5
+	DefaultSupervisorPeriod   = time.Minute
+
+	DefaultSupervisorBufferSize  = 16384
+	DefaultSupervisorLogsHistory = 16
 
 	briefDescription = `
 The OpenTelemetry Prometheus sidecar runs alongside the
 Prometheus (https://prometheus.io/) Server and sends metrics data to
 an OpenTelemetry (https://opentelemetry.io) Protocol endpoint.
 `
+
+	AgentKey = "telemetry-reporting-agent"
+)
+
+var (
+	AgentMainValue = fmt.Sprint(
+		"opentelemetry-prometheus-sidecar-main/",
+		version.Version,
+	)
+	AgentSecondaryValue = fmt.Sprint(
+		"opentelemetry-prometheus-sidecar-telemetry/",
+		version.Version,
+	)
+	AgentSupervisorValue = fmt.Sprint(
+		"opentelemetry-prometheus-sidecar-supervisor/",
+		version.Version,
+	)
 )
 
 type MetricRenamesConfig struct {
@@ -91,7 +117,8 @@ type OTelConfig struct {
 }
 
 type AdminConfig struct {
-	ListenAddress string `json:"listen_address"`
+	ListenIP string `json:"listen_ip"`
+	Port     int    `json:"port"`
 }
 
 type MainConfig struct {
@@ -111,6 +138,7 @@ type MainConfig struct {
 	StaticMetadata []StaticMetadataConfig `json:"static_metadata"`
 	LogConfig      LogConfig              `json:"log_config"`
 
+	DisableSupervisor  bool `json:"disable_supervisor"`
 	DisableDiagnostics bool `json:"disable_diagnostics"`
 
 	// This field cannot be parsed inside a configuration file,
@@ -128,17 +156,18 @@ func DefaultMainConfig() MainConfig {
 			MaxPointAge: DurationConfig{DefaultMaxPointAge},
 		},
 		Admin: AdminConfig{
-			ListenAddress: DefaultAdminListenAddress,
+			Port:     DefaultAdminPort,
+			ListenIP: DefaultAdminListenIP,
 		},
 		Destination: OTLPConfig{
 			Headers:    map[string]string{},
 			Attributes: map[string]string{},
-			Timeout:    DurationConfig{telemetry.DefaultExportTimeout},
+			Timeout:    DurationConfig{DefaultExportTimeout},
 		},
 		Diagnostics: OTLPConfig{
 			Headers:    map[string]string{},
 			Attributes: map[string]string{},
-			Timeout:    DurationConfig{telemetry.DefaultExportTimeout},
+			Timeout:    DurationConfig{DefaultExportTimeout},
 		},
 		LogConfig: LogConfig{
 			Level:   "info",
@@ -198,8 +227,10 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 	a.Flag("prometheus.max-point-age", "Skip points older than this, to assist recovery. Default: "+DefaultMaxPointAge.String()).
 		DurationVar(&cfg.Prometheus.MaxPointAge.Duration)
 
-	a.Flag("admin.listen-address", "Administrative HTTP address this process listens on. Default: "+DefaultAdminListenAddress).
-		StringVar(&cfg.Admin.ListenAddress)
+	a.Flag("admin.port", "Administrative port this process listens on. Default: "+fmt.Sprint(DefaultAdminPort)).
+		IntVar(&cfg.Admin.Port)
+	a.Flag("admin.listen-ip", "Administrative IP address this process listens on. Default: "+DefaultAdminListenIP).
+		StringVar(&cfg.Admin.ListenIP)
 
 	a.Flag("security.root-certificate", "Root CA certificate to use for TLS connections, in PEM format (e.g., root.crt). May be repeated.").
 		StringsVar(&cfg.Security.RootCertificates)
@@ -224,6 +255,8 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 	a.Flag("log.verbose", "Verbose logging level: 0 = off, 1 = some, 2 = more; 1 is automatically added when log.level is 'debug'; impacts logging from the gRPC library in particular").
 		IntVar(&cfg.LogConfig.Verbose)
 
+	a.Flag("disable-supervisor", "Disable the supervisor.").
+		BoolVar(&cfg.DisableSupervisor)
 	a.Flag("disable-diagnostics", "Disable diagnostics by default; if unset, diagnostics will be auto-configured to the primary destination").
 		BoolVar(&cfg.DisableDiagnostics)
 
@@ -274,6 +307,40 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 		}
 		if err := sanitizeValues("diagnostics header", true, cfg.Diagnostics.Headers); err != nil {
 			return MainConfig{}, nil, nil, err
+		}
+	}
+
+	// We avoided using the kingpin support for URL flags because
+	// it leads to special cases merging configs and because URL
+	// parsing succeeds in cases w/o a scheme, needs to be
+	// validated anyway.
+	type namedURL struct {
+		name       string
+		value      string
+		allowEmpty bool
+	}
+	for _, pair := range []namedURL{
+		{"destination.endpoint", cfg.Destination.Endpoint, false},
+		{"diagnostics.endpoint", cfg.Diagnostics.Endpoint, true},
+		{"prometheus.endpoint", cfg.Prometheus.Endpoint, false},
+		{"admin.endpoint", fmt.Sprint("http://", cfg.Admin.ListenIP, ":", cfg.Admin.Port), false},
+	} {
+		if pair.allowEmpty && pair.value == "" {
+			continue
+		}
+		if pair.value == "" {
+			return MainConfig{}, nil, nil, fmt.Errorf("endpoint must be set: %s", pair.name)
+		}
+		url, err := url.Parse(pair.value)
+		if err != nil {
+			return MainConfig{}, nil, nil, fmt.Errorf("invalid endpoint: %s: %s: %w", pair.name, pair.value, err)
+		}
+
+		switch url.Scheme {
+		case "http", "https":
+			// Good!
+		default:
+			return MainConfig{}, nil, nil, fmt.Errorf("endpoints must use http or https: %s: %s", pair.name, pair.value)
 		}
 	}
 

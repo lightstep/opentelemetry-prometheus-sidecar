@@ -88,11 +88,11 @@ func (c *Cache) Run(ctx context.Context) {
 }
 
 func (c *Cache) refresh(ctx context.Context) error {
-	req, err := http.NewRequest("GET", c.url.String(), nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", c.url.String(), nil)
 	if err != nil {
 		return err
 	}
-	resp, err := c.client.Do(req.WithContext(ctx))
+	resp, err := c.client.Do(req)
 	if err != nil {
 		return err
 	}
