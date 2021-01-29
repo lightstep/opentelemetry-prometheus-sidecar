@@ -41,6 +41,7 @@ import (
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/oklog/run"
 	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/promlog"
 	"github.com/prometheus/common/version"
 	promconfig "github.com/prometheus/prometheus/config"
@@ -153,6 +154,8 @@ func Main() bool {
 		level.Error(logger).Log("msg", "tailing WAL failed", "err", err)
 		return false
 	}
+
+	promconfig.DefaultQueueConfig.MaxBackoff = model.Duration(2 * time.Second)
 	promconfig.DefaultQueueConfig.MaxSamplesPerSend = otlp.MaxTimeseriesesPerRequest
 	// We want the queues to have enough buffer to ensure consistent flow with full batches
 	// being available for every new request.

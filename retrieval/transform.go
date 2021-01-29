@@ -63,6 +63,8 @@ func (b *sampleBuilder) next(ctx context.Context, samples []record.RefSample) (*
 	tailSamples := samples[1:]
 
 	if math.IsNaN(sample.V) {
+		// Note: This includes stale markers, which are
+		// specific NaN values defined in prometheus/tsdb.
 		return nil, 0, tailSamples, nil
 	}
 
