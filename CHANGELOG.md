@@ -8,6 +8,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+- Update go.mod files to use Go 1.15. (#83)
+
 ## [0.11.1](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.11.1) - 2021-01-26
 
 - Fix for graceful shutdown. (#79)
