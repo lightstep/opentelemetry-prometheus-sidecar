@@ -267,6 +267,10 @@ func (c *Config) setupMetrics() (start, stop func(ctx context.Context) error, er
 				0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10,
 			}),
 			metricsdk.CumulativeExportKindSelector(),
+			// Note: we don't really need memory for all metrics, and this
+			// becomes a problem when there is high cardinality.  This is to
+			// enable the healthz handler support in this package.
+			processor.WithMemory(true),
 		),
 		controller.WithPusher(metricExporter),
 		controller.WithResource(c.resource),
