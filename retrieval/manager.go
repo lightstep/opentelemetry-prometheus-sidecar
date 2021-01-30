@@ -167,10 +167,6 @@ Outer:
 				started = true
 			}
 			samples, err = decoder.Samples(rec, samples[:0])
-			if len(samples) > 0 {
-				if len(samples) > 1 {
-				}
-			}
 			if err != nil {
 				level.Error(r.logger).Log("error", err)
 				continue

@@ -30,7 +30,6 @@ import (
 	"github.com/prometheus/prometheus/config"
 	"go.opentelemetry.io/otel/label"
 	"go.opentelemetry.io/otel/metric"
-	"golang.org/x/time/rate"
 
 	// gRPC Status protobuf types we may want to see.  This type
 	// is not widely used, but is the most standard way to itemize
@@ -82,7 +81,6 @@ type QueueManager struct {
 	cfg           config.QueueConfig
 	clientFactory StorageClientFactory
 	queueName     string
-	logLimiter    *rate.Limiter
 
 	shardsMtx   sync.RWMutex
 	shards      *shardCollection
@@ -116,7 +114,6 @@ func NewQueueManager(logger log.Logger, cfg config.QueueConfig, clientFactory St
 		clientFactory: clientFactory,
 		queueName:     clientFactory.Name(),
 
-		logLimiter:  rate.NewLimiter(logRateLimit, logBurst),
 		numShards:   1,
 		reshardChan: make(chan int),
 		quit:        make(chan struct{}),
