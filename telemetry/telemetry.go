@@ -30,9 +30,11 @@ import (
 	"go.opentelemetry.io/contrib/propagators/b3"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpgrpc"
 	"go.opentelemetry.io/otel/label"
 	"go.opentelemetry.io/otel/propagation"
-	controller "go.opentelemetry.io/otel/sdk/metric/controller/push"
+	metricsdk "go.opentelemetry.io/otel/sdk/export/metric"
+	controller "go.opentelemetry.io/otel/sdk/metric/controller/basic"
 	processor "go.opentelemetry.io/otel/sdk/metric/processor/basic"
 	selector "go.opentelemetry.io/otel/sdk/metric/selector/simple"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -210,14 +212,16 @@ func newResource(c *Config) (*resource.Resource, error) {
 }
 
 func newExporter(endpoint string, insecure bool, headers map[string]string) *otlp.Exporter {
-	secureOption := otlp.WithTLSCredentials(credentials.NewClientTLSFromCert(nil, ""))
+	secureOption := otlpgrpc.WithTLSCredentials(credentials.NewClientTLSFromCert(nil, ""))
 	if insecure {
-		secureOption = otlp.WithInsecure()
+		secureOption = otlpgrpc.WithInsecure()
 	}
-	return otlp.NewUnstartedExporter(
-		secureOption,
-		otlp.WithAddress(endpoint),
-		otlp.WithHeaders(headers),
+	driver := otlpgrpc.NewDriver(secureOption,
+		otlpgrpc.WithEndpoint(endpoint),
+		otlpgrpc.WithHeaders(headers),
+	)
+	return otlp.NewUnstartedExporter(driver,
+		otlp.WithMetricExportKindSelector(metricsdk.CumulativeExportKindSelector()),
 	)
 }
 
@@ -259,13 +263,15 @@ func (c *Config) setupMetrics() (start, stop func(ctx context.Context) error, er
 
 	pusher := controller.New(
 		processor.New(
-			selector.NewWithInexpensiveDistribution(),
-			metricExporter,
+			selector.NewWithHistogramDistribution([]float64{
+				0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10,
+			}),
+			metricsdk.CumulativeExportKindSelector(),
 		),
-		metricExporter,
+		controller.WithPusher(metricExporter),
 		controller.WithResource(c.resource),
-		controller.WithPeriod(c.MetricReportingPeriod),
-		controller.WithTimeout(c.ExportTimeout),
+		controller.WithCollectPeriod(c.MetricReportingPeriod),
+		controller.WithPushTimeout(c.ExportTimeout),
 	)
 
 	provider := pusher.MeterProvider()
@@ -285,12 +291,21 @@ func (c *Config) setupMetrics() (start, stop func(ctx context.Context) error, er
 				return errors.Wrap(err, "failed to start host metrics")
 			}
 
-			pusher.Start()
+			if err := pusher.Start(ctx); err != nil {
+				return errors.Wrap(err, "failed to start metrics controller")
+			}
 
 			return nil
 		}, func(ctx context.Context) error {
-			pusher.Stop()
-			return metricExporter.Shutdown(ctx)
+			err1 := pusher.Stop(ctx)
+			err2 := metricExporter.Shutdown(ctx)
+			if err1 != nil {
+				return errors.Wrap(err1, "failed to stop metrics controller")
+			}
+			if err2 != nil {
+				return errors.Wrap(err2, "failed to stop metrics exporter")
+			}
+			return nil
 		}, nil
 }
 
