@@ -38,4 +38,4 @@ require (
 	gopkg.in/d4l3k/messagediff.v1 v1.2.1
 )
 
-go 1.14
+go 1.15
