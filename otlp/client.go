@@ -27,6 +27,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	metricsService "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/collector/metrics/v1"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"go.opentelemetry.io/otel/metric"
@@ -36,8 +37,6 @@ import (
 )
 
 const (
-	MaxTimeseriesesPerRequest = 200
-
 	// serviceConfig copied from OTel-Go.
 	// https://github.com/open-telemetry/opentelemetry-go/blob/5ed96e92446d2d58d131e0672da613a84c16af7a/exporters/otlp/grpcoptions.go#L37
 	serviceConfig = `{
@@ -104,7 +103,7 @@ type ClientConfig struct {
 }
 
 // NewClient creates a new Client.
-func NewClient(conf *ClientConfig) *Client {
+func NewClient(conf ClientConfig) *Client {
 	logger := conf.Logger
 	if logger == nil {
 		logger = log.NewNopLogger()
@@ -246,10 +245,10 @@ func (c *Client) Store(req *metricsService.ExportMetricsServiceRequest) error {
 
 	service := metricsService.NewMetricsServiceClient(conn)
 
-	errors := make(chan error, len(tss)/MaxTimeseriesesPerRequest+1)
+	errors := make(chan error, len(tss)/config.MaxTimeseriesPerRequest+1)
 	var wg sync.WaitGroup
-	for i := 0; i < len(tss); i += MaxTimeseriesesPerRequest {
-		end := i + MaxTimeseriesesPerRequest
+	for i := 0; i < len(tss); i += config.MaxTimeseriesPerRequest {
+		end := i + config.MaxTimeseriesPerRequest
 		if end > len(tss) {
 			end = len(tss)
 		}
@@ -276,9 +275,10 @@ func (c *Client) Store(req *metricsService.ExportMetricsServiceRequest) error {
 			// Points were successfully written.
 			pointsExported.Add(ctx, int64(end-begin))
 
-			level.Debug(c.logger).Log(
-				"msg", "Write was successful",
-				"records", end-begin)
+			// @@@ TODO: Log this once per connection.
+			// level.Debug(c.logger).Log(
+			// 	"msg", "Write was successful",
+			// 	"records", end-begin)
 		}(i, end)
 	}
 	wg.Wait()

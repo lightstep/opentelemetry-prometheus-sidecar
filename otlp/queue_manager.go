@@ -19,13 +19,13 @@ import (
 	"math"
 	"sync"
 	"time"
+	"unsafe"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
 	metricsService "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/collector/metrics/v1"
 	metric_pb "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
-	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/config"
 	"go.opentelemetry.io/otel/label"
@@ -73,6 +73,11 @@ type StorageClientFactory interface {
 	Name() string
 }
 
+type LogReaderClient interface {
+	Size() (int, error)
+	Offset() int
+}
+
 // QueueManager manages a queue of samples to be sent to the Storage
 // indicated by the provided StorageClient.
 type QueueManager struct {
@@ -92,7 +97,7 @@ type QueueManager struct {
 	samplesIn, samplesOut, samplesOutDuration *ewmaRate
 	walSize, walOffset                        *ewmaRate
 
-	tailer               *tail.Tailer
+	tailer               LogReaderClient
 	lastSize, lastOffset int
 
 	succeededSamplesTotal metric.Int64Counter
@@ -104,7 +109,7 @@ type QueueManager struct {
 }
 
 // NewQueueManager builds a new QueueManager.
-func NewQueueManager(logger log.Logger, cfg config.QueueConfig, clientFactory StorageClientFactory, tailer *tail.Tailer) (*QueueManager, error) {
+func NewQueueManager(logger log.Logger, cfg config.QueueConfig, clientFactory StorageClientFactory, tailer LogReaderClient) (*QueueManager, error) {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
@@ -176,6 +181,10 @@ func NewQueueManager(logger log.Logger, cfg config.QueueConfig, clientFactory St
 			"The number of shards used for parallel sending to the remote storage.",
 		),
 	)
+
+	if unsafe.Sizeof(int(0)) != 8 {
+		return nil, fmt.Errorf("this code requires 64bit ints")
+	}
 
 	return t, nil
 }
