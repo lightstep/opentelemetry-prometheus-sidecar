@@ -8,6 +8,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+- Update to OTel-Go SDK v0.16.0. (#86)
 - Use a 2 second maximum backoff when Export() fails (vs 100ms default). (#81)
 - Update CI tests to use Prometheus 2.23. (#82)
 - Update go.mod files to use Go 1.15. (#83)
