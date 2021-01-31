@@ -36,12 +36,12 @@ import (
 
 var (
 	samplesProcessed = sidecar.OTelMeterMust.NewInt64ValueRecorder(
-		"samples.processed",
+		"sidecar.samples.processed",
 		metric.WithDescription("Number of WAL samples processed in a batch"),
 	)
 
 	samplesProduced = sidecar.OTelMeterMust.NewInt64Counter(
-		"samples.produced",
+		"sidecar.samples.produced",
 		metric.WithDescription("Number of Metric samples produced"),
 	)
 )

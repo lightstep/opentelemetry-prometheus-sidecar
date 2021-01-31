@@ -79,8 +79,6 @@ func Main() bool {
 
 	outputURL, _ := url.Parse(cfg.Destination.Endpoint)
 
-	// TODO: @@@ Replace with a fake sender w/ artificial delays
-	// and errors.
 	scf := internal.NewOTLPClientFactory(otlp.ClientConfig{
 		Logger:           log.With(logger, "component", "storage"),
 		URL:              outputURL,
@@ -102,34 +100,33 @@ func Main() bool {
 
 	defer queueManager.Stop()
 
-	for {
-		now := time.Now()
-		queueManager.Append(
-			rand.Uint64(),
-			otlptest.ResourceMetrics(
-				otlptest.Resource(
-					otlptest.KeyValue("A", "B"),
-				),
-				otlptest.InstrumentationLibraryMetrics(
-					otlptest.InstrumentationLibrary(
-						"testlib", "v0.0.1",
+	now := time.Now()
+	req := otlptest.ResourceMetrics(
+		otlptest.Resource(
+			otlptest.KeyValue("A", "B"),
+		),
+		otlptest.InstrumentationLibraryMetrics(
+			otlptest.InstrumentationLibrary(
+				"testlib", "v0.0.1",
+			),
+			otlptest.IntGauge(
+				"up",
+				"d",
+				"u",
+				otlptest.IntDataPoint(
+					otlptest.Labels(
+						otlptest.Label("L", "M"),
 					),
-					otlptest.IntGauge(
-						"up",
-						"d",
-						"u",
-						otlptest.IntDataPoint(
-							otlptest.Labels(
-								otlptest.Label("L", "M"),
-							),
-							now.Add(-time.Second),
-							now,
-							1,
-						),
-					),
+					now.Add(-time.Second),
+					now,
+					1,
 				),
 			),
-		)
+		),
+	)
+
+	for {
+		queueManager.Append(rand.Uint64(), req)
 	}
 }
 

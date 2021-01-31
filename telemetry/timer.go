@@ -42,13 +42,11 @@ type (
 )
 
 func NewTimer(name, desc string) Timer {
-	return Timer(
-		sidecar.OTelMeterMust.NewFloat64ValueRecorder(
-			name,
-			metric.WithDescription(desc),
-			metric.WithUnit("s"),
-		),
-	)
+	return Timer(sidecar.OTelMeterMust.NewFloat64ValueRecorder(
+		name,
+		metric.WithDescription(desc),
+		metric.WithUnit("s"),
+	))
 }
 
 func (t Timer) Start(ctx context.Context) Timing {

@@ -67,15 +67,17 @@ const (
 
 var (
 	pointsExported = sidecar.OTelMeterMust.NewInt64Counter(
-		"points.exported",
+		"sidecar.points.exported",
 		metric.WithDescription("count of exported metric points"),
 	)
+
 	exportDuration = telemetry.NewTimer(
-		"otlp.export.duration",
+		"sidecar.export.duration",
 		"duration of the otlp.Export() call",
 	)
+
 	connectDuration = telemetry.NewTimer(
-		"otlp.connect.duration",
+		"sidecar.connect.duration",
 		"duration of the grpc.Dial() call",
 	)
 )
@@ -265,6 +267,7 @@ func (c *Client) Store(req *metricsService.ExportMetricsServiceRequest) error {
 			if _, err = service.Export(c.grpcMetadata(ctx), req_copy); err != nil {
 				// TODO This happens too fast _after_ a healthy
 				// connection becomes unhealthy. Fix.
+
 				level.Debug(c.logger).Log(
 					"msg", "Failure calling Export",
 					"err", truncateErrorString(err))

@@ -139,32 +139,34 @@ func NewQueueManager(logger log.Logger, cfg config.QueueConfig, clientFactory St
 
 	t.shards = t.newShardCollection(t.numShards)
 
+	// @@@ Combine these two
 	t.succeededSamplesTotal = sidecar.OTelMeterMust.NewInt64Counter(
-		"export.samples.success",
+		"sidecar.samples.success",
 		metric.WithDescription(
 			"Total number of samples successfully sent to remote storage.",
 		),
 	)
 	t.failedSamplesTotal = sidecar.OTelMeterMust.NewInt64Counter(
-		"export.samples.failed",
+		"sidecar.samples.failed",
 		metric.WithDescription(
 			"Total number of samples which failed on send to remote storage.",
 		),
 	)
 	t.sentBatchDuration = sidecar.OTelMeterMust.NewFloat64ValueRecorder(
-		"export.samples.duration",
+		"sidecar.samples.duration",
 		metric.WithDescription(
 			"Duration of sample batch send calls to the remote storage.",
 		),
 	)
 	t.queueLengthCounter = sidecar.OTelMeterMust.NewInt64UpDownCounter(
-		"export.queue.size",
+		"sidecar.queue.size",
 		metric.WithDescription(
 			"The number of processed samples queued to be sent to the remote storage.",
 		),
 	)
 	t.queueCapacityObs = sidecar.OTelMeterMust.NewInt64SumObserver(
-		"export.queue.limit",
+		// @@@ Something is wrong with this metric
+		"sidecar.queue.capacity",
 		func(ctx context.Context, result metric.Int64ObserverResult) {
 			result.Observe(int64(t.cfg.Capacity))
 		},
@@ -173,8 +175,9 @@ func NewQueueManager(logger log.Logger, cfg config.QueueConfig, clientFactory St
 		),
 	)
 	t.numShardsObs = sidecar.OTelMeterMust.NewInt64UpDownSumObserver(
-		"export.queue.shards",
+		"sidecar.queue.shards",
 		func(ctx context.Context, result metric.Int64ObserverResult) {
+			// @@@ races reading this and numShards
 			result.Observe(int64(t.numShards))
 		},
 		metric.WithDescription(
