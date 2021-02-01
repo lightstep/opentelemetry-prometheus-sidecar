@@ -64,7 +64,7 @@ func Main() bool {
 		return false
 	}
 
-	logger := internal.NewLogger(cfg)
+	logger := internal.NewLogger(cfg, false)
 
 	telemetry.StaticSetup(logger)
 
