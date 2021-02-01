@@ -86,7 +86,7 @@ func Main() bool {
 	isSupervisor := !cfg.DisableSupervisor && os.Getenv(supervisorEnv) == ""
 
 	// Configure logging and diagnostics.
-	logger := internal.NewLogger(cfg)
+	logger := internal.NewLogger(cfg, isSupervisor)
 
 	telemetry.StaticSetup(logger)
 
@@ -388,7 +388,7 @@ func logStartup(cfg config.MainConfig, logger log.Logger) {
 
 func startSupervisor(cfg config.MainConfig, logger log.Logger) bool {
 	super := supervisor.New(supervisor.Config{
-		Logger: log.With(logger, "component", "supervisor"),
+		Logger: logger,
 		Admin:  cfg.Admin,
 	})
 
