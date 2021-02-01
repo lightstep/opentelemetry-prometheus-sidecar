@@ -8,6 +8,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+## [0.12.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.12.0) - 2021-02-01
+
 - Less resharding synchronization: do not require in-order writes (#87)
 - Backstop against permanent Export() failures (#87)
 - Rename all sidecar metrics to match `sidecar.*` (#87)
