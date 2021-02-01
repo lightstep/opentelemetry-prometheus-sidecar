@@ -35,7 +35,7 @@ import (
 
 var (
 	droppedSeries = sidecar.OTelMeterMust.NewInt64Counter(
-		"dropped.series",
+		"sidecar.dropped.series",
 		metric.WithDescription("Number of series that were dropped, not exported"),
 	)
 	keyReason = label.Key("key_reason")

@@ -48,7 +48,7 @@ func TestStoreErrorHandlingOnTimeout(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	c := NewClient(&ClientConfig{
+	c := NewClient(ClientConfig{
 		URL:     serverURL,
 		Timeout: 0, // Immeditate Timeout.
 	})
@@ -65,7 +65,7 @@ func TestEmptyRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := NewClient(&ClientConfig{
+	c := NewClient(ClientConfig{
 		URL:     serverURL,
 		Timeout: time.Second,
 	})

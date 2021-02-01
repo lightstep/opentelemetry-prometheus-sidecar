@@ -43,7 +43,7 @@ const (
 // The client may cache the computed hash more easily, which is why its part of the call
 // and not done by the Appender's implementation.
 type Appender interface {
-	Append(hash uint64, s *metric_pb.ResourceMetrics) error
+	Append(ctx context.Context, hash uint64, s *metric_pb.ResourceMetrics) error
 }
 
 type sampleBuilder struct {

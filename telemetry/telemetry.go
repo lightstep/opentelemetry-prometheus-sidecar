@@ -262,11 +262,13 @@ func (c *Config) setupMetrics() (start, stop func(ctx context.Context) error, er
 	metricExporter := newExporter(c.MetricsExporterEndpoint, c.MetricsExporterEndpointInsecure, c.Headers)
 
 	pusher := controller.New(
-		processor.New(
-			selector.NewWithHistogramDistribution([]float64{
-				0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10,
-			}),
-			metricsdk.CumulativeExportKindSelector(),
+		newCopyToCounterProcessor(
+			processor.New(
+				selector.NewWithHistogramDistribution([]float64{
+					0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10,
+				}),
+				metricsdk.CumulativeExportKindSelector(),
+			),
 		),
 		controller.WithPusher(metricExporter),
 		controller.WithResource(c.resource),

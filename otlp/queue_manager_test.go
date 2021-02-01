@@ -26,6 +26,7 @@ import (
 	"time"
 
 	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	metricsService "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/collector/metrics/v1"
 	metric_pb "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
 	resource_pb "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/resource/v1"
@@ -34,7 +35,6 @@ import (
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/version"
-	"github.com/prometheus/prometheus/config"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -188,12 +188,12 @@ func (c *TestStorageClient) Name() string {
 }
 
 func (c *TestStorageClient) Close() error {
-	// TODO: Not sure what adds this:
-	// c.wg.Wait()
+	c.wg.Wait()
 	return nil
 }
 
 func TestSampleDeliverySimple(t *testing.T) {
+	ctx := context.Background()
 	dir, err := ioutil.TempDir("", "test")
 	if err != nil {
 		t.Fatal(err)
@@ -216,7 +216,7 @@ func TestSampleDeliverySimple(t *testing.T) {
 	c := NewTestStorageClient(t, true)
 	c.expectSamples(samples)
 
-	cfg := config.DefaultQueueConfig
+	cfg := config.DefaultQueueConfig()
 	cfg.Capacity = n
 	cfg.MaxSamplesPerSend = n
 
@@ -224,14 +224,14 @@ func TestSampleDeliverySimple(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := NewQueueManager(nil, cfg, c, tailer)
+	m, err := NewQueueManager(nil, cfg, 0, c, tailer)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// These should be received by the client.
 	for i, s := range samples {
-		m.Append(uint64(i), s)
+		m.Append(ctx, uint64(i), s)
 	}
 	m.Start()
 	defer m.Stop()
@@ -240,6 +240,7 @@ func TestSampleDeliverySimple(t *testing.T) {
 }
 
 func TestSampleDeliveryMultiShard(t *testing.T) {
+	ctx := context.Background()
 	dir, err := ioutil.TempDir("", "test")
 	if err != nil {
 		t.Fatal(err)
@@ -260,7 +261,7 @@ func TestSampleDeliveryMultiShard(t *testing.T) {
 
 	c := NewTestStorageClient(t, true)
 
-	cfg := config.DefaultQueueConfig
+	cfg := config.DefaultQueueConfig()
 	// flush after each sample, to avoid blocking the test
 	cfg.MaxSamplesPerSend = 1
 	cfg.MaxShards = numShards
@@ -269,7 +270,7 @@ func TestSampleDeliveryMultiShard(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := NewQueueManager(nil, cfg, c, tailer)
+	m, err := NewQueueManager(nil, cfg, 0, c, tailer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -281,7 +282,7 @@ func TestSampleDeliveryMultiShard(t *testing.T) {
 	c.expectSamples(samples)
 	// These should be received by the client.
 	for i, s := range samples {
-		m.Append(uint64(i), s)
+		m.Append(ctx, uint64(i), s)
 	}
 
 	c.waitForExpectedSamples(t)
@@ -295,7 +296,7 @@ func TestSampleDeliveryTimeout(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	// Let's send one less sample than batch size, and wait the timeout duration
-	n := config.DefaultQueueConfig.MaxSamplesPerSend - 1
+	n := config.DefaultQueueConfig().MaxSamplesPerSend - 1
 
 	var samples1, samples2 []*metric_pb.ResourceMetrics
 	for i := 0; i < n; i++ {
@@ -313,7 +314,7 @@ func TestSampleDeliveryTimeout(t *testing.T) {
 	}
 
 	c := NewTestStorageClient(t, true)
-	cfg := config.DefaultQueueConfig
+	cfg := config.DefaultQueueConfig()
 	cfg.MaxShards = 1
 	cfg.BatchSendDeadline = model.Duration(100 * time.Millisecond)
 
@@ -321,7 +322,7 @@ func TestSampleDeliveryTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := NewQueueManager(nil, cfg, c, tailer)
+	m, err := NewQueueManager(nil, cfg, 0, c, tailer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -329,10 +330,12 @@ func TestSampleDeliveryTimeout(t *testing.T) {
 	m.Start()
 	defer m.Stop()
 
+	ctx := context.Background()
+
 	// Send the samples twice, waiting for the samples in the meantime.
 	c.expectSamples(samples1)
 	for i, s := range samples1 {
-		m.Append(uint64(i), s)
+		m.Append(ctx, uint64(i), s)
 	}
 	c.waitForExpectedSamples(t)
 
@@ -340,7 +343,7 @@ func TestSampleDeliveryTimeout(t *testing.T) {
 	c.expectSamples(samples2)
 
 	for i, s := range samples2 {
-		m.Append(uint64(i), s)
+		m.Append(ctx, uint64(i), s)
 	}
 	c.waitForExpectedSamples(t)
 }
@@ -353,7 +356,7 @@ func TestSampleDeliveryOrder(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	ts := 10
-	n := config.DefaultQueueConfig.MaxSamplesPerSend * ts
+	n := config.DefaultQueueConfig().MaxSamplesPerSend * ts
 
 	var samples []*metric_pb.ResourceMetrics
 	for i := 0; i < n; i++ {
@@ -371,16 +374,18 @@ func TestSampleDeliveryOrder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := NewQueueManager(nil, config.DefaultQueueConfig, c, tailer)
+	m, err := NewQueueManager(nil, config.DefaultQueueConfig(), 0, c, tailer)
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	ctx := context.Background()
 
 	m.Start()
 	defer m.Stop()
 	// These should be received by the client.
 	for i, s := range samples {
-		m.Append(uint64(i), s)
+		m.Append(ctx, uint64(i), s)
 	}
 
 	c.waitForExpectedSamples(t)
@@ -461,7 +466,7 @@ func TestSpawnNotMoreThanMaxConcurrentSendsGoroutines(t *testing.T) {
 	// `MaxSamplesPerSend*Shards` samples should be consumed by the
 	// per-shard goroutines, and then another `MaxSamplesPerSend`
 	// should be left on the queue.
-	n := config.DefaultQueueConfig.MaxSamplesPerSend * 2
+	n := config.DefaultQueueConfig().MaxSamplesPerSend * 2
 
 	var samples []*metric_pb.ResourceMetrics
 	for i := 0; i < n; i++ {
@@ -473,7 +478,7 @@ func TestSpawnNotMoreThanMaxConcurrentSendsGoroutines(t *testing.T) {
 	}
 
 	c := NewTestBlockedStorageClient()
-	cfg := config.DefaultQueueConfig
+	cfg := config.DefaultQueueConfig()
 	cfg.MaxShards = 1
 	cfg.Capacity = n
 
@@ -481,7 +486,7 @@ func TestSpawnNotMoreThanMaxConcurrentSendsGoroutines(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := NewQueueManager(nil, cfg, c, tailer)
+	m, err := NewQueueManager(nil, cfg, 0, c, tailer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -493,8 +498,10 @@ func TestSpawnNotMoreThanMaxConcurrentSendsGoroutines(t *testing.T) {
 		m.Stop()
 	}()
 
+	ctx := context.Background()
+
 	for i, s := range samples {
-		m.Append(uint64(i), s)
+		m.Append(ctx, uint64(i), s)
 	}
 
 	// Wait until the runShard() loops drain the queue.  If things went right, it
@@ -513,7 +520,7 @@ func TestSpawnNotMoreThanMaxConcurrentSendsGoroutines(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	if m.queueLen() != config.DefaultQueueConfig.MaxSamplesPerSend {
+	if m.queueLen() != config.DefaultQueueConfig().MaxSamplesPerSend {
 		t.Errorf("Failed to drain QueueManager queue, %d elements left",
 			m.queueLen(),
 		)
