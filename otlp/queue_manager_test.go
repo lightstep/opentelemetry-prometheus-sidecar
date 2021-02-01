@@ -193,6 +193,7 @@ func (c *TestStorageClient) Close() error {
 }
 
 func TestSampleDeliverySimple(t *testing.T) {
+	ctx := context.Background()
 	dir, err := ioutil.TempDir("", "test")
 	if err != nil {
 		t.Fatal(err)
@@ -223,14 +224,14 @@ func TestSampleDeliverySimple(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := NewQueueManager(nil, cfg, c, tailer)
+	m, err := NewQueueManager(nil, cfg, 0, c, tailer)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// These should be received by the client.
 	for i, s := range samples {
-		m.Append(uint64(i), s)
+		m.Append(ctx, uint64(i), s)
 	}
 	m.Start()
 	defer m.Stop()
@@ -239,6 +240,7 @@ func TestSampleDeliverySimple(t *testing.T) {
 }
 
 func TestSampleDeliveryMultiShard(t *testing.T) {
+	ctx := context.Background()
 	dir, err := ioutil.TempDir("", "test")
 	if err != nil {
 		t.Fatal(err)
@@ -268,7 +270,7 @@ func TestSampleDeliveryMultiShard(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := NewQueueManager(nil, cfg, c, tailer)
+	m, err := NewQueueManager(nil, cfg, 0, c, tailer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -280,7 +282,7 @@ func TestSampleDeliveryMultiShard(t *testing.T) {
 	c.expectSamples(samples)
 	// These should be received by the client.
 	for i, s := range samples {
-		m.Append(uint64(i), s)
+		m.Append(ctx, uint64(i), s)
 	}
 
 	c.waitForExpectedSamples(t)
@@ -320,7 +322,7 @@ func TestSampleDeliveryTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := NewQueueManager(nil, cfg, c, tailer)
+	m, err := NewQueueManager(nil, cfg, 0, c, tailer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -328,10 +330,12 @@ func TestSampleDeliveryTimeout(t *testing.T) {
 	m.Start()
 	defer m.Stop()
 
+	ctx := context.Background()
+
 	// Send the samples twice, waiting for the samples in the meantime.
 	c.expectSamples(samples1)
 	for i, s := range samples1 {
-		m.Append(uint64(i), s)
+		m.Append(ctx, uint64(i), s)
 	}
 	c.waitForExpectedSamples(t)
 
@@ -339,7 +343,7 @@ func TestSampleDeliveryTimeout(t *testing.T) {
 	c.expectSamples(samples2)
 
 	for i, s := range samples2 {
-		m.Append(uint64(i), s)
+		m.Append(ctx, uint64(i), s)
 	}
 	c.waitForExpectedSamples(t)
 }
@@ -370,16 +374,18 @@ func TestSampleDeliveryOrder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := NewQueueManager(nil, config.DefaultQueueConfig(), c, tailer)
+	m, err := NewQueueManager(nil, config.DefaultQueueConfig(), 0, c, tailer)
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	ctx := context.Background()
 
 	m.Start()
 	defer m.Stop()
 	// These should be received by the client.
 	for i, s := range samples {
-		m.Append(uint64(i), s)
+		m.Append(ctx, uint64(i), s)
 	}
 
 	c.waitForExpectedSamples(t)
@@ -480,7 +486,7 @@ func TestSpawnNotMoreThanMaxConcurrentSendsGoroutines(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := NewQueueManager(nil, cfg, c, tailer)
+	m, err := NewQueueManager(nil, cfg, 0, c, tailer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -492,8 +498,10 @@ func TestSpawnNotMoreThanMaxConcurrentSendsGoroutines(t *testing.T) {
 		m.Stop()
 	}()
 
+	ctx := context.Background()
+
 	for i, s := range samples {
-		m.Append(uint64(i), s)
+		m.Append(ctx, uint64(i), s)
 	}
 
 	// Wait until the runShard() loops drain the queue.  If things went right, it

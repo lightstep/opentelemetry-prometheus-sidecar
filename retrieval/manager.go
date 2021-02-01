@@ -200,7 +200,7 @@ Outer:
 				if outputSample == nil {
 					continue
 				}
-				r.appender.Append(hash, outputSample)
+				r.appender.Append(ctx, hash, outputSample)
 				produced++
 			}
 

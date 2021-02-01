@@ -47,7 +47,8 @@ const (
 	DefaultShutdownDelay      = time.Minute
 	DefaultStartupTimeout     = time.Minute * 5
 	DefaultSupervisorPeriod   = time.Minute
-	DefaultNoisyLogPeriod     = time.Second * 30
+	DefaultNoisyLogPeriod     = time.Second * 5
+	DefaultEnqueueRetryPeriod = time.Second * 5
 
 	DefaultSupervisorBufferSize  = 16384
 	DefaultSupervisorLogsHistory = 16

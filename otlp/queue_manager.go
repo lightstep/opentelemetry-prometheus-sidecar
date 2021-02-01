@@ -80,6 +80,7 @@ type QueueManager struct {
 	logger log.Logger
 
 	cfg           promconfig.QueueConfig
+	timeout       time.Duration
 	clientFactory StorageClientFactory
 
 	shardsMtx   sync.RWMutex
@@ -103,13 +104,14 @@ type QueueManager struct {
 }
 
 // NewQueueManager builds a new QueueManager.
-func NewQueueManager(logger log.Logger, cfg promconfig.QueueConfig, clientFactory StorageClientFactory, tailer LogReaderClient) (*QueueManager, error) {
+func NewQueueManager(logger log.Logger, cfg promconfig.QueueConfig, timeout time.Duration, clientFactory StorageClientFactory, tailer LogReaderClient) (*QueueManager, error) {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
 	t := &QueueManager{
 		logger:        logger,
-		cfg:           cfg,
+		cfg:           cfg, // TODO: Move cfg into MainConfig
+		timeout:       timeout,
 		clientFactory: clientFactory,
 
 		numShards:   1,
@@ -184,13 +186,30 @@ func NewQueueManager(logger log.Logger, cfg promconfig.QueueConfig, clientFactor
 
 // Append queues a sample to be sent to the OpenTelemetry API.
 // Always returns nil.
-func (t *QueueManager) Append(hash uint64, sample *metric_pb.ResourceMetrics) error {
-	t.queueLengthCounter.Add(context.Background(), 1)
+func (t *QueueManager) Append(ctx context.Context, hash uint64, sample *metric_pb.ResourceMetrics) error {
+	t.queueLengthCounter.Add(ctx, 1)
 
-	t.shardsMtx.RLock()
-	t.shards.enqueue(hash, sample)
-	t.shardsMtx.RUnlock()
-	return nil
+	for {
+		// This repeatedly tries to enqueue the sample, in
+		// case the queue is blocked and a resharding event
+		// might help.
+		t.shardsMtx.RLock()
+		ok := t.shards.tryEnqueue(hash, sample)
+		t.shardsMtx.RUnlock()
+
+		if ok {
+			return nil
+		}
+
+		func() {
+			timer := time.NewTimer(config.DefaultEnqueueRetryPeriod)
+			defer timer.Stop()
+			select {
+			case <-ctx.Done():
+			case <-timer.C:
+			}
+		}()
+	}
 }
 
 // Start the queue manager sending samples to the remote storage.
@@ -322,7 +341,7 @@ func (t *QueueManager) calculateDesiredShards() {
 		return
 	}
 
-	// Note: we do not block here, so that this period stas close
+	// Note: we do not block here, so that this period stays close
 	// to shardUpdateDuration.
 	select {
 	case t.reshardChan <- numShards:
@@ -415,13 +434,19 @@ func (s *shardCollection) stop() {
 	}
 }
 
-func (s *shardCollection) enqueue(hash uint64, sample *metric_pb.ResourceMetrics) {
-	s.qm.samplesIn.incr(1)
+func (s *shardCollection) tryEnqueue(hash uint64, sample *metric_pb.ResourceMetrics) bool {
 	shardIndex := hash % uint64(len(s.shards))
 
-	// @@@ Note! TODO! This has been observed to block indefinitely, due to
-	// of the backstop mentioned below.
-	s.shards[shardIndex].queue <- queueEntry{sample: sample}
+	// Note: this would block indefinitely if sendSamples() blocks
+	// indefinitely.  The caller retries this at a faster interval
+	// in case a resharding occurs first.
+	select {
+	case s.shards[shardIndex].queue <- queueEntry{sample: sample}:
+		s.qm.samplesIn.incr(1)
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *shardCollection) runShard(i int) {
@@ -495,10 +520,15 @@ func (s *shardCollection) sendSamples(client StorageClient, samples []*metric_pb
 // sendSamples to the remote storage with backoff for recoverable errors.
 func (s *shardCollection) sendSamplesWithBackoff(client StorageClient, samples []*metric_pb.ResourceMetrics) {
 	ctx := context.Background()
-
+	start := time.Now()
 	backoff := s.qm.cfg.MinBackoff
 
-	for attempts := 0; attempts < config.DefaultMaxExportAttempts; attempts++ {
+	// maxWait is provided as a backstop for points that might
+	// never succeed, e.g., because they take so long as to
+	// repeatedly time out.
+	maxWait := s.qm.timeout * time.Duration(config.DefaultMaxExportAttempts)
+
+	for time.Since(start) < maxWait {
 		err := client.Store(&metricsService.ExportMetricsServiceRequest{
 			ResourceMetrics: samples,
 		})

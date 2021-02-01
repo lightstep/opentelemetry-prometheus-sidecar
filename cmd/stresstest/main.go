@@ -92,6 +92,7 @@ func Main() bool {
 	queueManager, err := otlp.NewQueueManager(
 		log.With(logger, "component", "queue_manager"),
 		config.DefaultQueueConfig(),
+		cfg.Destination.Timeout.Duration,
 		scf,
 		&fakeTailer{time.Now()},
 	)
@@ -127,8 +128,9 @@ func Main() bool {
 		),
 	)
 
+	ctx := context.Background()
 	for {
-		queueManager.Append(rand.Uint64(), req)
+		queueManager.Append(ctx, rand.Uint64(), req)
 	}
 }
 

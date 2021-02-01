@@ -165,6 +165,7 @@ func Main() bool {
 	queueManager, err := otlp.NewQueueManager(
 		log.With(logger, "component", "queue_manager"),
 		config.DefaultQueueConfig(),
+		cfg.Destination.Timeout.Duration,
 		scf,
 		tailer,
 	)

@@ -12,6 +12,10 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric/aggregator/sum"
 )
 
+// copyToCounterProcessor copies every Histogram aggregation in the metrics
+// export pipeline to a corresponding counter, which simplifies observability
+// in some settings.
+// TODO: Remove this after OTLP histogram support is more proven.
 type copyToCounterProcessor struct {
 	export.Checkpointer
 

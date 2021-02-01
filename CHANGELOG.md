@@ -8,6 +8,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+- Less resharding synchronization: do not require in-order writes (#87)
+- Backstops against permanent Enqueue() and Export() failures (#87)
+- Rename all sidecar metrics under `sidecar.*` (#87)
 - Update to OTel-Go SDK v0.16.0. (#86)
 - Use a 2 second maximum backoff when Export() fails (vs 100ms default). (#81)
 - Update CI tests to use Prometheus 2.23. (#82)
