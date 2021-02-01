@@ -233,7 +233,7 @@ func (c *Config) setupTracing() (start, stop func(ctx context.Context) error, er
 	spanExporter := newExporter(c.SpanExporterEndpoint, c.SpanExporterEndpointInsecure, c.Headers)
 
 	// TODO: Make a way to set the export timeout, there is
-	// apparently not such a thing for OTel-Go: //
+	// apparently not such a thing for OTel-Go:
 	// https://github.com/open-telemetry/opentelemetry-go/issues/1386
 	tp := trace.NewTracerProvider(
 		trace.WithConfig(trace.Config{DefaultSampler: trace.AlwaysSample()}),
