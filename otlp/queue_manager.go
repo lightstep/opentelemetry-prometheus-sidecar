@@ -496,14 +496,15 @@ func (s *shardCollection) runShard(i int) {
 				pendingSamples = pendingSamples[:0]
 
 				stopTimer()
+				timer.Reset(time.Duration(s.qm.cfg.BatchSendDeadline))
 			}
 		case <-timer.C:
 			if len(pendingSamples) > 0 {
 				s.sendSamples(client, pendingSamples)
 				pendingSamples = pendingSamples[:0]
 			}
+			timer.Reset(time.Duration(s.qm.cfg.BatchSendDeadline))
 		}
-		timer.Reset(time.Duration(s.qm.cfg.BatchSendDeadline))
 	}
 }
 
