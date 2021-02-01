@@ -68,6 +68,8 @@ func Main() bool {
 
 	telemetry.StaticSetup(logger)
 
+	level.Info(logger).Log("msg", "stresstest starting")
+
 	if shutdownTel := internal.StartTelemetry(
 		cfg,
 		"stresstest-prometheus-sidecar",

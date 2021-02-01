@@ -47,12 +47,20 @@ const (
 	DefaultShutdownDelay      = time.Minute
 	DefaultStartupTimeout     = time.Minute * 5
 	DefaultSupervisorPeriod   = time.Minute
+	DefaultNoisyLogPeriod     = time.Second * 30
 
 	DefaultSupervisorBufferSize  = 16384
 	DefaultSupervisorLogsHistory = 16
 
-	// TODO: Make this configurable.
+	// TODO: The two settings below are not configurable, they should be.
+
+	// How many points per request.
 	MaxTimeseriesPerRequest = 200
+
+	// Note each request will take ExportTimeout; if one of the points
+	// becomes a "query of death" and fails repeatedly, there's a small
+	// chance that queue would block the WAL reader.  The
+	DefaultMaxExportAttempts = 2
 
 	briefDescription = `
 The OpenTelemetry Prometheus sidecar runs alongside the

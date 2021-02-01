@@ -24,10 +24,12 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	metricsService "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/collector/metrics/v1"
 	metric_pb "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry/doevery"
 	"github.com/pkg/errors"
-	"github.com/prometheus/prometheus/config"
+	promconfig "github.com/prometheus/prometheus/config"
 	"go.opentelemetry.io/otel/label"
 	"go.opentelemetry.io/otel/metric"
 
@@ -48,13 +50,7 @@ const (
 	ewmaWeight          = 0.2
 	shardUpdateDuration = 15 * time.Second
 
-	// Limit to 1 log event every 10s
-	logRateLimit = 0.1
-	logBurst     = 10
-
 	maxErrorDetailStringLen = 512
-
-	queueName = label.Key("queue")
 )
 
 // StorageClient defines an interface for sending a batch of samples to an
@@ -83,9 +79,8 @@ type LogReaderClient interface {
 type QueueManager struct {
 	logger log.Logger
 
-	cfg           config.QueueConfig
+	cfg           promconfig.QueueConfig
 	clientFactory StorageClientFactory
-	queueName     string
 
 	shardsMtx   sync.RWMutex
 	shards      *shardCollection
@@ -100,16 +95,15 @@ type QueueManager struct {
 	tailer               LogReaderClient
 	lastSize, lastOffset int
 
-	succeededSamplesTotal metric.Int64Counter
-	failedSamplesTotal    metric.Int64Counter
-	sentBatchDuration     metric.Float64ValueRecorder
-	queueLengthCounter    metric.Int64UpDownCounter
-	queueCapacityObs      metric.Int64SumObserver
-	numShardsObs          metric.Int64UpDownSumObserver
+	sendOutcomesCounter metric.Int64Counter
+	queueLengthCounter  metric.Int64UpDownCounter
+	queueRunningCounter metric.Int64UpDownCounter
+	queueCapacityObs    metric.Int64UpDownSumObserver
+	numShardsObs        metric.Int64UpDownSumObserver
 }
 
 // NewQueueManager builds a new QueueManager.
-func NewQueueManager(logger log.Logger, cfg config.QueueConfig, clientFactory StorageClientFactory, tailer LogReaderClient) (*QueueManager, error) {
+func NewQueueManager(logger log.Logger, cfg promconfig.QueueConfig, clientFactory StorageClientFactory, tailer LogReaderClient) (*QueueManager, error) {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
@@ -117,7 +111,6 @@ func NewQueueManager(logger log.Logger, cfg config.QueueConfig, clientFactory St
 		logger:        logger,
 		cfg:           cfg,
 		clientFactory: clientFactory,
-		queueName:     clientFactory.Name(),
 
 		numShards:   1,
 		reshardChan: make(chan int),
@@ -139,23 +132,10 @@ func NewQueueManager(logger log.Logger, cfg config.QueueConfig, clientFactory St
 
 	t.shards = t.newShardCollection(t.numShards)
 
-	// @@@ Combine these two
-	t.succeededSamplesTotal = sidecar.OTelMeterMust.NewInt64Counter(
-		"sidecar.samples.success",
+	t.sendOutcomesCounter = sidecar.OTelMeterMust.NewInt64Counter(
+		"sidecar.queue.outcome",
 		metric.WithDescription(
-			"Total number of samples successfully sent to remote storage.",
-		),
-	)
-	t.failedSamplesTotal = sidecar.OTelMeterMust.NewInt64Counter(
-		"sidecar.samples.failed",
-		metric.WithDescription(
-			"Total number of samples which failed on send to remote storage.",
-		),
-	)
-	t.sentBatchDuration = sidecar.OTelMeterMust.NewFloat64ValueRecorder(
-		"sidecar.samples.duration",
-		metric.WithDescription(
-			"Duration of sample batch send calls to the remote storage.",
+			"The number of processed samples queued to be sent to the remote storage.",
 		),
 	)
 	t.queueLengthCounter = sidecar.OTelMeterMust.NewInt64UpDownCounter(
@@ -164,11 +144,20 @@ func NewQueueManager(logger log.Logger, cfg config.QueueConfig, clientFactory St
 			"The number of processed samples queued to be sent to the remote storage.",
 		),
 	)
-	t.queueCapacityObs = sidecar.OTelMeterMust.NewInt64SumObserver(
-		// @@@ Something is wrong with this metric
+	t.queueRunningCounter = sidecar.OTelMeterMust.NewInt64UpDownCounter(
+		"sidecar.queue.running",
+		metric.WithDescription(
+			"The number of shards that have started and not stopped.",
+		),
+	)
+
+	// Note: the following two could be a batch observer.
+	t.queueCapacityObs = sidecar.OTelMeterMust.NewInt64UpDownSumObserver(
 		"sidecar.queue.capacity",
 		func(ctx context.Context, result metric.Int64ObserverResult) {
-			result.Observe(int64(t.cfg.Capacity))
+			t.shardsMtx.Lock()
+			defer t.shardsMtx.Unlock()
+			result.Observe(int64(t.numShards * t.cfg.Capacity))
 		},
 		metric.WithDescription(
 			"The capacity of the queue of samples to be sent to the remote storage.",
@@ -177,7 +166,8 @@ func NewQueueManager(logger log.Logger, cfg config.QueueConfig, clientFactory St
 	t.numShardsObs = sidecar.OTelMeterMust.NewInt64UpDownSumObserver(
 		"sidecar.queue.shards",
 		func(ctx context.Context, result metric.Int64ObserverResult) {
-			// @@@ races reading this and numShards
+			t.shardsMtx.Lock()
+			defer t.shardsMtx.Unlock()
 			result.Observe(int64(t.numShards))
 		},
 		metric.WithDescription(
@@ -195,7 +185,7 @@ func NewQueueManager(logger log.Logger, cfg config.QueueConfig, clientFactory St
 // Append queues a sample to be sent to the OpenTelemetry API.
 // Always returns nil.
 func (t *QueueManager) Append(hash uint64, sample *metric_pb.ResourceMetrics) error {
-	t.queueLengthCounter.Add(context.Background(), 1, queueName.String(t.queueName))
+	t.queueLengthCounter.Add(context.Background(), 1)
 
 	t.shardsMtx.RLock()
 	t.shards.enqueue(hash, sample)
@@ -332,14 +322,21 @@ func (t *QueueManager) calculateDesiredShards() {
 		return
 	}
 
-	// Resharding can take some time, and we want this loop
-	// to stay close to shardUpdateDuration.
+	// Note: we do not block here, so that this period stas close
+	// to shardUpdateDuration.
 	select {
 	case t.reshardChan <- numShards:
-		level.Debug(t.logger).Log("msg", "Remote storage resharding", "from", t.numShards, "to", numShards)
+		level.Info(t.logger).Log(
+			"msg", "send queue resharding",
+			"from", t.numShards,
+			"to", numShards,
+		)
 		t.numShards = numShards
 	default:
-		level.Debug(t.logger).Log("msg", "Currently resharding, skipping", "to", numShards)
+		level.Warn(t.logger).Log(
+			"msg", "currently resharding, skipping",
+			"to", numShards,
+		)
 	}
 }
 
@@ -357,17 +354,20 @@ func (t *QueueManager) reshardLoop() {
 }
 
 func (t *QueueManager) reshard(n int) {
-	t.shardsMtx.Lock()
+	// Note: There is no requirement that points be written in
+	// order stated for OTLP.  We will start a new set of shards
+	// before stopping the old one.
+
 	newShards := t.newShardCollection(n)
+	newShards.start()
+
+	t.shardsMtx.Lock()
+	defer t.shardsMtx.Unlock()
+
 	oldShards := t.shards
 	t.shards = newShards
-	oldShards.stop()
-	t.shardsMtx.Unlock()
 
-	// We start the newShards after we have stopped (the therefore completely
-	// flushed) the oldShards, to guarantee we only every deliver samples in
-	// order.
-	newShards.start()
+	oldShards.stop()
 }
 
 type queueEntry struct {
@@ -378,7 +378,7 @@ type shard struct {
 	queue chan queueEntry
 }
 
-func newShard(cfg config.QueueConfig) shard {
+func newShard(cfg promconfig.QueueConfig) shard {
 	return shard{
 		queue: make(chan queueEntry, cfg.Capacity),
 	}
@@ -388,7 +388,6 @@ type shardCollection struct {
 	qm     *QueueManager
 	shards []shard
 	done   chan struct{}
-	wg     sync.WaitGroup
 }
 
 func (t *QueueManager) newShardCollection(numShards int) *shardCollection {
@@ -401,7 +400,6 @@ func (t *QueueManager) newShardCollection(numShards int) *shardCollection {
 		shards: shards,
 		done:   make(chan struct{}),
 	}
-	s.wg.Add(numShards)
 	return s
 }
 
@@ -415,29 +413,32 @@ func (s *shardCollection) stop() {
 	for _, shard := range s.shards {
 		close(shard.queue)
 	}
-	s.wg.Wait()
-	level.Debug(s.qm.logger).Log("msg", "Stopped resharding")
 }
 
 func (s *shardCollection) enqueue(hash uint64, sample *metric_pb.ResourceMetrics) {
 	s.qm.samplesIn.incr(1)
 	shardIndex := hash % uint64(len(s.shards))
+
+	// @@@ Note! TODO! This has been observed to block indefinitely, due to
+	// of the backstop mentioned below.
 	s.shards[shardIndex].queue <- queueEntry{sample: sample}
 }
 
 func (s *shardCollection) runShard(i int) {
-	defer s.wg.Done()
 	client := s.qm.clientFactory.New()
 	defer client.Close()
 	shard := s.shards[i]
 
 	// Send batches of at most MaxSamplesPerSend samples to the remote storage.
-	// If we have fewer samples than that, flush them out after a deadline
-	// anyways.
 	pendingSamples := make([]*metric_pb.ResourceMetrics, 0, s.qm.cfg.MaxSamplesPerSend)
 
+	ctx := context.Background()
+
+	s.qm.queueRunningCounter.Add(ctx, 1)
+	defer s.qm.queueRunningCounter.Add(ctx, -1)
+
 	timer := time.NewTimer(time.Duration(s.qm.cfg.BatchSendDeadline))
-	stop := func() {
+	stopTimer := func() {
 		if !timer.Stop() {
 			select {
 			case <-timer.C:
@@ -445,36 +446,39 @@ func (s *shardCollection) runShard(i int) {
 			}
 		}
 	}
-	defer stop()
+	defer stopTimer()
 
 	for {
 		select {
 		case entry, ok := <-shard.queue:
 			sample := entry.sample
 
+			// Remove one count from the queue size metric.
+			s.qm.queueLengthCounter.Add(ctx, -1)
+
 			if !ok {
+				// The queue was closed by a stop() event.  Flush and return.
 				if len(pendingSamples) > 0 {
 					s.sendSamples(client, pendingSamples)
 				}
 				return
 			}
-			s.qm.queueLengthCounter.Add(context.Background(), -1, queueName.String(s.qm.queueName))
 
 			pendingSamples = append(pendingSamples, sample)
 			if len(pendingSamples) >= s.qm.cfg.MaxSamplesPerSend {
+				// Send a batch.
 				s.sendSamples(client, pendingSamples)
 				pendingSamples = pendingSamples[:0]
 
-				stop()
-				timer.Reset(time.Duration(s.qm.cfg.BatchSendDeadline))
+				stopTimer()
 			}
 		case <-timer.C:
 			if len(pendingSamples) > 0 {
 				s.sendSamples(client, pendingSamples)
 				pendingSamples = pendingSamples[:0]
 			}
-			timer.Reset(time.Duration(s.qm.cfg.BatchSendDeadline))
 		}
+		timer.Reset(time.Duration(s.qm.cfg.BatchSendDeadline))
 	}
 }
 
@@ -493,31 +497,47 @@ func (s *shardCollection) sendSamplesWithBackoff(client StorageClient, samples [
 	ctx := context.Background()
 
 	backoff := s.qm.cfg.MinBackoff
-	for {
-		begin := time.Now()
-		err := client.Store(&metricsService.ExportMetricsServiceRequest{ResourceMetrics: samples})
 
-		s.qm.sentBatchDuration.Record(
-			ctx,
-			time.Since(begin).Seconds(),
-			queueName.String(s.qm.queueName),
-		)
+	for attempts := 0; attempts < config.DefaultMaxExportAttempts; attempts++ {
+		err := client.Store(&metricsService.ExportMetricsServiceRequest{
+			ResourceMetrics: samples,
+		})
+
 		if err == nil {
-			s.qm.succeededSamplesTotal.Add(
+			s.qm.sendOutcomesCounter.Add(
 				ctx,
 				int64(len(samples)),
-				queueName.String(s.qm.queueName),
-			)
+				label.String("outcome", "success"))
 			return
 		}
 
 		if !isRecoverable(err) {
-			level.Warn(s.qm.logger).Log(
+			s.qm.sendOutcomesCounter.Add(
+				ctx,
+				int64(len(samples)),
+				label.String("outcome", "failed"))
+
+			level.Error(s.qm.logger).Log(
 				"msg", "unrecoverable write error",
+				"points", len(samples),
 				"err", truncateErrorString(err),
 			)
-			break
+			return
 		}
+
+		s.qm.sendOutcomesCounter.Add(
+			ctx,
+			int64(len(samples)),
+			label.String("outcome", "retry"))
+
+		doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
+			level.Warn(s.qm.logger).Log(
+				"msg", "recoverable write error",
+				"points", len(samples),
+				"err", truncateErrorString(err),
+			)
+		})
+
 		time.Sleep(time.Duration(backoff))
 		backoff = backoff * 2
 		if backoff > s.qm.cfg.MaxBackoff {
@@ -525,11 +545,16 @@ func (s *shardCollection) sendSamplesWithBackoff(client StorageClient, samples [
 		}
 	}
 
-	s.qm.failedSamplesTotal.Add(
+	s.qm.sendOutcomesCounter.Add(
 		ctx,
 		int64(len(samples)),
-		queueName.String(s.qm.queueName),
+		label.String("outcome", "aborted"))
+
+	level.Error(s.qm.logger).Log(
+		"msg", "aborted write",
+		"points", len(samples),
 	)
+	return
 }
 
 func isRecoverable(err error) bool {
