@@ -58,9 +58,12 @@ const (
 	// How many points per request.
 	MaxTimeseriesPerRequest = 200
 
-	// Note each request will take ExportTimeout; if one of the points
-	// becomes a "query of death" and fails repeatedly, there's a small
-	// chance that queue would block the WAL reader.  The
+	// DefaultMaxExportAttempts sets a maximum on the number of
+	// attempts to export a request.  This is not RPC requests,
+	// but attempts, defined as trying for up to at least the
+	// export timeout.  This helps in case a request fails
+	// repeatedly, in which case the queue could block the WAL
+	// reader.
 	DefaultMaxExportAttempts = 2
 
 	briefDescription = `
