@@ -26,20 +26,16 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	metricsService "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/collector/metrics/v1"
-	"github.com/prometheus/common/version"
-	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
-	"go.opentelemetry.io/otel/metric"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry/doevery"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/balancer/roundrobin"
 	"google.golang.org/grpc/credentials"
 	grpcMetadata "google.golang.org/grpc/metadata"
 )
 
 const (
-	MaxTimeseriesesPerRequest = 200
-
 	// serviceConfig copied from OTel-Go.
 	// https://github.com/open-telemetry/opentelemetry-go/blob/5ed96e92446d2d58d131e0672da613a84c16af7a/exporters/otlp/grpcoptions.go#L37
 	serviceConfig = `{
@@ -69,9 +65,14 @@ const (
 )
 
 var (
-	pointsExported = sidecar.OTelMeterMust.NewInt64Counter(
-		"points.exported",
-		metric.WithDescription("count of exported metric points"),
+	exportDuration = telemetry.NewTimer(
+		"sidecar.export.duration",
+		"duration of the otlp.Export() call",
+	)
+
+	connectDuration = telemetry.NewTimer(
+		"sidecar.connect.duration",
+		"duration of the grpc.Dial() call",
 	)
 )
 
@@ -98,7 +99,7 @@ type ClientConfig struct {
 }
 
 // NewClient creates a new Client.
-func NewClient(conf *ClientConfig) *Client {
+func NewClient(conf ClientConfig) *Client {
 	logger := conf.Logger
 	if logger == nil {
 		logger = log.NewNopLogger()
@@ -112,33 +113,32 @@ func NewClient(conf *ClientConfig) *Client {
 	}
 }
 
-// version.* is populated for 'promu' builds, so this will look broken in unit tests.
-var userAgent = fmt.Sprintf("OpenTelemetryPrometheus/%s", version.Version)
-
 // getConnection will dial a new connection if one is not set.  When
 // dialing, this function uses its a new context and the same timeout
 // used for Store().
-func (c *Client) getConnection(ctx context.Context) (*grpc.ClientConn, error) {
+func (c *Client) getConnection(ctx context.Context) (_ *grpc.ClientConn, retErr error) {
 	if c.conn != nil {
 		return c.conn, nil
 	}
+
+	defer connectDuration.Start(ctx).Stop(&retErr)
 
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 
 	useAuth := c.url.Scheme != "http"
 	level.Debug(c.logger).Log(
-		"msg", "new otlp connection",
+		"msg", "new OTLP connection",
 		"auth", useAuth,
 		"url", c.url.String(),
 		"timeout", c.timeout)
 
 	dopts := []grpc.DialOption{
-		grpc.WithBalancerName(roundrobin.Name),
 		grpc.WithBlock(), // Wait for the connection to be established before using it.
-		grpc.WithUserAgent(userAgent),
-		grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
 		grpc.WithDefaultServiceConfig(serviceConfig),
+
+		// Note: The Sidecar->OTel gRPC connection is not traced:
+		// grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
 	}
 	if useAuth {
 		var tcfg tls.Config
@@ -162,6 +162,11 @@ func (c *Client) getConnection(ctx context.Context) (*grpc.ClientConn, error) {
 				RootCAs:    certPool,
 			}
 		}
+		level.Debug(c.logger).Log(
+			"msg", "TLS configured",
+			"server", c.url.Hostname(),
+			"root_certs", fmt.Sprint(c.rootCertificates),
+		)
 		dopts = append(dopts, grpc.WithTransportCredentials(credentials.NewTLS(&tcfg)))
 	} else {
 		dopts = append(dopts, grpc.WithInsecure())
@@ -171,6 +176,7 @@ func (c *Client) getConnection(ctx context.Context) (*grpc.ClientConn, error) {
 		address = net.JoinHostPort(address, c.url.Port())
 	}
 	conn, err := grpc.DialContext(ctx, address, dopts...)
+	c.conn = conn
 	if err != nil {
 		level.Debug(c.logger).Log(
 			"msg", "connection status",
@@ -179,13 +185,6 @@ func (c *Client) getConnection(ctx context.Context) (*grpc.ClientConn, error) {
 		)
 		return nil, err
 	}
-	// Note: Set the connection when there is not an error. The
-	// upstream Stackdriver Prometheus sidecar sets the connection
-	// unconditionally, which is probably also correct, however we
-	// have seen a connection problem in some environments and
-	// will not set the connection after error until those reports
-	// are explained.
-	c.conn = conn
 
 	return conn, err
 }
@@ -242,10 +241,10 @@ func (c *Client) Store(req *metricsService.ExportMetricsServiceRequest) error {
 
 	service := metricsService.NewMetricsServiceClient(conn)
 
-	errors := make(chan error, len(tss)/MaxTimeseriesesPerRequest+1)
+	errors := make(chan error, len(tss)/config.MaxTimeseriesPerRequest+1)
 	var wg sync.WaitGroup
-	for i := 0; i < len(tss); i += MaxTimeseriesesPerRequest {
-		end := i + MaxTimeseriesesPerRequest
+	for i := 0; i < len(tss); i += config.MaxTimeseriesPerRequest {
+		end := i + config.MaxTimeseriesPerRequest
 		if end > len(tss) {
 			end = len(tss)
 		}
@@ -256,22 +255,24 @@ func (c *Client) Store(req *metricsService.ExportMetricsServiceRequest) error {
 				ResourceMetrics: req.ResourceMetrics[begin:end],
 			}
 
-			if _, err := service.Export(c.grpcMetadata(ctx), req_copy); err != nil {
-				// TODO This happens too fast _after_ a healthy
-				// connection becomes unhealthy. Fix.
+			var err error
+			defer exportDuration.Start(ctx).Stop(&err)
+
+			if _, err = service.Export(c.grpcMetadata(ctx), req_copy); err != nil {
 				level.Debug(c.logger).Log(
-					"msg", "Failure calling Export",
-					"err", truncateErrorString(err))
+					"msg", "export failure",
+					"err", truncateErrorString(err),
+				)
 				errors <- err
 				return
 			}
 
-			// Points were successfully written.
-			pointsExported.Add(ctx, int64(end-begin))
-
-			level.Debug(c.logger).Log(
-				"msg", "Write was successful",
-				"records", end-begin)
+			doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
+				level.Debug(c.logger).Log(
+					"msg", "successful write",
+					"records", end-begin,
+				)
+			})
 		}(i, end)
 	}
 	wg.Wait()

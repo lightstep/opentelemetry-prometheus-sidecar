@@ -43,7 +43,7 @@ const (
 // The client may cache the computed hash more easily, which is why its part of the call
 // and not done by the Appender's implementation.
 type Appender interface {
-	Append(hash uint64, s *metric_pb.ResourceMetrics) error
+	Append(ctx context.Context, hash uint64, s *metric_pb.ResourceMetrics) error
 }
 
 type sampleBuilder struct {
@@ -63,6 +63,8 @@ func (b *sampleBuilder) next(ctx context.Context, samples []record.RefSample) (*
 	tailSamples := samples[1:]
 
 	if math.IsNaN(sample.V) {
+		// Note: This includes stale markers, which are
+		// specific NaN values defined in prometheus/tsdb.
 		return nil, 0, tailSamples, nil
 	}
 

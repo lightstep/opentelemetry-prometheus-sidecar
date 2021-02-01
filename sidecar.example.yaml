@@ -44,8 +44,9 @@ opentelemetry:
 
 # Administrative settings:
 admin:
-  # Listen-address of the sidecar's http server (e.g., for healtchecks)
-  listen_address: 0.0.0.0:10000
+  # Listen address of the sidecar's http server (e.g., for healtchecks)
+  listen_ip: 0.0.0.0
+  port: 10000
 
 # Security settings:
 security:
@@ -55,13 +56,18 @@ security:
   - /certs/root2.crt
 
 # Diagnostics parameters, where the sidecar will send its own diagnostic
-# data.  This is structurally the same as destination, above.
+# data.  This is structurally the same as destination, above.  If this is
+# not configured and disable_diagnostics is also not set, this section
+# will be auto-configured to match the primary destination.
 diagnostics:
   endpoint: https://otlp.io:443
   headers:
     Access-Token: wwxxyyzz...aabbccdd
   attributes:
     environment: internal
+
+# Set this to prevent auto-configuring diagnostics.
+disable_diagnostics: false
 
 # Filters expressed as Prometheus series expressions.  If any of these
 # are configured, at least one must match for the timeseries be

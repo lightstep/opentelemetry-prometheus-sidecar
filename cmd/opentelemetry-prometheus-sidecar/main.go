@@ -19,38 +19,33 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"net"
 	"net/http"
 	_ "net/http/pprof" // Comment this line to disable pprof endpoint.
 	"net/url"
 	"os"
-	"os/signal"
 	"path"
 	"runtime"
-	"syscall"
 	"time"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/cmd/internal"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/health"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/otlp"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/retrieval"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/supervisor"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/targets"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/oklog/run"
 	"github.com/pkg/errors"
-	"github.com/prometheus/common/promlog"
 	"github.com/prometheus/common/version"
-	promconfig "github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	grpcMetadata "google.golang.org/grpc/metadata"
 )
-
-// TODO(jmacd): Define a path for healthchecks.
 
 // Note on metrics instrumentation relative ot the original OpenCensus
 // instrumentation of this code base:
@@ -64,122 +59,66 @@ import (
 // TODO(jmacd): Note that https://github.com/mwitkow/go-conntrack was removed, may
 // be useful after other matters are resolved.
 
+const supervisorEnv = "MAIN_SUPERVISOR"
+
 func main() {
+	if !Main() {
+		os.Exit(1)
+	}
+}
+
+func Main() bool {
+	// Setup debugging helpers
 	if os.Getenv("DEBUG") != "" {
 		runtime.SetBlockProfileRate(20)
 		runtime.SetMutexProfileFraction(20)
 	}
 
+	// Configure a from flags and/or a config file.
 	cfg, metricRenames, staticMetadata, err := config.Configure(os.Args, ioutil.ReadFile)
 	if err != nil {
 		usage(err)
-		os.Exit(2)
+		return false
 	}
 
-	vlevel := cfg.LogConfig.Verbose
-	if cfg.LogConfig.Level == "debug" {
-		vlevel++
-	}
+	// Should this process act as supervisor?  This uses the supervisor
+	// environment variable to avoid recursion.
+	isSupervisor := !cfg.DisableSupervisor && os.Getenv(supervisorEnv) == ""
 
-	if vlevel > 0 {
-		telemetry.SetVerboseLevel(vlevel)
-	}
-
-	var plc promlog.Config
-	plc.Level = &promlog.AllowedLevel{}
-	plc.Format = &promlog.AllowedFormat{}
-	plc.Level.Set(cfg.LogConfig.Level)
-	plc.Format.Set(cfg.LogConfig.Format)
-	logger := promlog.New(&plc)
-
-	level.Info(logger).Log(
-		"msg", "Starting OpenTelemetry Prometheus sidecar",
-		"version", version.Info(),
-		"build_context", version.BuildContext(),
-		"host_details", Uname(),
-		"fd_limits", FdLimits(),
-	)
-
-	if data, err := json.Marshal(cfg); err == nil {
-		level.Debug(logger).Log("config", string(data))
-	}
-
-	// We avoided using the kingpin support for URL flags because
-	// it leads to special cases merging configs and because URL
-	// parsing succeeds in cases w/o a scheme, needs to be
-	// validated anyway.
-	type namedURL struct {
-		name       string
-		value      string
-		allowEmpty bool
-	}
-	for _, pair := range []namedURL{
-		{"destination.endpoint", cfg.Destination.Endpoint, false},
-		{"diagnostics.endpoint", cfg.Diagnostics.Endpoint, true},
-		{"prometheus.endpoint", cfg.Prometheus.Endpoint, false},
-	} {
-		if pair.allowEmpty && pair.value == "" {
-			continue
-		}
-		if pair.value == "" {
-			level.Error(logger).Log("msg", "endpoint must be set", "name", pair.name)
-			os.Exit(2)
-		}
-		url, err := url.Parse(pair.value)
-		if err != nil {
-			level.Error(logger).Log("msg", "invalid endpoint", "name", pair.name, "endpoint", pair.value, "error", err)
-			os.Exit(2)
-		}
-
-		switch url.Scheme {
-		case "http", "https":
-			// Good!
-		default:
-			level.Error(logger).Log("msg", "endpoints must use http or https", "name", pair.name, "endpoint", pair.value)
-			os.Exit(2)
-		}
-	}
+	// Configure logging and diagnostics.
+	logger := internal.NewLogger(cfg, isSupervisor)
 
 	telemetry.StaticSetup(logger)
 
-	if cfg.Diagnostics.Endpoint != "" {
-		endpoint, _ := url.Parse(cfg.Diagnostics.Endpoint)
-		hostport := endpoint.Hostname()
-		if len(endpoint.Port()) > 0 {
-			hostport = net.JoinHostPort(hostport, endpoint.Port())
-		}
-		// Set a service.name resource if none is set.
-		const serviceNameKey = "service.name"
-		if _, ok := cfg.Diagnostics.Attributes[serviceNameKey]; !ok {
-			cfg.Diagnostics.Attributes[serviceNameKey] = "opentelemetry-prometheus-sidecar"
-		}
-
-		// TODO: Configure metric reporting interval, trace batching interval,
-		// currently there is no such setting.
-
-		defer telemetry.ConfigureOpentelemetry(
-			telemetry.WithLogger(logger),
-			telemetry.WithExporterEndpoint(hostport),
-			telemetry.WithExporterInsecure(endpoint.Scheme == "http"),
-			telemetry.WithHeaders(cfg.Diagnostics.Headers),
-			telemetry.WithResourceAttributes(cfg.Diagnostics.Attributes),
-			telemetry.WithExportTimeout(cfg.Diagnostics.Timeout.Duration),
-			telemetry.WithMetricReportingPeriod(telemetry.DefaultReportingPeriod),
-		).Shutdown(context.Background())
+	if shutdownTel := internal.StartTelemetry(
+		cfg,
+		"opentelemetry-prometheus-sidecar",
+		isSupervisor,
+		logger,
+	); shutdownTel != nil {
+		defer shutdownTel(context.Background())
 	}
 
-	// We instantiate a context here since the tailer is used by two other components.
-	// The context will be used in the lifecycle of prometheusReader further down.
-	ctx, cancel := context.WithCancel(context.Background())
+	// Start the supervisor.
+	if isSupervisor {
+		return startSupervisor(cfg, logger)
+	}
+
+	// Start the sidecar.  This context lasts the lifetime of the sidecar.
+	ctx, cancelMain := telemetry.ContextWithSIGTERM(logger)
+	defer cancelMain()
+
+	healthChecker := health.NewChecker()
 
 	httpClient := &http.Client{
-		Transport: otelhttp.NewTransport(http.DefaultTransport),
+		// Note: The Sidecar->Prometheus HTTP connection is not traced.
+		// Transport: otelhttp.NewTransport(http.DefaultTransport),
 	}
 
 	filters, err := parseFilters(logger, cfg.Filters)
 	if err != nil {
 		level.Error(logger).Log("msg", "error parsing --filter", "err", err)
-		os.Exit(2)
+		return false
 	}
 
 	// Parse was validated already, ignore error.
@@ -188,7 +127,7 @@ func main() {
 	targetsURL, err := promURL.Parse(targets.DefaultAPIEndpoint)
 	if err != nil {
 		level.Error(logger).Log("msg", "error parsing --prometheus.endpoint", "err", err)
-		os.Exit(2)
+		return false
 	}
 
 	targetCache := targets.NewCache(
@@ -208,34 +147,31 @@ func main() {
 	tailer, err := tail.Tail(ctx, cfg.Prometheus.WAL)
 	if err != nil {
 		level.Error(logger).Log("msg", "tailing WAL failed", "err", err)
-		os.Exit(1)
+		return false
 	}
-	promconfig.DefaultQueueConfig.MaxSamplesPerSend = otlp.MaxTimeseriesesPerRequest
-	// We want the queues to have enough buffer to ensure consistent flow with full batches
-	// being available for every new request.
-	// Testing with different latencies and shard numbers have shown that 3x of the batch size
-	// works well.
-	promconfig.DefaultQueueConfig.Capacity = 3 * otlp.MaxTimeseriesesPerRequest
 
 	outputURL, _ := url.Parse(cfg.Destination.Endpoint)
 
-	var scf otlp.StorageClientFactory = &otlpClientFactory{
-		logger:   log.With(logger, "component", "storage"),
-		url:      outputURL,
-		timeout:  cfg.Destination.Timeout.Duration,
-		security: cfg.Security,
-		headers:  grpcMetadata.New(cfg.Destination.Headers),
-	}
+	cfg.Destination.Headers[config.AgentKey] = config.AgentMainValue
+
+	scf := internal.NewOTLPClientFactory(otlp.ClientConfig{
+		Logger:           log.With(logger, "component", "storage"),
+		URL:              outputURL,
+		Timeout:          cfg.Destination.Timeout.Duration,
+		RootCertificates: cfg.Security.RootCertificates,
+		Headers:          grpcMetadata.New(cfg.Destination.Headers),
+	})
 
 	queueManager, err := otlp.NewQueueManager(
 		log.With(logger, "component", "queue_manager"),
-		promconfig.DefaultQueueConfig,
+		config.DefaultQueueConfig(),
+		cfg.Destination.Timeout.Duration,
 		scf,
 		tailer,
 	)
 	if err != nil {
 		level.Error(logger).Log("msg", "creating queue manager failed", "err", err)
-		os.Exit(1)
+		return false
 	}
 
 	prometheusReader := retrieval.NewPrometheusReader(
@@ -251,64 +187,66 @@ func main() {
 		cfg.Prometheus.MaxPointAge.Duration,
 	)
 
-	// Perform a test of the outbound connection before starting.
-	if err := selfTest(logger, scf, cfg.StartupTimeout.Duration); err != nil {
-		level.Error(logger).Log("msg", "selftest failed, not starting", "err", err)
-		os.Exit(1)
+	// Start the admin server.
+	go func() {
+		defer cancelMain()
+
+		server := newAdminServer(healthChecker, cfg.Admin, logger)
+
+		go func() {
+			level.Debug(logger).Log("msg", "starting admin server")
+			<-ctx.Done()
+			if err := server.Shutdown(context.Background()); err != nil {
+				level.Error(logger).Log("msg", "admin server shutdown", "err", err)
+			}
+		}()
+
+		if err := server.ListenAndServe(); err != http.ErrServerClosed {
+			level.Error(logger).Log("msg", "admin listener", "err", err)
+		}
+	}()
+
+	// Check the progress file, ensure we can write this file.
+	startOffset, err := readWriteStartOffset(cfg, logger)
+	if err != nil {
+		level.Error(logger).Log("msg", "cannot write progress file", "err", err)
+		return false
 	}
 
+	logStartup(cfg, logger)
+
+	// Test for Prometheus and Outbound dependencies before starting.
+	if err := selfTest(ctx, promURL, scf, cfg.StartupTimeout.Duration, logger); err != nil {
+		level.Error(logger).Log("msg", "selftest failed, not starting", "err", err)
+		return false
+	}
+
+	healthChecker.SetReady(true)
+
+	// Run three inter-depdendent components:
+	// (1) Target cache
+	// (2) Prometheus reader
+	// (3) Queue manager
+	// TODO: Replace this with x/sync/errgroup
 	var g run.Group
 	{
-		ctx, cancel := context.WithCancel(context.Background())
 		g.Add(func() error {
 			targetCache.Run(ctx)
 			return nil
 		}, func(error) {
-			cancel()
+			cancelMain()
 		})
 	}
 	{
-		term := make(chan os.Signal)
-		signal.Notify(term, os.Interrupt, syscall.SIGTERM)
-		cancel := make(chan struct{})
 		g.Add(
 			func() error {
-				// Don't forget to release the reloadReady channel so that waiting blocks can exit normally.
-				select {
-				case <-term:
-					level.Warn(logger).Log("msg", "Received SIGTERM, exiting gracefully...")
-				case <-cancel:
-					break
-				}
-				return nil
-			},
-			func(err error) {
-				close(cancel)
-			},
-		)
-	}
-	{
-		// We use the context we defined higher up instead of a local one like in the other actors.
-		// This is necessary since it's also used to manage the tailer's lifecycle, which the reader
-		// depends on to exit properly.
-		g.Add(
-			func() error {
-				startOffset, err := retrieval.ReadProgressFile(cfg.Prometheus.WAL)
-				if err != nil {
-					level.Warn(logger).Log("msg", "reading progress file failed", "err", err)
-					startOffset = 0
-				}
-				// Write the file again once to ensure we have write permission on startup.
-				if err := retrieval.SaveProgressFile(cfg.Prometheus.WAL, startOffset); err != nil {
-					return err
-				}
-				waitForPrometheus(ctx, logger, promURL)
-				// Sleep a fixed amount of time to allow the first scrapes to complete.
+				// Sleep to allow the first scrapes to complete.
 				select {
 				case <-time.After(cfg.StartupDelay.Duration):
 				case <-ctx.Done():
 					return nil
 				}
+
 				err = prometheusReader.Run(ctx, startOffset)
 				level.Info(logger).Log("msg", "Prometheus reader stopped")
 				return err
@@ -317,56 +255,37 @@ func main() {
 				// Prometheus reader needs to be stopped before closing the TSDB
 				// so that it doesn't try to write samples to a closed storage.
 				level.Info(logger).Log("msg", "Stopping Prometheus reader...")
-				cancel()
+				cancelMain()
 			},
 		)
 	}
 	{
-		cancel := make(chan struct{})
+		stopCh := make(chan struct{})
 		g.Add(
 			func() error {
 				if err := queueManager.Start(); err != nil {
 					return err
 				}
 				level.Info(logger).Log("msg", "OpenTelemetry client started")
-				<-cancel
+				<-stopCh
 				return nil
 			},
 			func(err error) {
 				if err := queueManager.Stop(); err != nil {
 					level.Error(logger).Log("msg", "Error stopping OpenTelemetry writer", "err", err)
 				}
-				close(cancel)
-			},
-		)
-	}
-	{
-		cancel := make(chan struct{})
-		server := &http.Server{
-			Addr: cfg.Admin.ListenAddress,
-		}
-		g.Add(
-			func() error {
-				level.Info(logger).Log("msg", "Web server started")
-				err := server.ListenAndServe()
-				if err != http.ErrServerClosed {
-					return err
-				}
-				<-cancel
-				return nil
-			},
-			func(err error) {
-				if err := server.Shutdown(context.Background()); err != nil {
-					level.Error(logger).Log("msg", "Error stopping web server", "err", err)
-				}
-				close(cancel)
+				close(stopCh)
 			},
 		)
 	}
 	if err := g.Run(); err != nil {
 		level.Error(logger).Log("err", err)
+		return false
 	}
-	level.Info(logger).Log("msg", "See you next time!")
+
+	// SIGTERM causes graceful shutdown.
+	level.Info(logger).Log("msg", "sidecar process exiting")
+	return true
 }
 
 func usage(err error) {
@@ -378,29 +297,7 @@ func usage(err error) {
 	)
 }
 
-type otlpClientFactory struct {
-	logger   log.Logger
-	url      *url.URL
-	timeout  time.Duration
-	security config.SecurityConfig
-	headers  grpcMetadata.MD
-}
-
-func (s *otlpClientFactory) New() otlp.StorageClient {
-	return otlp.NewClient(&otlp.ClientConfig{
-		Logger:           s.logger,
-		URL:              s.url,
-		Timeout:          s.timeout,
-		RootCertificates: s.security.RootCertificates,
-		Headers:          s.headers,
-	})
-}
-
-func (s *otlpClientFactory) Name() string {
-	return s.url.String()
-}
-
-func waitForPrometheus(ctx context.Context, logger log.Logger, promURL *url.URL) {
+func waitForPrometheus(ctx context.Context, logger log.Logger, promURL *url.URL) bool {
 	tick := time.NewTicker(3 * time.Second)
 	defer tick.Stop()
 
@@ -410,17 +307,18 @@ func waitForPrometheus(ctx context.Context, logger log.Logger, promURL *url.URL)
 	for {
 		select {
 		case <-ctx.Done():
-			return
+			return false
 		case <-tick.C:
 			resp, err := http.Get(u.String())
 			if err != nil {
-				level.Warn(logger).Log("msg", "query Prometheus readiness", "err", err)
+				level.Warn(logger).Log("msg", "Prometheus readiness check", "err", err)
 				continue
 			}
 			if resp.StatusCode/100 == 2 {
-				return
+				return true
 			}
-			level.Warn(logger).Log("msg", "Prometheus not ready", "status", resp.Status)
+
+			level.Warn(logger).Log("msg", "Prometheus is not ready", "status", resp.Status)
 		}
 	}
 }
@@ -439,24 +337,86 @@ func parseFilters(logger log.Logger, filters []string) ([][]*labels.Matcher, err
 	return matchers, nil
 }
 
-func selfTest(logger log.Logger, scf otlp.StorageClientFactory, timeout time.Duration) error {
+func selfTest(ctx context.Context, promURL *url.URL, scf otlp.StorageClientFactory, timeout time.Duration, logger log.Logger) error {
 	client := scf.New()
 
-	level.Info(logger).Log("msg", "starting selftest")
+	level.Debug(logger).Log("msg", "starting selftest")
 
-	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	if err := client.Selftest(ctx); err != nil {
-		_ = client.Close()
-		return fmt.Errorf("could not send test opentelemetry.ExportMetricsServiceRequest request: %w", err)
+	// These tests are performed sequentially, to keep the logs simple.
+	// Note waitForPrometheus has no unrecoverable error conditions, so
+	// loops until success or the context is canceled.
+	if !waitForPrometheus(ctx, logger, promURL) {
+		return fmt.Errorf("Prometheus is not ready")
 	}
 
-	if err := client.Close(); err != nil {
-		return fmt.Errorf("error closing test client: %w", err)
+	// Outbound connection test.
+	{
+		if err := client.Selftest(ctx); err != nil {
+			_ = client.Close()
+			return fmt.Errorf("could not send test opentelemetry.ExportMetricsServiceRequest request: %w", err)
+		}
+
+		if err := client.Close(); err != nil {
+			return fmt.Errorf("error closing test client: %w", err)
+		}
 	}
 
-	level.Info(logger).Log("msg", "selftest was successful")
+	level.Debug(logger).Log("msg", "selftest was successful")
 	return nil
+}
+
+func logStartup(cfg config.MainConfig, logger log.Logger) {
+	level.Info(logger).Log(
+		"msg", "Starting OpenTelemetry Prometheus sidecar",
+		"version", version.Info(),
+		"build_context", version.BuildContext(),
+		"host_details", Uname(),
+		"fd_limits", FdLimits(),
+	)
+
+	if data, err := json.Marshal(cfg); err == nil {
+		level.Debug(logger).Log("config", string(data))
+	}
+
+	if !cfg.DisableSupervisor {
+		level.Debug(logger).Log("msg", "running under supervisor")
+	}
+}
+
+func startSupervisor(cfg config.MainConfig, logger log.Logger) bool {
+	super := supervisor.New(supervisor.Config{
+		Logger: logger,
+		Admin:  cfg.Admin,
+	})
+
+	os.Setenv(supervisorEnv, "active")
+
+	return super.Run(os.Args)
+}
+
+func newAdminServer(hc *health.Checker, acfg config.AdminConfig, logger log.Logger) *http.Server {
+	mux := http.NewServeMux()
+	mux.Handle("/-/health", hc.Health())
+	mux.Handle("/-/ready", hc.Ready())
+	address := fmt.Sprint(acfg.ListenIP, ":", acfg.Port)
+	return &http.Server{
+		Addr:    address,
+		Handler: mux,
+	}
+}
+
+// readWriteStartOffset reads the last (approxiate) progress position and re-writes
+// the progress file, to ensure we have write permission on startup.
+func readWriteStartOffset(cfg config.MainConfig, logger log.Logger) (int, error) {
+	startOffset, err := retrieval.ReadProgressFile(cfg.Prometheus.WAL)
+	if err != nil {
+		level.Warn(logger).Log("msg", "reading progress file failed", "err", err)
+		startOffset = 0
+	}
+
+	err = retrieval.SaveProgressFile(cfg.Prometheus.WAL, startOffset)
+	return startOffset, err
 }

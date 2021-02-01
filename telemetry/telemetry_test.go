@@ -112,7 +112,8 @@ func TestTraceEndpointDisabled(t *testing.T) {
 	testEndpointDisabled(
 		t,
 		expectedTracingDisabledMessage,
-		WithExporterEndpoint(""),
+		WithSpanExporterEndpoint(""),
+		WithMetricsExporterEndpoint("https://otlp"),
 	)
 }
 
@@ -120,7 +121,8 @@ func TestMetricEndpointDisabled(t *testing.T) {
 	testEndpointDisabled(
 		t,
 		expectedMetricsDisabledMessage,
-		WithExporterEndpoint(""),
+		WithMetricsExporterEndpoint(""),
+		WithSpansExporterEndpoint("https://otlp"),
 	)
 }
 

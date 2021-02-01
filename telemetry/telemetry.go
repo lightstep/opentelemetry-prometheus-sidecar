@@ -23,25 +23,23 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/pkg/errors"
 	hostMetrics "go.opentelemetry.io/contrib/instrumentation/host"
 	runtimeMetrics "go.opentelemetry.io/contrib/instrumentation/runtime"
 	"go.opentelemetry.io/contrib/propagators/b3"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpgrpc"
 	"go.opentelemetry.io/otel/label"
 	"go.opentelemetry.io/otel/propagation"
-	controller "go.opentelemetry.io/otel/sdk/metric/controller/push"
+	metricsdk "go.opentelemetry.io/otel/sdk/export/metric"
+	controller "go.opentelemetry.io/otel/sdk/metric/controller/basic"
 	processor "go.opentelemetry.io/otel/sdk/metric/processor/basic"
 	selector "go.opentelemetry.io/otel/sdk/metric/selector/simple"
 	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/sdk/trace"
 	"google.golang.org/grpc/credentials"
-)
-
-const (
-	DefaultExportTimeout   = time.Second * 60
-	DefaultReportingPeriod = time.Second * 30
 )
 
 type (
@@ -53,32 +51,50 @@ type (
 	Option func(*Config)
 
 	Config struct {
-		ExporterEndpoint         string
-		ExporterEndpointInsecure bool
-		Propagators              []string
-		MetricReportingPeriod    time.Duration
-		ResourceAttributes       map[string]string
-		Headers                  map[string]string
-		ExportTimeout            time.Duration
-		resource                 *resource.Resource
-		logger                   log.Logger
+		SpanExporterEndpoint            string
+		SpanExporterEndpointInsecure    bool
+		MetricsExporterEndpoint         string
+		MetricsExporterEndpointInsecure bool
+
+		Propagators           []string
+		MetricReportingPeriod time.Duration
+		ResourceAttributes    map[string]string
+		Headers               map[string]string
+		ExportTimeout         time.Duration
+		resource              *resource.Resource
+		logger                log.Logger
 	}
 
 	setupFunc func() (start, stop func(context.Context) error, err error)
 )
 
-// WithExporterEndpoint configures the endpoint for sending metrics via OTLP
-func WithExporterEndpoint(url string) Option {
+// WithSpanExporterEndpoint configures the endpoint for sending spans via OTLP
+func WithSpanExporterEndpoint(url string) Option {
 	return func(c *Config) {
-		c.ExporterEndpoint = url
+		c.SpanExporterEndpoint = url
 	}
 }
 
-// WithExporterInsecure permits connecting to the
+// WithSpanExporterInsecure permits connecting to the
 // trace endpoint without a certificate
-func WithExporterInsecure(insecure bool) Option {
+func WithSpanExporterInsecure(insecure bool) Option {
 	return func(c *Config) {
-		c.ExporterEndpointInsecure = insecure
+		c.SpanExporterEndpointInsecure = insecure
+	}
+}
+
+// WithMetricsExporterEndpoint configures the endpoint for sending metricss via OTLP
+func WithMetricsExporterEndpoint(url string) Option {
+	return func(c *Config) {
+		c.MetricsExporterEndpoint = url
+	}
+}
+
+// WithMetricsExporterInsecure permits connecting to the
+// trace endpoint without a certificate
+func WithMetricsExporterInsecure(insecure bool) Option {
+	return func(c *Config) {
+		c.MetricsExporterEndpointInsecure = insecure
 	}
 }
 
@@ -147,10 +163,10 @@ func newConfig(opts ...Option) Config {
 	}
 
 	if c.ExportTimeout <= 0 {
-		c.ExportTimeout = DefaultExportTimeout
+		c.ExportTimeout = config.DefaultExportTimeout
 	}
 	if c.MetricReportingPeriod <= 0 {
-		c.MetricReportingPeriod = DefaultReportingPeriod
+		c.MetricReportingPeriod = config.DefaultReportingPeriod
 	}
 
 	var err error
@@ -196,23 +212,25 @@ func newResource(c *Config) (*resource.Resource, error) {
 }
 
 func newExporter(endpoint string, insecure bool, headers map[string]string) *otlp.Exporter {
-	secureOption := otlp.WithTLSCredentials(credentials.NewClientTLSFromCert(nil, ""))
+	secureOption := otlpgrpc.WithTLSCredentials(credentials.NewClientTLSFromCert(nil, ""))
 	if insecure {
-		secureOption = otlp.WithInsecure()
+		secureOption = otlpgrpc.WithInsecure()
 	}
-	return otlp.NewUnstartedExporter(
-		secureOption,
-		otlp.WithAddress(endpoint),
-		otlp.WithHeaders(headers),
+	driver := otlpgrpc.NewDriver(secureOption,
+		otlpgrpc.WithEndpoint(endpoint),
+		otlpgrpc.WithHeaders(headers),
+	)
+	return otlp.NewUnstartedExporter(driver,
+		otlp.WithMetricExportKindSelector(metricsdk.CumulativeExportKindSelector()),
 	)
 }
 
 func (c *Config) setupTracing() (start, stop func(ctx context.Context) error, err error) {
-	if c.ExporterEndpoint == "" {
+	if c.SpanExporterEndpoint == "" {
 		level.Debug(c.logger).Log("msg", "tracing is disabled: no endpoint set")
 		return nil, nil, nil
 	}
-	spanExporter := newExporter(c.ExporterEndpoint, c.ExporterEndpointInsecure, c.Headers)
+	spanExporter := newExporter(c.SpanExporterEndpoint, c.SpanExporterEndpointInsecure, c.Headers)
 
 	// TODO: Make a way to set the export timeout, there is
 	// apparently not such a thing for OTel-Go:
@@ -237,21 +255,25 @@ func (c *Config) setupTracing() (start, stop func(ctx context.Context) error, er
 }
 
 func (c *Config) setupMetrics() (start, stop func(ctx context.Context) error, err error) {
-	if c.ExporterEndpoint == "" {
+	if c.MetricsExporterEndpoint == "" {
 		level.Debug(c.logger).Log("msg", "metrics are disabled: no endpoint set")
 		return nil, nil, nil
 	}
-	metricExporter := newExporter(c.ExporterEndpoint, c.ExporterEndpointInsecure, c.Headers)
+	metricExporter := newExporter(c.MetricsExporterEndpoint, c.MetricsExporterEndpointInsecure, c.Headers)
 
 	pusher := controller.New(
-		processor.New(
-			selector.NewWithInexpensiveDistribution(),
-			metricExporter,
+		newCopyToCounterProcessor(
+			processor.New(
+				selector.NewWithHistogramDistribution([]float64{
+					0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10,
+				}),
+				metricsdk.CumulativeExportKindSelector(),
+			),
 		),
-		metricExporter,
+		controller.WithPusher(metricExporter),
 		controller.WithResource(c.resource),
-		controller.WithPeriod(c.MetricReportingPeriod),
-		controller.WithTimeout(c.ExportTimeout),
+		controller.WithCollectPeriod(c.MetricReportingPeriod),
+		controller.WithPushTimeout(c.ExportTimeout),
 	)
 
 	provider := pusher.MeterProvider()
@@ -271,12 +293,21 @@ func (c *Config) setupMetrics() (start, stop func(ctx context.Context) error, er
 				return errors.Wrap(err, "failed to start host metrics")
 			}
 
-			pusher.Start()
+			if err := pusher.Start(ctx); err != nil {
+				return errors.Wrap(err, "failed to start metrics controller")
+			}
 
 			return nil
 		}, func(ctx context.Context) error {
-			pusher.Stop()
-			return metricExporter.Shutdown(ctx)
+			err1 := pusher.Stop(ctx)
+			err2 := metricExporter.Shutdown(ctx)
+			if err1 != nil {
+				return errors.Wrap(err1, "failed to stop metrics controller")
+			}
+			if err2 != nil {
+				return errors.Wrap(err2, "failed to stop metrics exporter")
+			}
+			return nil
 		}, nil
 }
 
@@ -285,9 +316,8 @@ func ConfigureOpentelemetry(opts ...Option) *Telemetry {
 		config: newConfig(opts...),
 	}
 
-	level.Debug(tel.config.logger).Log("msg", "debug logging enabled")
 	s, _ := json.MarshalIndent(tel.config, "", "\t")
-	level.Debug(tel.config.logger).Log("configuration", string(s))
+	level.Debug(tel.config.logger).Log("msg", "telemetry enabled", "cfg", string(s))
 
 	var startFuncs []func(context.Context) error
 

@@ -30,7 +30,7 @@ func Example() {
         //   "destination": {
         //     "endpoint": "https://otlp.io:443",
         //     "headers": {
-        //       "Access-Token": "aabbccdd...wwxxyyzz"
+        //       "access-token": "aabbccdd...wwxxyyzz"
         //     },
         //     "attributes": {
         //       "environment": "public",
@@ -48,7 +48,8 @@ func Example() {
         //     "use_meta_labels": true
         //   },
         //   "admin": {
-        //     "listen_address": "0.0.0.0:10000"
+        //     "listen_ip": "0.0.0.0",
+        //     "port": 10000
         //   },
         //   "security": {
         //     "root_certificates": [
@@ -59,7 +60,7 @@ func Example() {
         //   "diagnostics": {
         //     "endpoint": "https://otlp.io:443",
         //     "headers": {
-        //       "Access-Token": "wwxxyyzz...aabbccdd"
+        //       "access-token": "wwxxyyzz...aabbccdd"
         //     },
         //     "attributes": {
         //       "environment": "internal"
@@ -94,6 +95,8 @@ func Example() {
         //     "level": "debug",
         //     "format": "json",
         //     "verbose": 1
-        //   }
+        //   },
+        //   "disable_supervisor": false,
+        //   "disable_diagnostics": false
         // }
 }

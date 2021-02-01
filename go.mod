@@ -2,8 +2,6 @@ module github.com/lightstep/opentelemetry-prometheus-sidecar
 
 replace github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry => ./telemetry
 
-go 1.15
-
 require (
 	github.com/d4l3k/messagediff v1.2.1 // indirect
 	github.com/ghodss/yaml v1.0.0
@@ -30,13 +28,12 @@ require (
 	// see https://github.com/prometheus/prometheus/issues/7663.
 	github.com/prometheus/prometheus v1.8.2-0.20201015110737-0a7fdd3b7696
 	github.com/stretchr/testify v1.6.1
-	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.15.1
-	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.15.1
-	go.opentelemetry.io/otel v0.15.0
-	golang.org/x/time v0.0.0-20200630173020-3af7569d3a1e
+	go.opentelemetry.io/otel v0.16.0
 	golang.org/x/tools v0.0.0-20201014170642-d1624618ad65 // indirect
 	google.golang.org/genproto v0.0.0-20200904004341-0bd0a958aa1d
 	google.golang.org/grpc v1.34.0
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 	gopkg.in/d4l3k/messagediff.v1 v1.2.1
 )
+
+go 1.15

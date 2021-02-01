@@ -36,12 +36,12 @@ import (
 
 var (
 	samplesProcessed = sidecar.OTelMeterMust.NewInt64ValueRecorder(
-		"samples.processed",
+		"sidecar.samples.processed",
 		metric.WithDescription("Number of WAL samples processed in a batch"),
 	)
 
 	samplesProduced = sidecar.OTelMeterMust.NewInt64Counter(
-		"samples.produced",
+		"sidecar.samples.produced",
 		metric.WithDescription("Number of Metric samples produced"),
 	)
 )
@@ -167,10 +167,6 @@ Outer:
 				started = true
 			}
 			samples, err = decoder.Samples(rec, samples[:0])
-			if len(samples) > 0 {
-				if len(samples) > 1 {
-				}
-			}
 			if err != nil {
 				level.Error(r.logger).Log("error", err)
 				continue
@@ -204,7 +200,7 @@ Outer:
 				if outputSample == nil {
 					continue
 				}
-				r.appender.Append(hash, outputSample)
+				r.appender.Append(ctx, hash, outputSample)
 				produced++
 			}
 

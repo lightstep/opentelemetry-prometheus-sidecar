@@ -8,7 +8,50 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+- Add `supervisor=true` in logs from the supervisor process. (#90)
+
+## [0.12.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.12.0) - 2021-02-01
+
+- Less resharding synchronization: do not require in-order writes (#87)
+- Backstop against permanent Export() failures (#87)
+- Rename all sidecar metrics to match `sidecar.*` (#87)
+- Update to OTel-Go SDK v0.16.0. (#86)
+- Use a 2 second maximum backoff when Export() fails (vs 100ms default). (#81)
+- Update CI tests to use Prometheus 2.23. (#82)
+- Update go.mod files to use Go 1.15. (#83)
+
+## [0.11.1](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.11.1) - 2021-01-26
+
+- Fix for graceful shutdown. (#79)
+
+## [0.11.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.11.0) - 2021-01-25
+
+- Enable self-diagnostics using the OTel-Go SDK, using the primary destination
+  by default if none is configured.  Disable this behavior with --disable-diagnostics. (#72)
+- Auto-downcase headers for http2 compliance. (#73)
+- Ensures the sidecar will exit non-zero on errors. (#74)
+- Adds a /-/ready endpoint, where readiness implies:
+  - Prometheus is ready
+  - Can write status file
+  - Export empty request succeeds. (#75)
+- Adds a /-/health endpoint, always returns OK. (#75)
+- Adds a supervisor:
+  - Performs periodic healthcheck
+  - Runs main() in a sub-process, tees stdout and stderr
+  - Records recent logs & healthcheck status in a span. (#75)
+- Disable spans in the sidecar, replace w/ 2 Float64ValueRecorders. (#75)
+
+
+## [0.10.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.10.0) - 2021-01-21
+
+- Fixes bug in WAL-tailer `openSegment()` method. (#71)
+
+## [0.9.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.9.0) - 2021-01-15
+
 ### Changed
+
+- Additional sanitization of HTTP2 headers. (#67)
+- Remove gRPC WithLoadBalancerName() option in favor of default service config. (#64)
 
 ## [0.8.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.8.0) - 2021-01-11
 

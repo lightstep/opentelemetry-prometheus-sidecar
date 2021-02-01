@@ -30,9 +30,9 @@ import (
 )
 
 // Ports used here:
-// 19000: Prometheus
 // 19001: OTLP service
 // 19002: Scrape target
+// 19093: Prometheus
 
 type (
 	testServer struct {
@@ -50,9 +50,15 @@ var (
 	e2eTestMainCommonFlags = []string{
 		"--security.root-certificate=testdata/certs/root_ca.crt",
 		"--destination.endpoint=https://127.0.0.1:19001",
+		"--prometheus.endpoint=http://0.0.0.0:19093",
 		"--destination.header",
 		fmt.Sprint(e2eTestHeaderName, "=", e2eTestHeaderValue),
+		"--disable-supervisor",
+		"--disable-diagnostics",
+		"--admin.port=9093",
 	}
+
+	e2eReadyURL = "http://0.0.0.0:9093/-/ready"
 )
 
 const (
@@ -96,6 +102,7 @@ func TestE2E(t *testing.T) {
 	defer pipeWrite.Close()
 
 	go func() {
+		// TODO: Replace this with /-/ready check using code elsewhere in this repo.
 		defer pipeRead.Close()
 		for {
 			// This passes output to Stderr but signals
@@ -136,6 +143,9 @@ func TestE2E(t *testing.T) {
 
 	ts := newTestServer(t)
 
+	// start gRPC service
+	go runMetricsService(ts)
+
 	// Run prometheus
 	promCmd := exec.CommandContext(
 		ctx,
@@ -144,18 +154,16 @@ func TestE2E(t *testing.T) {
 		dataDir,
 		"--config.file",
 		cfgPath,
-		"--web.listen-address=0.0.0.0:19000",
+		"--web.listen-address=0.0.0.0:19093",
 	)
 	promCmd.Stderr = pipeWrite
 	promCmd.Stdout = os.Stdout
 	if err := promCmd.Start(); err != nil {
 		log.Fatal(err)
 	}
-	go func() {
-		log.Printf("Waiting for command to finish...")
-		err := promCmd.Wait()
-		log.Printf("Command finished with error: %v", err)
-	}()
+	defer promCmd.Wait()
+	defer promCmd.Process.Kill()
+
 	// Wait for Prometheus to be ready:
 	select {
 	case <-ready:
@@ -171,9 +179,10 @@ func TestE2E(t *testing.T) {
 		os.Args[0],
 		append(e2eTestMainCommonFlags,
 			"--prometheus.wal", path.Join(dataDir, "wal"),
-			"--prometheus.endpoint=http://127.0.0.1:19000",
 			"--destination.attribute=service.name=Service",
-			"--startup.delay=1s")...,
+			"--log.level=debug",
+			"--startup.delay=1s",
+		)...,
 	)
 	sideCmd.Env = append(os.Environ(), "RUN_MAIN=1")
 	sideCmd.Stderr = os.Stderr
@@ -181,6 +190,8 @@ func TestE2E(t *testing.T) {
 	if err := sideCmd.Start(); err != nil {
 		log.Fatal(err)
 	}
+	defer sideCmd.Wait()
+	defer sideCmd.Process.Kill()
 
 	// Start scrape target
 	go func() {
@@ -209,9 +220,6 @@ func TestE2E(t *testing.T) {
 		}
 		_ = s.ListenAndServe()
 	}()
-
-	// start gRPC service
-	go runMetricsService(ts)
 
 	// Gather results
 	var results []*metrics.ResourceMetrics
@@ -246,6 +254,8 @@ func TestE2E(t *testing.T) {
 			val = dp.DoubleGauge.DataPoints[0].Value
 		case *metrics.Metric_DoubleSum:
 			val = dp.DoubleSum.DataPoints[0].Value
+		default:
+			t.Error("Unexpected", result.InstrumentationLibraryMetrics[0].Metrics[0])
 		}
 
 		rvals := map[string]string{}
@@ -303,7 +313,7 @@ func runMetricsService(ts *testServer) {
 		log.Fatal("failed to append client certs")
 	}
 
-	listener, err := net.Listen("tcp", "0.0.0.0:19001")
+	listener, err := net.Listen("tcp", "127.0.0.1:19001")
 	if err != nil {
 		log.Fatalf("failed to listen: %s", err)
 	}
@@ -358,7 +368,7 @@ func (s *testServer) Stop() {
 func newTestServer(t *testing.T) *testServer {
 	return &testServer{
 		t:      t,
-		stops:  make(chan func(), 2), // 2 = max number of stop functions registered
+		stops:  make(chan func(), 3), // 3 = max number of stop functions registered
 		result: make(chan *metrics.ResourceMetrics, e2eTestScrapes),
 	}
 }

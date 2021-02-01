@@ -16,11 +16,14 @@ package telemetry
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	stdlog "log"
 	"os"
+	"os/signal"
 	"sync"
 	"sync/atomic"
+	"syscall"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -75,6 +78,10 @@ func (dl *deferLogger) Log(kvs ...interface{}) error {
 	return delegate.Log(kvs...)
 }
 
+func StaticLogger() log.Logger {
+	return staticLogger
+}
+
 func init() {
 	verboseLevel.Store(int(0))
 
@@ -93,6 +100,26 @@ func StaticSetup(logger log.Logger) {
 	staticDeferred.lock.Lock()
 	defer staticDeferred.lock.Unlock()
 	staticDeferred.delegate = logger
+}
+
+// ContextWithSIGTERM returns a context that will be cancelled on SIGTERM.
+func ContextWithSIGTERM(logger log.Logger) (context.Context, context.CancelFunc) {
+	ctx, cancelMain := context.WithCancel(context.Background())
+
+	go func() {
+		defer cancelMain()
+
+		term := make(chan os.Signal)
+		signal.Notify(term, os.Interrupt, syscall.SIGTERM)
+		select {
+		case <-term:
+			level.Warn(logger).Log("msg", "received SIGTERM, exiting...")
+		case <-ctx.Done():
+			break
+		}
+	}()
+
+	return ctx, cancelMain
 }
 
 type forOTel struct {

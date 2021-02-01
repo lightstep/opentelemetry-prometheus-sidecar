@@ -35,7 +35,7 @@ import (
 
 var (
 	droppedSeries = sidecar.OTelMeterMust.NewInt64Counter(
-		"dropped.series",
+		"sidecar.dropped.series",
 		metric.WithDescription("Number of series that were dropped, not exported"),
 	)
 	keyReason = label.Key("key_reason")
@@ -295,6 +295,11 @@ func (c *seriesCache) getResetAdjusted(ref uint64, t int64, v float64) (int64, f
 		// while unlikely to conflict with any previous sample.
 		e.resetValue = 0
 		e.resetTimestamp = t - 1
+	} else if e.resetTimestamp >= t {
+		// TODO: This case is problematic and typically
+		// results in some kind of data validation error.  An
+		// out-of-order WAL entry?
+		// https://github.com/lightstep/opentelemetry-prometheus-sidecar/issues/84
 	}
 	return e.resetTimestamp, v - e.resetValue, true
 }
