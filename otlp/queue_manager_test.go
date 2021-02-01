@@ -188,7 +188,7 @@ func (c *TestStorageClient) Name() string {
 }
 
 func (c *TestStorageClient) Close() error {
-	c.wg.Wait()
+	// Note: This does not wait on `c.wg`.  The caller is expected to waitForExpectedSamples().
 	return nil
 }
 

@@ -7,7 +7,7 @@ import (
 	"github.com/prometheus/common/promlog"
 )
 
-func NewLogger(cfg config.MainConfig) log.Logger {
+func NewLogger(cfg config.MainConfig, isSupervisor bool) log.Logger {
 	vlevel := cfg.LogConfig.Verbose
 	if cfg.LogConfig.Level == "debug" {
 		vlevel++
@@ -22,5 +22,10 @@ func NewLogger(cfg config.MainConfig) log.Logger {
 	plc.Format = &promlog.AllowedFormat{}
 	plc.Level.Set(cfg.LogConfig.Level)
 	plc.Format.Set(cfg.LogConfig.Format)
-	return promlog.New(&plc)
+
+	logger := promlog.New(&plc)
+	if isSupervisor {
+		logger = log.With(logger, "supervisor", "true")
+	}
+	return logger
 }
