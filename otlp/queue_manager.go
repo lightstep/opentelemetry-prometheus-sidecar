@@ -189,27 +189,11 @@ func NewQueueManager(logger log.Logger, cfg promconfig.QueueConfig, timeout time
 func (t *QueueManager) Append(ctx context.Context, hash uint64, sample *metric_pb.ResourceMetrics) error {
 	t.queueLengthCounter.Add(ctx, 1)
 
-	for {
-		// This repeatedly tries to enqueue the sample, in
-		// case the queue is blocked and a resharding event
-		// might help.
-		t.shardsMtx.RLock()
-		ok := t.shards.tryEnqueue(hash, sample)
-		t.shardsMtx.RUnlock()
+	t.shardsMtx.RLock()
+	t.shards.enqueue(hash, sample)
+	t.shardsMtx.RUnlock()
 
-		if ok {
-			return nil
-		}
-
-		func() {
-			timer := time.NewTimer(config.DefaultEnqueueRetryPeriod)
-			defer timer.Stop()
-			select {
-			case <-ctx.Done():
-			case <-timer.C:
-			}
-		}()
-	}
+	return nil
 }
 
 // Start the queue manager sending samples to the remote storage.
@@ -434,19 +418,14 @@ func (s *shardCollection) stop() {
 	}
 }
 
-func (s *shardCollection) tryEnqueue(hash uint64, sample *metric_pb.ResourceMetrics) bool {
+func (s *shardCollection) enqueue(hash uint64, sample *metric_pb.ResourceMetrics) {
+	s.qm.samplesIn.incr(1)
 	shardIndex := hash % uint64(len(s.shards))
 
 	// Note: this would block indefinitely if sendSamples() blocks
 	// indefinitely.  The caller retries this at a faster interval
 	// in case a resharding occurs first.
-	select {
-	case s.shards[shardIndex].queue <- queueEntry{sample: sample}:
-		s.qm.samplesIn.incr(1)
-		return true
-	default:
-		return false
-	}
+	s.shards[shardIndex].queue <- queueEntry{sample: sample}
 }
 
 func (s *shardCollection) runShard(i int) {
