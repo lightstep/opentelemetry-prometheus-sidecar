@@ -108,6 +108,9 @@ func NewQueueManager(logger log.Logger, cfg promconfig.QueueConfig, timeout time
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
+	if timeout == 0 {
+		timeout = config.DefaultExportTimeout
+	}
 	t := &QueueManager{
 		logger:        logger,
 		cfg:           cfg, // TODO: Move cfg into MainConfig
