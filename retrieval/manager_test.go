@@ -38,7 +38,7 @@ type nopAppender struct {
 	samples []*metric_pb.ResourceMetrics
 }
 
-func (a *nopAppender) Append(hash uint64, s *metric_pb.ResourceMetrics) error {
+func (a *nopAppender) Append(_ context.Context, hash uint64, s *metric_pb.ResourceMetrics) error {
 	a.lock.Lock()
 	defer a.lock.Unlock()
 

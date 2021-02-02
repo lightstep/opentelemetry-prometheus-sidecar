@@ -26,18 +26,16 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	metricsService "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/collector/metrics/v1"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
-	"go.opentelemetry.io/otel/metric"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry/doevery"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	grpcMetadata "google.golang.org/grpc/metadata"
 )
 
 const (
-	MaxTimeseriesesPerRequest = 200
-
 	// serviceConfig copied from OTel-Go.
 	// https://github.com/open-telemetry/opentelemetry-go/blob/5ed96e92446d2d58d131e0672da613a84c16af7a/exporters/otlp/grpcoptions.go#L37
 	serviceConfig = `{
@@ -67,16 +65,13 @@ const (
 )
 
 var (
-	pointsExported = sidecar.OTelMeterMust.NewInt64Counter(
-		"points.exported",
-		metric.WithDescription("count of exported metric points"),
-	)
 	exportDuration = telemetry.NewTimer(
-		"otlp.export.duration",
+		"sidecar.export.duration",
 		"duration of the otlp.Export() call",
 	)
+
 	connectDuration = telemetry.NewTimer(
-		"otlp.connect.duration",
+		"sidecar.connect.duration",
 		"duration of the grpc.Dial() call",
 	)
 )
@@ -104,7 +99,7 @@ type ClientConfig struct {
 }
 
 // NewClient creates a new Client.
-func NewClient(conf *ClientConfig) *Client {
+func NewClient(conf ClientConfig) *Client {
 	logger := conf.Logger
 	if logger == nil {
 		logger = log.NewNopLogger()
@@ -133,7 +128,7 @@ func (c *Client) getConnection(ctx context.Context) (_ *grpc.ClientConn, retErr 
 
 	useAuth := c.url.Scheme != "http"
 	level.Debug(c.logger).Log(
-		"msg", "new otlp connection",
+		"msg", "new OTLP connection",
 		"auth", useAuth,
 		"url", c.url.String(),
 		"timeout", c.timeout)
@@ -168,7 +163,7 @@ func (c *Client) getConnection(ctx context.Context) (_ *grpc.ClientConn, retErr 
 			}
 		}
 		level.Debug(c.logger).Log(
-			"msg", "tls configured",
+			"msg", "TLS configured",
 			"server", c.url.Hostname(),
 			"root_certs", fmt.Sprint(c.rootCertificates),
 		)
@@ -246,10 +241,10 @@ func (c *Client) Store(req *metricsService.ExportMetricsServiceRequest) error {
 
 	service := metricsService.NewMetricsServiceClient(conn)
 
-	errors := make(chan error, len(tss)/MaxTimeseriesesPerRequest+1)
+	errors := make(chan error, len(tss)/config.MaxTimeseriesPerRequest+1)
 	var wg sync.WaitGroup
-	for i := 0; i < len(tss); i += MaxTimeseriesesPerRequest {
-		end := i + MaxTimeseriesesPerRequest
+	for i := 0; i < len(tss); i += config.MaxTimeseriesPerRequest {
+		end := i + config.MaxTimeseriesPerRequest
 		if end > len(tss) {
 			end = len(tss)
 		}
@@ -264,21 +259,20 @@ func (c *Client) Store(req *metricsService.ExportMetricsServiceRequest) error {
 			defer exportDuration.Start(ctx).Stop(&err)
 
 			if _, err = service.Export(c.grpcMetadata(ctx), req_copy); err != nil {
-				// TODO This happens too fast _after_ a healthy
-				// connection becomes unhealthy. Fix.
 				level.Debug(c.logger).Log(
-					"msg", "Failure calling Export",
-					"err", truncateErrorString(err))
+					"msg", "export failure",
+					"err", truncateErrorString(err),
+				)
 				errors <- err
 				return
 			}
 
-			// Points were successfully written.
-			pointsExported.Add(ctx, int64(end-begin))
-
-			level.Debug(c.logger).Log(
-				"msg", "Write was successful",
-				"records", end-begin)
+			doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
+				level.Debug(c.logger).Log(
+					"msg", "successful write",
+					"records", end-begin,
+				)
+			})
 		}(i, end)
 	}
 	wg.Wait()

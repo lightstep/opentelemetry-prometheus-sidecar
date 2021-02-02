@@ -19,7 +19,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"net"
 	"net/http"
 	_ "net/http/pprof" // Comment this line to disable pprof endpoint.
 	"net/url"
@@ -30,6 +29,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/cmd/internal"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/health"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
@@ -41,10 +41,7 @@ import (
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/oklog/run"
 	"github.com/pkg/errors"
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/common/promlog"
 	"github.com/prometheus/common/version"
-	promconfig "github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	grpcMetadata "google.golang.org/grpc/metadata"
@@ -89,19 +86,17 @@ func Main() bool {
 	isSupervisor := !cfg.DisableSupervisor && os.Getenv(supervisorEnv) == ""
 
 	// Configure logging and diagnostics.
-	logger := mainLogger(cfg)
-
-	diagConfig := cfg.Diagnostics
-
-	if diagConfig.Endpoint == "" && !cfg.DisableDiagnostics {
-		diagConfig = cfg.Destination
-	}
+	logger := internal.NewLogger(cfg, isSupervisor)
 
 	telemetry.StaticSetup(logger)
 
-	if diagConfig.Endpoint != "" {
-		tel := startTelemetry(diagConfig, isSupervisor, logger)
-		defer tel.Shutdown(context.Background())
+	if shutdownTel := internal.StartTelemetry(
+		cfg,
+		"opentelemetry-prometheus-sidecar",
+		isSupervisor,
+		logger,
+	); shutdownTel != nil {
+		defer shutdownTel(context.Background())
 	}
 
 	// Start the supervisor.
@@ -155,29 +150,22 @@ func Main() bool {
 		return false
 	}
 
-	promconfig.DefaultQueueConfig.MaxBackoff = model.Duration(2 * time.Second)
-	promconfig.DefaultQueueConfig.MaxSamplesPerSend = otlp.MaxTimeseriesesPerRequest
-	// We want the queues to have enough buffer to ensure consistent flow with full batches
-	// being available for every new request.
-	// Testing with different latencies and shard numbers have shown that 3x of the batch size
-	// works well.
-	promconfig.DefaultQueueConfig.Capacity = 3 * otlp.MaxTimeseriesesPerRequest
-
 	outputURL, _ := url.Parse(cfg.Destination.Endpoint)
 
 	cfg.Destination.Headers[config.AgentKey] = config.AgentMainValue
 
-	var scf otlp.StorageClientFactory = &otlpClientFactory{
-		logger:   log.With(logger, "component", "storage"),
-		url:      outputURL,
-		timeout:  cfg.Destination.Timeout.Duration,
-		security: cfg.Security,
-		headers:  grpcMetadata.New(cfg.Destination.Headers),
-	}
+	scf := internal.NewOTLPClientFactory(otlp.ClientConfig{
+		Logger:           log.With(logger, "component", "storage"),
+		URL:              outputURL,
+		Timeout:          cfg.Destination.Timeout.Duration,
+		RootCertificates: cfg.Security.RootCertificates,
+		Headers:          grpcMetadata.New(cfg.Destination.Headers),
+	})
 
 	queueManager, err := otlp.NewQueueManager(
 		log.With(logger, "component", "queue_manager"),
-		promconfig.DefaultQueueConfig,
+		config.DefaultQueueConfig(),
+		cfg.Destination.Timeout.Duration,
 		scf,
 		tailer,
 	)
@@ -309,28 +297,6 @@ func usage(err error) {
 	)
 }
 
-type otlpClientFactory struct {
-	logger   log.Logger
-	url      *url.URL
-	timeout  time.Duration
-	security config.SecurityConfig
-	headers  grpcMetadata.MD
-}
-
-func (s *otlpClientFactory) New() otlp.StorageClient {
-	return otlp.NewClient(&otlp.ClientConfig{
-		Logger:           s.logger,
-		URL:              s.url,
-		Timeout:          s.timeout,
-		RootCertificates: s.security.RootCertificates,
-		Headers:          s.headers,
-	})
-}
-
-func (s *otlpClientFactory) Name() string {
-	return s.url.String()
-}
-
 func waitForPrometheus(ctx context.Context, logger log.Logger, promURL *url.URL) bool {
 	tick := time.NewTicker(3 * time.Second)
 	defer tick.Stop()
@@ -402,24 +368,6 @@ func selfTest(ctx context.Context, promURL *url.URL, scf otlp.StorageClientFacto
 	return nil
 }
 
-func mainLogger(cfg config.MainConfig) log.Logger {
-	vlevel := cfg.LogConfig.Verbose
-	if cfg.LogConfig.Level == "debug" {
-		vlevel++
-	}
-
-	if vlevel > 0 {
-		telemetry.SetVerboseLevel(vlevel)
-	}
-
-	var plc promlog.Config
-	plc.Level = &promlog.AllowedLevel{}
-	plc.Format = &promlog.AllowedFormat{}
-	plc.Level.Set(cfg.LogConfig.Level)
-	plc.Format.Set(cfg.LogConfig.Format)
-	return promlog.New(&plc)
-}
-
 func logStartup(cfg config.MainConfig, logger log.Logger) {
 	level.Info(logger).Log(
 		"msg", "Starting OpenTelemetry Prometheus sidecar",
@@ -440,61 +388,13 @@ func logStartup(cfg config.MainConfig, logger log.Logger) {
 
 func startSupervisor(cfg config.MainConfig, logger log.Logger) bool {
 	super := supervisor.New(supervisor.Config{
-		Logger: log.With(logger, "component", "supervisor"),
+		Logger: logger,
 		Admin:  cfg.Admin,
 	})
 
 	os.Setenv(supervisorEnv, "active")
 
 	return super.Run(os.Args)
-}
-
-func startTelemetry(diagConfig config.OTLPConfig, isSuper bool, logger log.Logger) *telemetry.Telemetry {
-	endpoint, _ := url.Parse(diagConfig.Endpoint)
-	hostport := endpoint.Hostname()
-	if len(endpoint.Port()) > 0 {
-		hostport = net.JoinHostPort(hostport, endpoint.Port())
-	}
-
-	insecure := endpoint.Scheme == "http"
-	metricsHostport := hostport
-	spanHostport := hostport
-
-	// Set a service.name resource if none is set.
-	const serviceNameKey = "service.name"
-
-	svcName := diagConfig.Attributes[serviceNameKey]
-	if svcName == "" {
-		svcName = "opentelemetry-prometheus-sidecar"
-	}
-
-	agentName := config.AgentSecondaryValue
-	if isSuper {
-		// Disable metrics in the supervisor
-		metricsHostport = ""
-		svcName = svcName + "-supervisor"
-		agentName = config.AgentSupervisorValue
-	} else {
-		// Disable spans in the main process
-		spanHostport = ""
-	}
-
-	diagConfig.Attributes[serviceNameKey] = svcName
-	diagConfig.Headers[config.AgentKey] = agentName
-
-	// TODO: Configure trace batching interval.
-
-	return telemetry.ConfigureOpentelemetry(
-		telemetry.WithLogger(logger),
-		telemetry.WithSpanExporterEndpoint(spanHostport),
-		telemetry.WithSpanExporterInsecure(insecure),
-		telemetry.WithMetricsExporterEndpoint(metricsHostport),
-		telemetry.WithMetricsExporterInsecure(insecure),
-		telemetry.WithHeaders(diagConfig.Headers),
-		telemetry.WithResourceAttributes(diagConfig.Attributes),
-		telemetry.WithExportTimeout(diagConfig.Timeout.Duration),
-		telemetry.WithMetricReportingPeriod(config.DefaultReportingPeriod),
-	)
 }
 
 func newAdminServer(hc *health.Checker, acfg config.AdminConfig, logger log.Logger) *http.Server {

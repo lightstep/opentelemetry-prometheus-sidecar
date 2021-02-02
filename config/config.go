@@ -25,8 +25,10 @@ import (
 	"github.com/ghodss/yaml"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
 	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
 	promlogflag "github.com/prometheus/common/promlog/flag"
 	"github.com/prometheus/common/version"
+	promconfig "github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/pkg/textparse"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
@@ -45,9 +47,24 @@ const (
 	DefaultShutdownDelay      = time.Minute
 	DefaultStartupTimeout     = time.Minute * 5
 	DefaultSupervisorPeriod   = time.Minute
+	DefaultNoisyLogPeriod     = time.Second * 5
+	DefaultEnqueueRetryPeriod = time.Second * 5
 
 	DefaultSupervisorBufferSize  = 16384
 	DefaultSupervisorLogsHistory = 16
+
+	// TODO: The two settings below are not configurable, they should be.
+
+	// How many points per request.
+	MaxTimeseriesPerRequest = 200
+
+	// DefaultMaxExportAttempts sets a maximum on the number of
+	// attempts to export a request.  This is not RPC requests,
+	// but attempts, defined as trying for up to at least the
+	// export timeout.  This helps in case a request fails
+	// repeatedly, in which case the queue could block the WAL
+	// reader.
+	DefaultMaxExportAttempts = 2
 
 	briefDescription = `
 The OpenTelemetry Prometheus sidecar runs alongside the
@@ -449,4 +466,21 @@ func (d *DurationConfig) UnmarshalJSON(data []byte) error {
 
 func (d DurationConfig) MarshalJSON() ([]byte, error) {
 	return json.Marshal(d.Duration.String())
+}
+
+// TODO Move this config object into MainConfig (or at least the
+// fields we use, which is most) and add command-line flags.
+func DefaultQueueConfig() promconfig.QueueConfig {
+	cfg := promconfig.DefaultQueueConfig
+
+	cfg.MaxBackoff = model.Duration(2 * time.Second)
+	cfg.MaxSamplesPerSend = MaxTimeseriesPerRequest
+
+	// We want the queues to have enough buffer to ensure consistent flow with full batches
+	// being available for every new request.
+	// Testing with different latencies and shard numbers have shown that 3x of the batch size
+	// works well.
+	cfg.Capacity = 3 * MaxTimeseriesPerRequest
+
+	return cfg
 }
