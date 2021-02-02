@@ -460,9 +460,6 @@ func (s *shardCollection) runShard(i int) {
 		case entry, ok := <-shard.queue:
 			sample := entry.sample
 
-			// Remove one count from the queue size metric.
-			s.qm.queueLengthCounter.Add(ctx, -1)
-
 			if !ok {
 				// The queue was closed by a stop() event.  Flush and return.
 				if len(pendingSamples) > 0 {
@@ -470,6 +467,9 @@ func (s *shardCollection) runShard(i int) {
 				}
 				return
 			}
+
+			// Remove one count from the queue size metric.
+			s.qm.queueLengthCounter.Add(ctx, -1)
 
 			pendingSamples = append(pendingSamples, sample)
 			if len(pendingSamples) >= s.qm.cfg.MaxSamplesPerSend {
