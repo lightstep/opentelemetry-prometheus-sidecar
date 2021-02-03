@@ -46,7 +46,7 @@ const (
 	DefaultStartupDelay       = time.Minute
 	DefaultShutdownDelay      = time.Minute
 	DefaultStartupTimeout     = time.Minute * 5
-	DefaultSupervisorPeriod   = 10 * time.Second // @@@time.Minute
+	DefaultSupervisorPeriod   = 1 * time.Second // @@@time.Minute@@@
 	DefaultNoisyLogPeriod     = time.Second * 5
 	DefaultEnqueueRetryPeriod = time.Second * 5
 

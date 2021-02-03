@@ -168,15 +168,20 @@ func (s *Supervisor) supervise(ctx context.Context, wg *sync.WaitGroup) {
 			return
 		}
 
-		if err := s.healthcheck(ctx); err != nil {
-			if err != context.Canceled {
-				level.Error(s.logger).Log("msg", "healthcheck failed", "err", err)
-			}
+		s.healthcheck(ctx)
+	}
+}
+
+func (s *Supervisor) healthcheck(ctx context.Context) {
+	if err := s.healthcheckErr(ctx); err != nil {
+		if err != context.Canceled {
+			level.Error(s.logger).Log("msg", "healthcheck failed", "err", err)
 		}
 	}
 }
 
-func (s *Supervisor) healthcheck(ctx context.Context) (err error) {
+func (s *Supervisor) healthcheckErr(ctx context.Context) (err error) {
+
 	ctx, cancel := context.WithTimeout(ctx, config.DefaultHealthCheckTimeout)
 	defer cancel()
 
@@ -191,46 +196,64 @@ func (s *Supervisor) healthcheck(ctx context.Context) (err error) {
 		span.End()
 	}()
 
-	req, err := http.NewRequestWithContext(ctx, "GET", target, nil)
-	if err != nil {
-		return errors.Wrap(err, "build request")
-	}
+	span.AddEvent("recent-logs", trace.WithAttributes(
+		label.Array("activity", s.copyLogs()),
+	))
 
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return errors.Wrap(err, "healtcheck GET")
-	}
-	defer resp.Body.Close()
+	var hr health.Response
 
-	var hstat string
-	if ready {
-		var hr health.Response
+	// Make the request and try to parse the result.
+	err = func() error {
+		req, err := http.NewRequestWithContext(ctx, "GET", target, nil)
+		if err != nil {
+			return errors.Wrap(err, "build request")
+		}
+
+		resp, err := s.client.Do(req)
+		if err != nil {
+			return errors.Wrap(err, "healtcheck GET")
+		}
+		defer resp.Body.Close()
+
+		span.SetAttributes(semconv.HTTPAttributesFromHTTPStatusCode(resp.StatusCode)...)
+		span.SetStatus(semconv.SpanStatusFromHTTPStatusCode(resp.StatusCode))
+
+		if resp.StatusCode/100 != 2 {
+			return errors.Errorf("healthcheck: %s", resp.Status)
+		}
+
 		if err := json.NewDecoder(resp.Body).Decode(&hr); err != nil {
 			return errors.Wrap(err, "decode response")
 		}
 		span.SetAttributes(label.String("sidecar.status", hr.Status))
 
-		// @@@
-		fmt.Println("METRICS!", target, hr.Metrics)
+		for k, es := range hr.Metrics {
+			for _, e := range es {
+				span.SetAttributes(
+					label.Any(fmt.Sprintf("%s{%s}", k, e.Labels), e.Value),
+				)
+			}
+		}
 
-		hstat = "ok"
-	} else if resp.StatusCode/100 == 2 {
-		s.noteReady()
-		hstat = "first time ready"
-		level.Info(s.logger).Log("msg", "sidecar is ready")
-	} else {
-		hstat = "not ready yet"
-		level.Info(s.logger).Log("msg", "sidecar is not ready")
+		return nil
+	}()
+
+	good := err == nil
+
+	var hstat string
+	switch {
+	case ready && good:
+		hstat = s.noteHealthy(hr)
+	case ready && !good:
+		hstat = s.noteUnhealthy()
+	case !ready && good:
+		hstat = s.noteReady()
+	case !ready && !good:
+		hstat = s.noteUnready()
 	}
 
-	span.AddEvent("recent-logs", trace.WithAttributes(
-		label.Array("activity", s.copyLogs()),
-	))
-
 	span.SetAttributes(label.String("sidecar.health", hstat))
-	span.SetAttributes(semconv.HTTPAttributesFromHTTPStatusCode(resp.StatusCode)...)
-	span.SetStatus(semconv.SpanStatusFromHTTPStatusCode(resp.StatusCode))
-	return nil
+	return err
 }
 
 func (s *Supervisor) finalSpan(err error) {
@@ -347,11 +370,33 @@ func (s *Supervisor) checkTarget() (bool, string) {
 	return false, s.endpoint + readyURI
 }
 
-func (s *Supervisor) noteReady() {
+func (s *Supervisor) noteReady() string {
+	level.Info(s.logger).Log("msg", "sidecar is ready")
+
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
 	s.readied = true
+	return "first time ready"
+}
+
+func (s *Supervisor) noteUnready() string {
+	level.Info(s.logger).Log("msg", "sidecar is not ready")
+	return "not ready yet"
+}
+
+func (s *Supervisor) noteHealthy(hr health.Response) string {
+	level.Info(s.logger).Log(
+		"msg", "sidecar is running",
+		"samples.processed", hr.Metric("sidecar.samples.processed", ""),
+	)
+
+	return "ok"
+}
+
+func (s *Supervisor) noteUnhealthy() string {
+	level.Warn(s.logger).Log("msg", "sidecar is unhealthy")
+	return "unhealthy"
 }
 
 func (s *Supervisor) isStackdump(text []byte) bool {

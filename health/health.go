@@ -15,10 +15,9 @@
 package health
 
 import (
-	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
+	"strings"
 	"sync/atomic"
 
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
@@ -79,13 +78,10 @@ func (c *Checker) SetReady(ready bool) {
 func (h *healthy) getMetrics() (map[string][]exportRecord, error) {
 	cont := h.Telemetry.Controller
 	ret := map[string][]exportRecord{}
-	ctx := context.Background()
-
-	if err := cont.Collect(ctx); err != nil {
-		return nil, err
-	}
-
 	enc := label.DefaultEncoder()
+
+	// Note: we use the last collected value, since the controller
+	// is pushing metrics.
 
 	if err := cont.ForEach(export.CumulativeExportKindSelector(),
 		func(rec export.Record) error {
@@ -95,16 +91,23 @@ func (h *healthy) getMetrics() (map[string][]exportRecord, error) {
 			desc := rec.Descriptor()
 			agg := rec.Aggregation()
 
+			// Only return sidecar metrics.
+			if !strings.HasPrefix(desc.Name(), "sidecar.") {
+				return nil
+			}
+
 			if s, ok := agg.(aggregation.Sum); ok {
 				num, err = s.Sum()
 			} else if lv, ok := agg.(aggregation.LastValue); ok {
 				num, _, err = lv.LastValue()
 			} else {
-				fmt.Printf("LOOK1 %T %v\n", agg, agg)
+				// We expect to skip histograms here.
+				// Note the copyToCounter processor
+				// ensures we see these as counts
+				// anyway.
 				return nil
 			}
 			if err != nil {
-				fmt.Printf("LOOK2 %T %v\n", agg, agg)
 				return err
 			}
 			value := num.CoerceToFloat64(desc.NumberKind())
@@ -129,12 +132,12 @@ func (h *healthy) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 
 		metrics, err := h.getMetrics()
 
-		fmt.Printf("METRICS SENT %v\n", metrics)
-
 		if err != nil {
 			code = http.StatusServiceUnavailable
-			status = err.Error()
+			status = "unhealthy"
 		} else {
+			// TODO: Check something!
+
 			code = http.StatusOK
 			status = "healthy"
 		}
@@ -170,4 +173,13 @@ func ok(w http.ResponseWriter, f func() Response) {
 	w.WriteHeader(r.Code)
 
 	_ = json.NewEncoder(w).Encode(r)
+}
+
+func (r *Response) Metric(name, labels string) float64 {
+	for _, e := range r.Metrics[name] {
+		if e.Labels == labels {
+			return e.Value
+		}
+	}
+	return 0
 }
