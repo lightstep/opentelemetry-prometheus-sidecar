@@ -16,6 +16,7 @@ package health
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -111,9 +112,10 @@ func (h *healthy) getMetrics() (map[string][]exportRecord, error) {
 				return err
 			}
 			value := num.CoerceToFloat64(desc.NumberKind())
+			lstr := enc.Encode(rec.Labels().Iter())
 
 			ret[desc.Name()] = append(ret[desc.Name()], exportRecord{
-				Labels: enc.Encode(rec.Labels().Iter()),
+				Labels: lstr,
 				Value:  value,
 			})
 			return nil
@@ -175,11 +177,15 @@ func ok(w http.ResponseWriter, f func() Response) {
 	_ = json.NewEncoder(w).Encode(r)
 }
 
-func (r *Response) Metric(name, labels string) float64 {
-	for _, e := range r.Metrics[name] {
-		if e.Labels == labels {
-			return e.Value
-		}
+// MetricLogSummary returns a slice of pairs for the log.Logger.Log() API
+// based on the metric name suffix prefixed by `sidecar.`.
+func (r *Response) MetricLogSummary(suffix string) (pairs []interface{}) {
+	var mname = "sidecar." + suffix
+
+	for _, e := range r.Metrics[mname] {
+		pairs = append(
+			pairs,
+			fmt.Sprint(suffix, "{", strings.Replace(e.Labels, "=", ":", -1), "}"), e.Value)
 	}
-	return 0
+	return
 }

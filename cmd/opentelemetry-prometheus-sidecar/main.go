@@ -391,6 +391,12 @@ func startSupervisor(cfg config.MainConfig, logger log.Logger) bool {
 	super := supervisor.New(supervisor.Config{
 		Logger: logger,
 		Admin:  cfg.Admin,
+
+		// Note: the metrics reporting interval is not
+		// configurable (see start_telemetry.go), but whatever
+		// it is we should poll at with a longer period to be
+		// sure a collection happens between health checks.
+		Period: time.Duration(float64(config.DefaultReportingPeriod) * 1.5),
 	})
 
 	os.Setenv(supervisorEnv, "active")

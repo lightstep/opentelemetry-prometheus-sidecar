@@ -58,11 +58,13 @@ type (
 	Config struct {
 		Logger log.Logger
 		Admin  config.AdminConfig
+		Period time.Duration
 	}
 
 	Supervisor struct {
 		logger   log.Logger
 		endpoint string
+		period   time.Duration
 		client   *http.Client
 		readied  bool
 
@@ -81,6 +83,7 @@ func New(cfg Config) *Supervisor {
 	}
 	return &Supervisor{
 		logger:    cfg.Logger,
+		period:    cfg.Period,
 		endpoint:  endpoint,
 		client:    client,
 		logBuffer: make([]string, 0, config.DefaultSupervisorLogsHistory),
@@ -148,7 +151,7 @@ func (s *Supervisor) supervise(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	for {
-		sleep := config.DefaultSupervisorPeriod
+		sleep := s.period
 		ready, _ := s.checkTarget()
 		if !ready {
 			sleep = config.DefaultHealthCheckTimeout
@@ -230,7 +233,7 @@ func (s *Supervisor) healthcheckErr(ctx context.Context) (err error) {
 		for k, es := range hr.Metrics {
 			for _, e := range es {
 				span.SetAttributes(
-					label.Any(fmt.Sprintf("%s{%s}", k, e.Labels), e.Value),
+					label.Float64(fmt.Sprintf("%s{%s}", k, e.Labels), e.Value),
 				)
 			}
 		}
@@ -386,10 +389,13 @@ func (s *Supervisor) noteUnready() string {
 }
 
 func (s *Supervisor) noteHealthy(hr health.Response) string {
-	level.Info(s.logger).Log(
+	summary := []interface{}{
 		"msg", "sidecar is running",
-		"samples.processed", hr.Metric("sidecar.samples.processed", ""),
-	)
+	}
+	summary = append(summary, hr.MetricLogSummary("samples.processed")...)
+	summary = append(summary, hr.MetricLogSummary("queue.outcome")...)
+
+	level.Info(s.logger).Log(summary...)
 
 	return "ok"
 }

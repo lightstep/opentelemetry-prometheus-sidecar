@@ -272,7 +272,7 @@ func (c *Config) setupMetrics(telem *Telemetry) (start, stop func(ctx context.Co
 				// Note: we don't really need memory for all metrics, and this
 				// becomes a problem when there is high cardinality.  This is to
 				// enable the healthz handler support in this package.
-				// processor.WithMemory(true),
+				processor.WithMemory(true),
 			),
 		),
 		controller.WithPusher(metricExporter),
