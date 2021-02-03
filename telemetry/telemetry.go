@@ -46,6 +46,7 @@ type (
 	Telemetry struct {
 		config        Config
 		shutdownFuncs []func(context.Context) error
+		*controller.Controller
 	}
 
 	Option func(*Config)
@@ -65,7 +66,7 @@ type (
 		logger                log.Logger
 	}
 
-	setupFunc func() (start, stop func(context.Context) error, err error)
+	setupFunc func(*Telemetry) (start, stop func(context.Context) error, err error)
 )
 
 // WithSpanExporterEndpoint configures the endpoint for sending spans via OTLP
@@ -225,7 +226,7 @@ func newExporter(endpoint string, insecure bool, headers map[string]string) *otl
 	)
 }
 
-func (c *Config) setupTracing() (start, stop func(ctx context.Context) error, err error) {
+func (c *Config) setupTracing(_ *Telemetry) (start, stop func(ctx context.Context) error, err error) {
 	if c.SpanExporterEndpoint == "" {
 		level.Debug(c.logger).Log("msg", "tracing is disabled: no endpoint set")
 		return nil, nil, nil
@@ -254,14 +255,14 @@ func (c *Config) setupTracing() (start, stop func(ctx context.Context) error, er
 		}, nil
 }
 
-func (c *Config) setupMetrics() (start, stop func(ctx context.Context) error, err error) {
+func (c *Config) setupMetrics(telem *Telemetry) (start, stop func(ctx context.Context) error, err error) {
 	if c.MetricsExporterEndpoint == "" {
 		level.Debug(c.logger).Log("msg", "metrics are disabled: no endpoint set")
 		return nil, nil, nil
 	}
 	metricExporter := newExporter(c.MetricsExporterEndpoint, c.MetricsExporterEndpointInsecure, c.Headers)
 
-	pusher := controller.New(
+	cont := controller.New(
 		newCopyToCounterProcessor(
 			processor.New(
 				selector.NewWithHistogramDistribution([]float64{
@@ -271,7 +272,7 @@ func (c *Config) setupMetrics() (start, stop func(ctx context.Context) error, er
 				// Note: we don't really need memory for all metrics, and this
 				// becomes a problem when there is high cardinality.  This is to
 				// enable the healthz handler support in this package.
-				processor.WithMemory(true),
+				// processor.WithMemory(true),
 			),
 		),
 		controller.WithPusher(metricExporter),
@@ -280,9 +281,11 @@ func (c *Config) setupMetrics() (start, stop func(ctx context.Context) error, er
 		controller.WithPushTimeout(c.ExportTimeout),
 	)
 
-	provider := pusher.MeterProvider()
+	provider := cont.MeterProvider()
 
 	otel.SetMeterProvider(provider)
+
+	telem.Controller = cont
 
 	return func(ctx context.Context) error {
 			if err := metricExporter.Start(ctx); err != nil {
@@ -297,13 +300,13 @@ func (c *Config) setupMetrics() (start, stop func(ctx context.Context) error, er
 				return errors.Wrap(err, "failed to start host metrics")
 			}
 
-			if err := pusher.Start(ctx); err != nil {
+			if err := cont.Start(ctx); err != nil {
 				return errors.Wrap(err, "failed to start metrics controller")
 			}
 
 			return nil
 		}, func(ctx context.Context) error {
-			err1 := pusher.Stop(ctx)
+			err1 := cont.Stop(ctx)
 			err2 := metricExporter.Shutdown(ctx)
 			if err1 != nil {
 				return errors.Wrap(err1, "failed to stop metrics controller")
@@ -326,7 +329,7 @@ func ConfigureOpentelemetry(opts ...Option) *Telemetry {
 	var startFuncs []func(context.Context) error
 
 	for _, setup := range []setupFunc{tel.config.setupTracing, tel.config.setupMetrics} {
-		start, shutdown, err := setup()
+		start, shutdown, err := setup(&tel)
 		if err != nil {
 			level.Error(tel.config.logger).Log("setup error", err)
 			continue

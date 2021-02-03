@@ -210,6 +210,9 @@ func (s *Supervisor) healthcheck(ctx context.Context) (err error) {
 		}
 		span.SetAttributes(label.String("sidecar.status", hr.Status))
 
+		// @@@
+		fmt.Println("METRICS!", target, hr.Metrics)
+
 		hstat = "ok"
 	} else if resp.StatusCode/100 == 2 {
 		s.noteReady()

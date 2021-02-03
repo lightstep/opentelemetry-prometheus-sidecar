@@ -90,13 +90,14 @@ func Main() bool {
 
 	telemetry.StaticSetup(logger)
 
-	if shutdownTel := internal.StartTelemetry(
+	telem := internal.StartTelemetry(
 		cfg,
 		"opentelemetry-prometheus-sidecar",
 		isSupervisor,
 		logger,
-	); shutdownTel != nil {
-		defer shutdownTel(context.Background())
+	)
+	if telem != nil {
+		defer telem.Shutdown(context.Background())
 	}
 
 	// Start the supervisor.
@@ -108,7 +109,7 @@ func Main() bool {
 	ctx, cancelMain := telemetry.ContextWithSIGTERM(logger)
 	defer cancelMain()
 
-	healthChecker := health.NewChecker()
+	healthChecker := health.NewChecker(telem)
 
 	httpClient := &http.Client{
 		// Note: The Sidecar->Prometheus HTTP connection is not traced.
