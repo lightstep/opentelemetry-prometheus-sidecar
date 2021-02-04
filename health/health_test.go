@@ -24,13 +24,11 @@ import (
 	"testing"
 
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/label"
 	"go.opentelemetry.io/otel/metric"
-	metricsdk "go.opentelemetry.io/otel/sdk/export/metric"
 	controller "go.opentelemetry.io/otel/sdk/metric/controller/basic"
-	processor "go.opentelemetry.io/otel/sdk/metric/processor/basic"
-	selector "go.opentelemetry.io/otel/sdk/metric/selector/simple"
 )
 
 type tester struct {
@@ -44,16 +42,7 @@ type tester struct {
 }
 
 func testController(t *testing.T) *tester {
-	cont := controller.New(
-		processor.New(
-			selector.NewWithHistogramDistribution([]float64{
-				0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10,
-			}),
-			metricsdk.CumulativeExportKindSelector(),
-			processor.WithMemory(true),
-		),
-		controller.WithCollectPeriod(0),
-	)
+	cont := telemetry.InternalOnly().Controller
 	provider := cont.MeterProvider()
 	produced := metric.Must(provider.Meter("test")).NewInt64Counter(config.ProducedMetric)
 	outcome := metric.Must(provider.Meter("test")).NewInt64Counter(config.OutcomeMetric)
