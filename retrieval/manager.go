@@ -24,6 +24,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/targets"
@@ -36,12 +37,12 @@ import (
 
 var (
 	samplesProcessed = sidecar.OTelMeterMust.NewInt64ValueRecorder(
-		"sidecar.samples.processed",
+		config.ProcessedMetric,
 		metric.WithDescription("Number of WAL samples processed in a batch"),
 	)
 
 	samplesProduced = sidecar.OTelMeterMust.NewInt64Counter(
-		"sidecar.samples.produced",
+		config.ProducedMetric,
 		metric.WithDescription("Number of Metric samples produced"),
 	)
 )

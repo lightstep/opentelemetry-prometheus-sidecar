@@ -70,13 +70,14 @@ func Main() bool {
 
 	level.Info(logger).Log("msg", "stresstest starting")
 
-	if shutdownTel := internal.StartTelemetry(
+	telem := internal.StartTelemetry(
 		cfg,
 		"stresstest-prometheus-sidecar",
 		false,
 		logger,
-	); shutdownTel != nil {
-		defer shutdownTel(context.Background())
+	)
+	if telem != nil {
+		defer telem.Shutdown(context.Background())
 	}
 
 	outputURL, _ := url.Parse(cfg.Destination.Endpoint)

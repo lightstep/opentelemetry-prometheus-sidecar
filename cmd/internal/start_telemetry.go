@@ -12,7 +12,7 @@ import (
 
 type ShutdownFunc func(context.Context)
 
-func StartTelemetry(cfg config.MainConfig, defaultSvcNAme string, isSuper bool, logger log.Logger) ShutdownFunc {
+func StartTelemetry(cfg config.MainConfig, defaultSvcNAme string, isSuper bool, logger log.Logger) *telemetry.Telemetry {
 	diagConfig := cfg.Diagnostics
 
 	if diagConfig.Endpoint == "" && !cfg.DisableDiagnostics {
@@ -20,11 +20,10 @@ func StartTelemetry(cfg config.MainConfig, defaultSvcNAme string, isSuper bool, 
 	}
 
 	if diagConfig.Endpoint == "" {
-		return nil
+		return telemetry.InternalOnly()
 	}
 
-	tel := startTelemetry(diagConfig, defaultSvcNAme, isSuper, logger)
-	return tel.Shutdown
+	return startTelemetry(diagConfig, defaultSvcNAme, isSuper, logger)
 }
 
 func startTelemetry(diagConfig config.OTLPConfig, defaultSvcName string, isSuper bool, logger log.Logger) *telemetry.Telemetry {

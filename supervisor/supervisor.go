@@ -48,7 +48,7 @@ var (
 )
 
 const (
-	healthURI = "/-/health"
+	healthURI = "/-/health?supervisor=true"
 	readyURI  = "/-/ready"
 
 	supervisorBufferSize = 1 << 14
@@ -58,13 +58,17 @@ type (
 	Config struct {
 		Logger log.Logger
 		Admin  config.AdminConfig
+		Period time.Duration
 	}
 
 	Supervisor struct {
 		logger   log.Logger
 		endpoint string
+		period   time.Duration
 		client   *http.Client
 		readied  bool
+
+		veryUnhealthy bool
 
 		lock      sync.Mutex
 		logBuffer []string
@@ -81,6 +85,7 @@ func New(cfg Config) *Supervisor {
 	}
 	return &Supervisor{
 		logger:    cfg.Logger,
+		period:    cfg.Period,
 		endpoint:  endpoint,
 		client:    client,
 		logBuffer: make([]string, 0, config.DefaultSupervisorLogsHistory),
@@ -115,7 +120,7 @@ func (s *Supervisor) start(args []string) error {
 	}
 
 	wg.Add(1)
-	go s.supervise(ctx, &wg)
+	go s.supervise(ctx, cmd, &wg)
 	go func() {
 		// As soon as this context is cancelled (possibly by a
 		// SIGTERM), deliver SIGTERM to the subordinate
@@ -144,11 +149,11 @@ func (s *Supervisor) start(args []string) error {
 	return err
 }
 
-func (s *Supervisor) supervise(ctx context.Context, wg *sync.WaitGroup) {
+func (s *Supervisor) supervise(ctx context.Context, cmd *exec.Cmd, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	for {
-		sleep := config.DefaultSupervisorPeriod
+		sleep := s.period
 		ready, _ := s.checkTarget()
 		if !ready {
 			sleep = config.DefaultHealthCheckTimeout
@@ -168,15 +173,24 @@ func (s *Supervisor) supervise(ctx context.Context, wg *sync.WaitGroup) {
 			return
 		}
 
-		if err := s.healthcheck(ctx); err != nil {
-			if err != context.Canceled {
-				level.Error(s.logger).Log("msg", "healthcheck failed", "err", err)
-			}
+		s.healthcheck(ctx)
+
+		if s.veryUnhealthy {
+			// The process is repeatedly failing its internal health check.
+			cmd.Process.Signal(os.Interrupt)
 		}
 	}
 }
 
-func (s *Supervisor) healthcheck(ctx context.Context) (err error) {
+func (s *Supervisor) healthcheck(ctx context.Context) {
+	if err := s.healthcheckErr(ctx); err != nil {
+		if err != context.Canceled {
+			level.Error(s.logger).Log("msg", "healthcheck failed", "err", err)
+		}
+	}
+}
+
+func (s *Supervisor) healthcheckErr(ctx context.Context) (err error) {
 	ctx, cancel := context.WithTimeout(ctx, config.DefaultHealthCheckTimeout)
 	defer cancel()
 
@@ -191,43 +205,68 @@ func (s *Supervisor) healthcheck(ctx context.Context) (err error) {
 		span.End()
 	}()
 
-	req, err := http.NewRequestWithContext(ctx, "GET", target, nil)
-	if err != nil {
-		return errors.Wrap(err, "build request")
-	}
+	span.AddEvent("recent-logs", trace.WithAttributes(
+		label.Array("activity", s.copyLogs()),
+	))
 
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return errors.Wrap(err, "healtcheck GET")
-	}
-	defer resp.Body.Close()
+	var hr health.Response
 
-	var hstat string
-	if ready {
-		var hr health.Response
+	// Make the request and try to parse the result.
+	err = func() error {
+		req, err := http.NewRequestWithContext(ctx, "GET", target, nil)
+		if err != nil {
+			return errors.Wrap(err, "build request")
+		}
+
+		resp, err := s.client.Do(req)
+		if err != nil {
+			return errors.Wrap(err, "healtcheck GET")
+		}
+		defer resp.Body.Close()
+
+		span.SetAttributes(semconv.HTTPAttributesFromHTTPStatusCode(resp.StatusCode)...)
+		span.SetStatus(semconv.SpanStatusFromHTTPStatusCode(resp.StatusCode))
+
+		if hr.Stackdump != "" {
+			span.SetAttributes(label.String("sidecar.stackdump", hr.Stackdump))
+		}
+
+		if resp.StatusCode/100 != 2 {
+			return errors.Errorf("healthcheck: %s", resp.Status)
+		}
+
 		if err := json.NewDecoder(resp.Body).Decode(&hr); err != nil {
 			return errors.Wrap(err, "decode response")
 		}
 		span.SetAttributes(label.String("sidecar.status", hr.Status))
 
-		hstat = "ok"
-	} else if resp.StatusCode/100 == 2 {
-		s.noteReady()
-		hstat = "first time ready"
-		level.Info(s.logger).Log("msg", "sidecar is ready")
-	} else {
-		hstat = "not ready yet"
-		level.Info(s.logger).Log("msg", "sidecar is not ready")
+		for k, es := range hr.Metrics {
+			for _, e := range es {
+				span.SetAttributes(
+					label.Float64(fmt.Sprintf("%s{%s}", k, e.Labels), e.Value),
+				)
+			}
+		}
+
+		return nil
+	}()
+
+	good := err == nil
+
+	var hstat string
+	switch {
+	case ready && good:
+		hstat = s.noteHealthy(hr)
+	case ready && !good:
+		hstat = s.noteUnhealthy(hr)
+	case !ready && good:
+		hstat = s.noteReady()
+	case !ready && !good:
+		hstat = s.noteUnready()
 	}
 
-	span.AddEvent("recent-logs", trace.WithAttributes(
-		label.Array("activity", s.copyLogs()),
-	))
-
 	span.SetAttributes(label.String("sidecar.health", hstat))
-	span.SetAttributes(semconv.HTTPAttributesFromHTTPStatusCode(resp.StatusCode)...)
-	span.SetStatus(semconv.SpanStatusFromHTTPStatusCode(resp.StatusCode))
-	return nil
+	return err
 }
 
 func (s *Supervisor) finalSpan(err error) {
@@ -344,11 +383,43 @@ func (s *Supervisor) checkTarget() (bool, string) {
 	return false, s.endpoint + readyURI
 }
 
-func (s *Supervisor) noteReady() {
+func (s *Supervisor) noteReady() string {
+	level.Info(s.logger).Log("msg", "sidecar is ready")
+
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
 	s.readied = true
+	return "first time ready"
+}
+
+func (s *Supervisor) noteUnready() string {
+	level.Info(s.logger).Log("msg", "sidecar is not ready")
+	return "not ready yet"
+}
+
+func (s *Supervisor) noteHealthy(hr health.Response) string {
+	summary := []interface{}{
+		"msg", "sidecar is running",
+	}
+	summary = append(summary, hr.MetricLogSummary(config.ProcessedMetric)...)
+	summary = append(summary, hr.MetricLogSummary(config.OutcomeMetric)...)
+
+	level.Info(s.logger).Log(summary...)
+
+	return "ok"
+}
+
+func (s *Supervisor) noteUnhealthy(hr health.Response) string {
+	if hr.Stackdump != "" {
+		summary := []interface{}{
+			"msg", "process is very unhealthy",
+			"stackdump", hr.Stackdump,
+		}
+		s.veryUnhealthy = true
+		level.Warn(s.logger).Log(summary...)
+	}
+	return "unhealthy"
 }
 
 func (s *Supervisor) isStackdump(text []byte) bool {
