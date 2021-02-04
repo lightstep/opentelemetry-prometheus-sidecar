@@ -392,8 +392,8 @@ func (s *Supervisor) noteHealthy(hr health.Response) string {
 	summary := []interface{}{
 		"msg", "sidecar is running",
 	}
-	summary = append(summary, hr.MetricLogSummary("samples.processed")...)
-	summary = append(summary, hr.MetricLogSummary("queue.outcome")...)
+	summary = append(summary, hr.MetricLogSummary(config.ProcessedMetric)...)
+	summary = append(summary, hr.MetricLogSummary(config.OutcomeMetric)...)
 
 	level.Info(s.logger).Log(summary...)
 

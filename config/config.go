@@ -30,6 +30,7 @@ import (
 	"github.com/prometheus/common/version"
 	promconfig "github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/pkg/textparse"
+	"go.opentelemetry.io/otel/label"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
 
@@ -72,6 +73,15 @@ an OpenTelemetry (https://opentelemetry.io) Protocol endpoint.
 `
 
 	AgentKey = "telemetry-reporting-agent"
+
+	// Some metric names are shared across packages, for healthchecking.
+
+	SidecarPrefix   = "sidecar."
+	ProcessedMetric = "sidecar.samples.processed"
+	OutcomeMetric   = "sidecar.queue.outcome"
+
+	OutcomeKey          = label.Key("outcome")
+	OutcomeSuccessValue = "success"
 )
 
 var (

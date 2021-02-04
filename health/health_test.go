@@ -23,6 +23,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/label"
 	"go.opentelemetry.io/otel/metric"
@@ -54,8 +55,8 @@ func testController(t *testing.T) *tester {
 		controller.WithCollectPeriod(0),
 	)
 	provider := cont.MeterProvider()
-	processed := metric.Must(provider.Meter("test")).NewInt64Counter(processedMetric)
-	outcome := metric.Must(provider.Meter("test")).NewInt64Counter(outcomeMetric)
+	processed := metric.Must(provider.Meter("test")).NewInt64Counter(config.ProcessedMetric)
+	outcome := metric.Must(provider.Meter("test")).NewInt64Counter(config.OutcomeMetric)
 
 	checker := NewChecker(cont)
 
@@ -114,7 +115,10 @@ func TestProcessedProgress(t *testing.T) {
 
 		require.Equal(t, http.StatusServiceUnavailable, code)
 		require.Contains(t, result.Status,
-			fmt.Sprint("unhealthy: sidecar.samples.processed stopped moving at ", k),
+			fmt.Sprintf("unhealthy: %s stopped moving at %d",
+				config.ProcessedMetric,
+				k,
+			),
 		)
 	}
 }
@@ -146,7 +150,11 @@ func TestOutcomesProgress(t *testing.T) {
 	code, result := tester.getHealth()
 
 	require.Equal(t, http.StatusServiceUnavailable, code)
-	require.Contains(t, result.Status, "unhealthy: sidecar.queue.outcome high error ratio")
+	require.Contains(t, result.Status,
+		fmt.Sprintf("unhealthy: %s high error ratio",
+			config.OutcomeMetric,
+		),
+	)
 }
 
 func TestOutcomes4951(t *testing.T) {

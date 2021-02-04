@@ -22,6 +22,7 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/pkg/errors"
 	"go.opentelemetry.io/otel/label"
 	"go.opentelemetry.io/otel/metric/number"
@@ -31,11 +32,7 @@ import (
 )
 
 const (
-	// TODO move constants around here and in supervisor.go
-	processedMetric = "sidecar.sampled.processed"
-	outcomeMetric   = "sidecar.queue.outcome"
-
-	outcomeGoodLabel = "outcome=success"
+	outcomeGoodLabel = string(config.OutcomeKey) + "=" + config.OutcomeSuccessValue
 
 	numSamples = 5
 
@@ -126,7 +123,7 @@ func (h *healthy) getMetrics() (map[string][]exportRecord, error) {
 			agg := rec.Aggregation()
 
 			// Only return sidecar metrics.
-			if !strings.HasPrefix(desc.Name(), "sidecar.") {
+			if !strings.HasPrefix(desc.Name(), config.SidecarPrefix) {
 				return nil
 			}
 
@@ -240,16 +237,17 @@ func (h *healthy) check(metrics map[string][]exportRecord) error {
 		return t
 	}
 
-	processed := sumWhere(processedMetric, "")
+	processed := sumWhere(config.ProcessedMetric, "")
 
 	if processed.defined() && processed.matchDelta() == 0 {
 		return errors.Errorf(
-			"sidecar.samples.processed stopped moving at %v",
+			"%s stopped moving at %v",
+			config.ProcessedMetric,
 			processed.matchValue(),
 		)
 	}
 
-	outcomes := sumWhere(outcomeMetric, outcomeGoodLabel)
+	outcomes := sumWhere(config.OutcomeMetric, outcomeGoodLabel)
 
 	if outcomes.defined() {
 
@@ -258,7 +256,8 @@ func (h *healthy) check(metrics map[string][]exportRecord) error {
 		if !math.IsNaN(goodRatio) && goodRatio < thresholdRatio {
 			errorRatio := (1 - goodRatio)
 			return errors.Errorf(
-				"sidecar.queue.outcome high error ratio: %.2f%%",
+				"%s high error ratio: %.2f%%",
+				config.OutcomeMetric,
 				errorRatio*100,
 			)
 		}
@@ -316,16 +315,18 @@ func (m *metricTracker) matchRatio() float64 {
 	return mdiff / (mdiff + odiff)
 }
 
-// MetricLogSummary returns a slice of pairs for the log.Logger.Log() API
-// based on the metric name suffix prefixed by `sidecar.`.
-func (r *Response) MetricLogSummary(suffix string) (pairs []interface{}) {
-	var mname = "sidecar." + suffix
-
-	for _, e := range r.Metrics[mname] {
+// MetricLogSummary returns a slice of pairs for the log.Logger.Log()
+// API based on the metric name.
+func (r *Response) MetricLogSummary(name string) (pairs []interface{}) {
+	for _, e := range r.Metrics[name] {
 		pairs = append(
 			pairs,
-			// The log package strips `=`, replace with `:` instead.
-			fmt.Sprint(suffix, "{", strings.Replace(e.Labels, "=", ":", -1), "}"), e.Value)
+			fmt.Sprint(
+				name[len(config.SidecarPrefix):],
+				// The log package strips `=`, replace with `:` instead.
+				"{", strings.Replace(e.Labels, "=", ":", -1), "}",
+			),
+			e.Value)
 	}
 	return
 }
