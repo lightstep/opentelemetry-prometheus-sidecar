@@ -109,7 +109,7 @@ func Main() bool {
 	ctx, cancelMain := telemetry.ContextWithSIGTERM(logger)
 	defer cancelMain()
 
-	healthChecker := health.NewChecker(telem)
+	healthChecker := health.NewChecker(telem.Controller)
 
 	httpClient := &http.Client{
 		// Note: The Sidecar->Prometheus HTTP connection is not traced.
@@ -222,6 +222,15 @@ func Main() bool {
 		return false
 	}
 
+	// Sleep to allow the first scrapes to complete.
+	level.Debug(logger).Log("msg", "sleeping to allow Prometheus its first scrape")
+	select {
+	case <-time.After(cfg.StartupDelay.Duration):
+	case <-ctx.Done():
+		return true
+	}
+
+	level.Debug(logger).Log("msg", "starting now")
 	healthChecker.SetReady(true)
 
 	// Run three inter-depdendent components:
@@ -241,13 +250,6 @@ func Main() bool {
 	{
 		g.Add(
 			func() error {
-				// Sleep to allow the first scrapes to complete.
-				select {
-				case <-time.After(cfg.StartupDelay.Duration):
-				case <-ctx.Done():
-					return nil
-				}
-
 				err = prometheusReader.Run(ctx, startOffset)
 				level.Info(logger).Log("msg", "Prometheus reader stopped")
 				return err

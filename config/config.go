@@ -42,7 +42,7 @@ const (
 	DefaultExportTimeout      = time.Second * 60
 	DefaultHealthCheckTimeout = time.Second * 5
 	DefaultMaxPointAge        = time.Hour * 25
-	DefaultReportingPeriod    = time.Second // @@@ time.Second * 30
+	DefaultReportingPeriod    = time.Second * 30
 	DefaultStartupDelay       = time.Minute
 	DefaultShutdownDelay      = time.Minute
 	DefaultStartupTimeout     = time.Minute * 5

@@ -17,15 +17,29 @@ package health
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"strings"
 	"sync/atomic"
 
-	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
+	"github.com/pkg/errors"
 	"go.opentelemetry.io/otel/label"
 	"go.opentelemetry.io/otel/metric/number"
 	export "go.opentelemetry.io/otel/sdk/export/metric"
 	"go.opentelemetry.io/otel/sdk/export/metric/aggregation"
+	controller "go.opentelemetry.io/otel/sdk/metric/controller/basic"
+)
+
+const (
+	// TODO move constants around here and in supervisor.go
+	processedMetric = "sidecar.sampled.processed"
+	outcomeMetric   = "sidecar.queue.outcome"
+
+	outcomeGoodLabel = "outcome=success"
+
+	numSamples = 5
+
+	thresholdRatio = 0.5
 )
 
 type (
@@ -39,7 +53,17 @@ type (
 	}
 
 	healthy struct {
-		*telemetry.Telemetry
+		*controller.Controller
+		tracker map[string]*metricTracker
+	}
+
+	metricPair struct {
+		match float64
+		other float64
+	}
+
+	metricTracker struct {
+		samples []metricPair
 	}
 
 	Response struct {
@@ -54,30 +78,39 @@ type (
 	}
 )
 
-func NewChecker(telem *telemetry.Telemetry) *Checker {
+// NewChecker returns a new health and readiness checker based on
+// state from the metrics controller.
+func NewChecker(cont *controller.Controller) *Checker {
 	c := &Checker{
 		healthy: healthy{
-			Telemetry: telem,
+			Controller: cont,
+			tracker:    map[string]*metricTracker{},
 		},
 	}
 	c.ready.Value.Store(false)
 	return c
 }
 
+// Health returns a healthcheck handler.
 func (c *Checker) Health() http.Handler {
 	return &c.healthy
 }
 
+// Ready returns a readiness handler.
 func (c *Checker) Ready() http.Handler {
 	return &c.ready
 }
 
+// SetReady indicates when the process is ready.
 func (c *Checker) SetReady(ready bool) {
 	c.ready.Value.Store(ready)
 }
 
+// getMetrics scans the current metrics processor state, copies the
+// `sidecar.*` metrics into the result, for use in the healtcheck
+// body.
 func (h *healthy) getMetrics() (map[string][]exportRecord, error) {
-	cont := h.Telemetry.Controller
+	cont := h.Controller
 	ret := map[string][]exportRecord{}
 	enc := label.DefaultEncoder()
 
@@ -127,6 +160,11 @@ func (h *healthy) getMetrics() (map[string][]exportRecord, error) {
 	return ret, nil
 }
 
+// ServeHTTP implements a healthcheck handler that returns healthy as
+// long as comparing the youngest and oldest of `numSamples`:
+//
+// 1. the number of samples processed must rise
+// 2. the ratio of {outcome=success}/{*} >= 0.5 over `numSamples`
 func (h *healthy) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	ok(w, func() Response {
 		var code int
@@ -135,11 +173,12 @@ func (h *healthy) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 		metrics, err := h.getMetrics()
 
 		if err != nil {
+			code = http.StatusInternalServerError
+			status = fmt.Sprint("internal error: ", err)
+		} else if err := h.check(metrics); err != nil {
 			code = http.StatusServiceUnavailable
-			status = "unhealthy"
+			status = fmt.Sprint("unhealthy: ", err)
 		} else {
-			// TODO: Check something!
-
 			code = http.StatusOK
 			status = "healthy"
 		}
@@ -152,6 +191,8 @@ func (h *healthy) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	})
 }
 
+// ServeHTTP implements a readiness handler that returns ready after
+// SetReady(true) is called.
 func (r *ready) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	ok(w, func() Response {
 		code := http.StatusServiceUnavailable
@@ -169,12 +210,110 @@ func (r *ready) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	})
 }
 
+// ok returns a health check response as application/json content.
 func ok(w http.ResponseWriter, f func() Response) {
 	r := f()
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(r.Code)
 
 	_ = json.NewEncoder(w).Encode(r)
+}
+
+// check parses selected counter metrics and returns an error if the
+// sidecar is unhealthy based on their values.
+func (h *healthy) check(metrics map[string][]exportRecord) error {
+	sumWhere := func(name, labels string) *metricTracker {
+		t, ok := h.tracker[name]
+		if !ok {
+			t = &metricTracker{}
+			h.tracker[name] = t
+		}
+		var matchCount, otherCount float64
+		for _, e := range metrics[name] {
+			if e.Labels == labels {
+				matchCount += e.Value
+			} else {
+				otherCount += e.Value
+			}
+		}
+		t.update(matchCount, otherCount)
+		return t
+	}
+
+	processed := sumWhere(processedMetric, "")
+
+	if processed.defined() && processed.matchDelta() == 0 {
+		return errors.Errorf(
+			"sidecar.samples.processed stopped moving at %v",
+			processed.matchValue(),
+		)
+	}
+
+	outcomes := sumWhere(outcomeMetric, outcomeGoodLabel)
+
+	if outcomes.defined() {
+
+		goodRatio := outcomes.matchRatio()
+
+		if !math.IsNaN(goodRatio) && goodRatio < thresholdRatio {
+			errorRatio := (1 - goodRatio)
+			return errors.Errorf(
+				"sidecar.queue.outcome high error ratio: %.2f%%",
+				errorRatio*100,
+			)
+		}
+	}
+
+	return nil
+}
+
+// update adds one match/other pair to the tracker.
+func (m *metricTracker) update(match, other float64) {
+	if len(m.samples) == numSamples {
+		copy(m.samples[:numSamples-1], m.samples[1:numSamples])
+		m.samples = m.samples[:numSamples-1]
+	}
+
+	m.samples = append(m.samples, metricPair{
+		match: match,
+		other: other,
+	})
+}
+
+// lastSample returns the oldest match/other pair.
+func (m *metricTracker) firstSample() metricPair {
+	return m.samples[0]
+}
+
+// lastSample returns the current match/other pair.
+func (m *metricTracker) lastSample() metricPair {
+	return m.samples[len(m.samples)-1]
+}
+
+// defined returns true if the samples slice is full of `numSamples` items.
+func (m *metricTracker) defined() bool {
+	return len(m.samples) == numSamples
+}
+
+// matchDelta returns the current difference between the oldest and
+// newest sample.
+func (m *metricTracker) matchDelta() float64 {
+	return m.lastSample().match - m.firstSample().match
+}
+
+// matchValue returns the current value of the matched metric.
+func (m *metricTracker) matchValue() float64 {
+	return m.lastSample().match
+}
+
+// matchRatio returns the ratio of count that match the queried labels
+// compared with the total including matches plus non-matches.
+func (m *metricTracker) matchRatio() float64 {
+	last := m.lastSample()
+	first := m.firstSample()
+	mdiff := last.match - first.match
+	odiff := last.other - first.other
+	return mdiff / (mdiff + odiff)
 }
 
 // MetricLogSummary returns a slice of pairs for the log.Logger.Log() API
@@ -185,6 +324,7 @@ func (r *Response) MetricLogSummary(suffix string) (pairs []interface{}) {
 	for _, e := range r.Metrics[mname] {
 		pairs = append(
 			pairs,
+			// The log package strips `=`, replace with `:` instead.
 			fmt.Sprint(suffix, "{", strings.Replace(e.Labels, "=", ":", -1), "}"), e.Value)
 	}
 	return
