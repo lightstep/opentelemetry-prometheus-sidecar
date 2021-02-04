@@ -20,7 +20,7 @@ func StartTelemetry(cfg config.MainConfig, defaultSvcNAme string, isSuper bool, 
 	}
 
 	if diagConfig.Endpoint == "" {
-		return nil
+		return telemetry.InternalOnly()
 	}
 
 	return startTelemetry(diagConfig, defaultSvcNAme, isSuper, logger)

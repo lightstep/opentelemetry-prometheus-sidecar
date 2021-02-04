@@ -37,10 +37,10 @@ type tester struct {
 	*testing.T
 	*Checker
 	*controller.Controller
-	processedInst metric.Int64Counter
-	outcomeInst   metric.Int64Counter
-	healthServer  *httptest.Server
-	readyServer   *httptest.Server
+	producedInst metric.Int64Counter
+	outcomeInst  metric.Int64Counter
+	healthServer *httptest.Server
+	readyServer  *httptest.Server
 }
 
 func testController(t *testing.T) *tester {
@@ -55,7 +55,7 @@ func testController(t *testing.T) *tester {
 		controller.WithCollectPeriod(0),
 	)
 	provider := cont.MeterProvider()
-	processed := metric.Must(provider.Meter("test")).NewInt64Counter(config.ProcessedMetric)
+	produced := metric.Must(provider.Meter("test")).NewInt64Counter(config.ProducedMetric)
 	outcome := metric.Must(provider.Meter("test")).NewInt64Counter(config.OutcomeMetric)
 
 	checker := NewChecker(cont)
@@ -64,13 +64,13 @@ func testController(t *testing.T) *tester {
 	readyServer := httptest.NewServer(checker.Ready())
 
 	return &tester{
-		T:             t,
-		Checker:       checker,
-		Controller:    cont,
-		processedInst: processed,
-		outcomeInst:   outcome,
-		healthServer:  healthServer,
-		readyServer:   readyServer,
+		T:            t,
+		Checker:      checker,
+		Controller:   cont,
+		producedInst: produced,
+		outcomeInst:  outcome,
+		healthServer: healthServer,
+		readyServer:  readyServer,
 	}
 }
 
@@ -92,7 +92,7 @@ func (t *tester) getHealth() (int, Response) {
 	return resp.StatusCode, res
 }
 
-func TestProcessedProgress(t *testing.T) {
+func TestProducedProgress(t *testing.T) {
 	// Try health check failures after 1, 2, and 3 healthy periods.
 	for k := 1; k <= 3; k++ {
 		ctx := context.Background()
@@ -101,7 +101,7 @@ func TestProcessedProgress(t *testing.T) {
 		// For the number of healthy periods, add one at a time
 		// and check for health.
 		for j := 0; j < k; j++ {
-			tester.processedInst.Add(ctx, 1)
+			tester.producedInst.Add(ctx, 1)
 
 			for i := 0; i < numSamples-1; i++ {
 				code, result := tester.getHealth()
@@ -116,7 +116,7 @@ func TestProcessedProgress(t *testing.T) {
 		require.Equal(t, http.StatusServiceUnavailable, code)
 		require.Contains(t, result.Status,
 			fmt.Sprintf("unhealthy: %s stopped moving at %d",
-				config.ProcessedMetric,
+				config.ProducedMetric,
 				k,
 			),
 		)
@@ -129,7 +129,7 @@ func TestOutcomesProgress(t *testing.T) {
 
 	for j := 0; j < numSamples; j++ {
 		tester.outcomeInst.Add(ctx, 10, label.String("outcome", "success"))
-		tester.processedInst.Add(ctx, 1)
+		tester.producedInst.Add(ctx, 1)
 
 		code, result := tester.getHealth()
 
@@ -139,7 +139,7 @@ func TestOutcomesProgress(t *testing.T) {
 
 	for j := 0; j < numSamples/2; j++ {
 		tester.outcomeInst.Add(ctx, 10, label.String("outcome", "failed"))
-		tester.processedInst.Add(ctx, 1)
+		tester.producedInst.Add(ctx, 1)
 
 		code, result := tester.getHealth()
 
@@ -164,7 +164,7 @@ func TestOutcomes4951(t *testing.T) {
 	for j := 0; j < 100; j++ {
 		tester.outcomeInst.Add(ctx, 51, label.String("outcome", "success"))
 		tester.outcomeInst.Add(ctx, 49, label.String("outcome", fmt.Sprint(rand.Intn(10))))
-		tester.processedInst.Add(ctx, 100)
+		tester.producedInst.Add(ctx, 100)
 
 		code, result := tester.getHealth()
 

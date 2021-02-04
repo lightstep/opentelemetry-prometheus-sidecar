@@ -42,7 +42,7 @@ var (
 	)
 
 	samplesProduced = sidecar.OTelMeterMust.NewInt64Counter(
-		"sidecar.samples.produced",
+		config.ProducedMetric,
 		metric.WithDescription("Number of Metric samples produced"),
 	)
 )

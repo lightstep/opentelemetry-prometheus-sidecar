@@ -78,6 +78,7 @@ an OpenTelemetry (https://opentelemetry.io) Protocol endpoint.
 
 	SidecarPrefix   = "sidecar."
 	ProcessedMetric = "sidecar.samples.processed"
+	ProducedMetric  = "sidecar.samples.produced"
 	OutcomeMetric   = "sidecar.queue.outcome"
 
 	OutcomeKey          = label.Key("outcome")

@@ -160,7 +160,7 @@ func (h *healthy) getMetrics() (map[string][]exportRecord, error) {
 // ServeHTTP implements a healthcheck handler that returns healthy as
 // long as comparing the youngest and oldest of `numSamples`:
 //
-// 1. the number of samples processed must rise
+// 1. the number of samples produced must rise
 // 2. the ratio of {outcome=success}/{*} >= 0.5 over `numSamples`
 func (h *healthy) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	ok(w, func() Response {
@@ -237,13 +237,13 @@ func (h *healthy) check(metrics map[string][]exportRecord) error {
 		return t
 	}
 
-	processed := sumWhere(config.ProcessedMetric, "")
+	produced := sumWhere(config.ProducedMetric, "")
 
-	if processed.defined() && processed.matchDelta() == 0 {
+	if produced.defined() && produced.matchDelta() == 0 {
 		return errors.Errorf(
 			"%s stopped moving at %v",
-			config.ProcessedMetric,
-			processed.matchValue(),
+			config.ProducedMetric,
+			produced.matchValue(),
 		)
 	}
 

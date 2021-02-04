@@ -318,6 +318,22 @@ func (c *Config) setupMetrics(telem *Telemetry) (start, stop func(ctx context.Co
 		}, nil
 }
 
+func InternalOnly() *Telemetry {
+	cont := controller.New(
+		processor.New(
+			selector.NewWithInexpensiveDistribution(),
+			metricsdk.CumulativeExportKindSelector(),
+			processor.WithMemory(true),
+		),
+		controller.WithCollectPeriod(0),
+	)
+
+	otel.SetMeterProvider(cont.MeterProvider())
+	return &Telemetry{
+		Controller: cont,
+	}
+}
+
 func ConfigureOpentelemetry(opts ...Option) *Telemetry {
 	tel := Telemetry{
 		config: newConfig(opts...),
