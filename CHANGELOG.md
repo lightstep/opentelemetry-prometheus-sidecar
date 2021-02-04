@@ -8,6 +8,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+## [0.13.1](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.13.1) - 2021-02-04
+
+- Supervisor kills the process after repeated healthcheck failures. (#95)
+
 ## [0.13.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.13.0) - 2021-02-04
 
 - Add `supervisor=true` in logs from the supervisor process. (#90)
