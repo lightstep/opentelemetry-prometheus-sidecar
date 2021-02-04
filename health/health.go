@@ -92,6 +92,9 @@ func NewChecker(cont *controller.Controller) *Checker {
 		healthy: healthy{
 			Controller: cont,
 			tracker:    map[string]*metricTracker{},
+			Response: Response{
+				Code: http.StatusOK,
+			},
 		},
 	}
 	c.ready.Value.Store(false)
