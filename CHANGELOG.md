@@ -8,7 +8,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+## [0.13.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.13.0) - 2021-02-04
+
 - Add `supervisor=true` in logs from the supervisor process. (#90)
+- Add real `/-/health` health-checking implementation, with these criteria:
+  sidecar.samples.produced should not stall over 5m 
+  sidecar.queue.outcome{outcome=success} divided by total {*} > 0.5 (#94)
 
 ## [0.12.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.12.0) - 2021-02-01
 
