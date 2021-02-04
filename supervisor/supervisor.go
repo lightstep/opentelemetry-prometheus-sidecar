@@ -176,8 +176,9 @@ func (s *Supervisor) supervise(ctx context.Context, cmd *exec.Cmd, wg *sync.Wait
 		s.healthcheck(ctx)
 
 		if s.veryUnhealthy {
-			// The process is repeatedly failing its internal health check.
-			cmd.Process.Signal(os.Interrupt)
+			// The process is repeatedly failing its internal health check,
+			// and we have seen a stackdump already.
+			cmd.Process.Kill()
 		}
 	}
 }
@@ -227,18 +228,14 @@ func (s *Supervisor) healthcheckErr(ctx context.Context) (err error) {
 		span.SetAttributes(semconv.HTTPAttributesFromHTTPStatusCode(resp.StatusCode)...)
 		span.SetStatus(semconv.SpanStatusFromHTTPStatusCode(resp.StatusCode))
 
-		if hr.Stackdump != "" {
-			span.SetAttributes(label.String("sidecar.stackdump", hr.Stackdump))
-		}
-
-		if resp.StatusCode/100 != 2 {
-			return errors.Errorf("healthcheck: %s", resp.Status)
-		}
-
 		if err := json.NewDecoder(resp.Body).Decode(&hr); err != nil {
 			return errors.Wrap(err, "decode response")
 		}
 		span.SetAttributes(label.String("sidecar.status", hr.Status))
+
+		if hr.Stackdump != "" {
+			span.SetAttributes(label.String("sidecar.stackdump", hr.Stackdump))
+		}
 
 		for k, es := range hr.Metrics {
 			for _, e := range es {
@@ -246,6 +243,10 @@ func (s *Supervisor) healthcheckErr(ctx context.Context) (err error) {
 					label.Float64(fmt.Sprintf("%s{%s}", k, e.Labels), e.Value),
 				)
 			}
+		}
+
+		if resp.StatusCode/100 != 2 {
+			return errors.Errorf("healthcheck: %s", resp.Status)
 		}
 
 		return nil
