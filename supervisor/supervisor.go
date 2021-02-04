@@ -48,7 +48,7 @@ var (
 )
 
 const (
-	healthURI = "/-/health"
+	healthURI = "/-/health?supervisor=true"
 	readyURI  = "/-/ready"
 
 	supervisorBufferSize = 1 << 14
@@ -67,6 +67,8 @@ type (
 		period   time.Duration
 		client   *http.Client
 		readied  bool
+
+		veryUnhealthy bool
 
 		lock      sync.Mutex
 		logBuffer []string
@@ -118,7 +120,7 @@ func (s *Supervisor) start(args []string) error {
 	}
 
 	wg.Add(1)
-	go s.supervise(ctx, &wg)
+	go s.supervise(ctx, cmd, &wg)
 	go func() {
 		// As soon as this context is cancelled (possibly by a
 		// SIGTERM), deliver SIGTERM to the subordinate
@@ -147,7 +149,7 @@ func (s *Supervisor) start(args []string) error {
 	return err
 }
 
-func (s *Supervisor) supervise(ctx context.Context, wg *sync.WaitGroup) {
+func (s *Supervisor) supervise(ctx context.Context, cmd *exec.Cmd, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	for {
@@ -172,6 +174,11 @@ func (s *Supervisor) supervise(ctx context.Context, wg *sync.WaitGroup) {
 		}
 
 		s.healthcheck(ctx)
+
+		if s.veryUnhealthy {
+			// The process is repeatedly failing its internal health check.
+			cmd.Process.Signal(os.Interrupt)
+		}
 	}
 }
 
@@ -184,7 +191,6 @@ func (s *Supervisor) healthcheck(ctx context.Context) {
 }
 
 func (s *Supervisor) healthcheckErr(ctx context.Context) (err error) {
-
 	ctx, cancel := context.WithTimeout(ctx, config.DefaultHealthCheckTimeout)
 	defer cancel()
 
@@ -221,6 +227,10 @@ func (s *Supervisor) healthcheckErr(ctx context.Context) (err error) {
 		span.SetAttributes(semconv.HTTPAttributesFromHTTPStatusCode(resp.StatusCode)...)
 		span.SetStatus(semconv.SpanStatusFromHTTPStatusCode(resp.StatusCode))
 
+		if hr.Stackdump != "" {
+			span.SetAttributes(label.String("sidecar.stackdump", hr.Stackdump))
+		}
+
 		if resp.StatusCode/100 != 2 {
 			return errors.Errorf("healthcheck: %s", resp.Status)
 		}
@@ -248,7 +258,7 @@ func (s *Supervisor) healthcheckErr(ctx context.Context) (err error) {
 	case ready && good:
 		hstat = s.noteHealthy(hr)
 	case ready && !good:
-		hstat = s.noteUnhealthy()
+		hstat = s.noteUnhealthy(hr)
 	case !ready && good:
 		hstat = s.noteReady()
 	case !ready && !good:
@@ -400,8 +410,15 @@ func (s *Supervisor) noteHealthy(hr health.Response) string {
 	return "ok"
 }
 
-func (s *Supervisor) noteUnhealthy() string {
-	level.Warn(s.logger).Log("msg", "sidecar is unhealthy")
+func (s *Supervisor) noteUnhealthy(hr health.Response) string {
+	if hr.Stackdump != "" {
+		summary := []interface{}{
+			"msg", "process is very unhealthy",
+			"stackdump", hr.Stackdump,
+		}
+		s.veryUnhealthy = true
+		level.Warn(s.logger).Log(summary...)
+	}
 	return "unhealthy"
 }
 

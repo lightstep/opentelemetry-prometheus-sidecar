@@ -68,9 +68,23 @@ func (t *tester) Collect() {
 }
 
 func (t *tester) getHealth() (int, Response) {
+	return t.getHealthFrom(true)
+}
+
+func (t *tester) getHealthUnsupervised() (int, Response) {
+	return t.getHealthFrom(false)
+}
+
+func (t *tester) getHealthFrom(isSuper bool) (int, Response) {
 	require.NoError(t.T, t.Controller.Collect(context.Background()))
 
-	resp, err := http.Get(t.healthServer.URL)
+	url := t.healthServer.URL
+
+	if isSuper {
+		url += "?supervisor=true"
+	}
+
+	resp, err := http.Get(url)
 	require.NoError(t.T, err)
 
 	var res Response
@@ -126,6 +140,13 @@ func TestOutcomesProgress(t *testing.T) {
 		require.Equal(t, "healthy", result.Status)
 	}
 
+	for i := 0; i < 10; i++ {
+		// These do not change results
+		code, result := tester.getHealthUnsupervised()
+		require.Equal(t, "healthy", result.Status)
+		require.Equal(t, http.StatusOK, code)
+	}
+
 	for j := 0; j < numSamples/2; j++ {
 		tester.outcomeInst.Add(ctx, 10, label.String("outcome", "failed"))
 		tester.producedInst.Add(ctx, 1)
@@ -144,6 +165,13 @@ func TestOutcomesProgress(t *testing.T) {
 			config.OutcomeMetric,
 		),
 	)
+
+	for i := 0; i < 10; i++ {
+		// These do not change results or dump stacks.
+		code, result := tester.getHealthUnsupervised()
+		require.Equal(t, http.StatusServiceUnavailable, code)
+		require.Equal(t, "", result.Stackdump)
+	}
 }
 
 func TestOutcomes4951(t *testing.T) {
@@ -160,4 +188,35 @@ func TestOutcomes4951(t *testing.T) {
 		require.Equal(t, http.StatusOK, code)
 		require.Equal(t, "healthy", result.Status)
 	}
+}
+
+func TestSuperStackdump(t *testing.T) {
+	tester := testController(t)
+
+	for i := 0; i < numSamples-1; i++ {
+		code, result := tester.getHealth()
+
+		require.Equal(t, http.StatusOK, code)
+		require.Equal(t, "healthy", result.Status)
+		require.Equal(t, "", result.Stackdump)
+	}
+
+	for i := 0; i < stackdumpAfter-1; i++ {
+		code, result := tester.getHealth()
+
+		require.Equal(t, http.StatusServiceUnavailable, code)
+		require.Equal(t, "", result.Stackdump)
+	}
+
+	code, result := tester.getHealth()
+
+	require.Equal(t, http.StatusServiceUnavailable, code)
+	require.Contains(t, result.Stackdump, "goroutine")
+	oldStack := result.Stackdump
+
+	// The next result still has a stackdump, identical
+	code, result = tester.getHealth()
+
+	require.Equal(t, http.StatusServiceUnavailable, code)
+	require.Equal(t, oldStack, result.Stackdump)
 }

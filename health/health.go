@@ -19,7 +19,9 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
@@ -34,9 +36,12 @@ import (
 const (
 	outcomeGoodLabel = string(config.OutcomeKey) + "=" + config.OutcomeSuccessValue
 
-	numSamples = 5
+	// In the default configuration, these settings compute a 5
+	// minute average:
 
+	numSamples     = 5
 	thresholdRatio = 0.5
+	stackdumpAfter = 3
 )
 
 type (
@@ -52,6 +57,10 @@ type (
 	healthy struct {
 		*controller.Controller
 		tracker map[string]*metricTracker
+
+		lock     sync.Mutex
+		failures int
+		Response
 	}
 
 	metricPair struct {
@@ -64,9 +73,10 @@ type (
 	}
 
 	Response struct {
-		Code    int                       `json:"code"`
-		Status  string                    `json:"status"`
-		Metrics map[string][]exportRecord `json:"metrics"`
+		Code      int                       `json:"code"`
+		Status    string                    `json:"status"`
+		Metrics   map[string][]exportRecord `json:"metrics"`
+		Stackdump string                    `json:"stackdump"`
 	}
 
 	exportRecord struct {
@@ -159,29 +169,44 @@ func (h *healthy) getMetrics() (map[string][]exportRecord, error) {
 //
 // 1. the number of samples produced must rise
 // 2. the ratio of {outcome=success}/{*} >= 0.5 over `numSamples`
-func (h *healthy) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
+func (h *healthy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ok(w, func() Response {
-		var code int
-		var status string
+		var resp Response
 
-		metrics, err := h.getMetrics()
+		fromSuper := len(r.URL.Query().Get("supervisor")) != 0
 
-		if err != nil {
-			code = http.StatusInternalServerError
-			status = fmt.Sprint("internal error: ", err)
-		} else if err := h.check(metrics); err != nil {
-			code = http.StatusServiceUnavailable
-			status = fmt.Sprint("unhealthy: ", err)
+		if fromSuper {
+			metrics, err := h.getMetrics()
+
+			if err != nil {
+				resp.Code = http.StatusInternalServerError
+				resp.Status = fmt.Sprint("internal error: ", err)
+			} else if err := h.check(metrics); err != nil {
+				resp.Code = http.StatusServiceUnavailable
+				resp.Status = fmt.Sprint("unhealthy: ", err)
+				h.countFailure(&resp)
+			} else {
+				resp.Code = http.StatusOK
+				resp.Status = "healthy"
+				resp.Metrics = metrics
+			}
+		}
+
+		h.lock.Lock()
+		defer h.lock.Unlock()
+
+		if fromSuper {
+			saveStack := h.Response.Stackdump
+			h.Response = resp
+			if h.Response.Stackdump == "" {
+				h.Response.Stackdump = saveStack
+				resp.Stackdump = saveStack
+			}
 		} else {
-			code = http.StatusOK
-			status = "healthy"
+			resp = h.Response
 		}
 
-		return Response{
-			Code:    code,
-			Status:  status,
-			Metrics: metrics,
-		}
+		return resp
 	})
 }
 
@@ -261,6 +286,19 @@ func (h *healthy) check(metrics map[string][]exportRecord) error {
 	}
 
 	return nil
+}
+
+func (h *healthy) countFailure(res *Response) {
+	h.lock.Lock()
+	h.failures++
+	failed := h.failures
+	h.lock.Unlock()
+
+	if failed%stackdumpAfter == 0 {
+		buf := make([]byte, 1<<14)
+		sz := runtime.Stack(buf, true)
+		res.Stackdump = string(buf[:sz])
+	}
 }
 
 // update adds one match/other pair to the tracker.
