@@ -111,8 +111,8 @@ func (h *healthy) getMetrics() (map[string][]exportRecord, error) {
 	ret := map[string][]exportRecord{}
 	enc := label.DefaultEncoder()
 
-	// Note: we use the last collected value, since the controller
-	// is pushing metrics.
+	// Note: we can't Collect() the metric controller, because
+	// there is a pusher configured.
 
 	if err := cont.ForEach(export.CumulativeExportKindSelector(),
 		func(rec export.Record) error {
@@ -132,10 +132,7 @@ func (h *healthy) getMetrics() (map[string][]exportRecord, error) {
 			} else if lv, ok := agg.(aggregation.LastValue); ok {
 				num, _, err = lv.LastValue()
 			} else {
-				// We expect to skip histograms here.
-				// Note the copyToCounter processor
-				// ensures we see these as counts
-				// anyway.
+				// Do not use histograms for health checking.
 				return nil
 			}
 			if err != nil {
