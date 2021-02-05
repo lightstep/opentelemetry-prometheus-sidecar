@@ -24,6 +24,7 @@ import (
 
 	"github.com/ghodss/yaml"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/snappy"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	promlogflag "github.com/prometheus/common/promlog/flag"
@@ -111,10 +112,11 @@ type DurationConfig struct {
 }
 
 type OTLPConfig struct {
-	Endpoint   string            `json:"endpoint"`
-	Headers    map[string]string `json:"headers"`
-	Attributes map[string]string `json:"attributes"`
-	Timeout    DurationConfig    `json:"timeout"`
+	Endpoint    string            `json:"endpoint"`
+	Headers     map[string]string `json:"headers"`
+	Attributes  map[string]string `json:"attributes"`
+	Timeout     DurationConfig    `json:"timeout"`
+	Compression string           `json:"compression"`
 }
 
 type LogConfig struct {
@@ -178,14 +180,16 @@ func DefaultMainConfig() MainConfig {
 			ListenIP: DefaultAdminListenIP,
 		},
 		Destination: OTLPConfig{
-			Headers:    map[string]string{},
-			Attributes: map[string]string{},
-			Timeout:    DurationConfig{DefaultExportTimeout},
+			Headers:     map[string]string{},
+			Attributes:  map[string]string{},
+			Timeout:     DurationConfig{DefaultExportTimeout},
+			Compression: snappy.Name,
 		},
 		Diagnostics: OTLPConfig{
-			Headers:    map[string]string{},
-			Attributes: map[string]string{},
-			Timeout:    DurationConfig{DefaultExportTimeout},
+			Headers:     map[string]string{},
+			Attributes:  map[string]string{},
+			Timeout:     DurationConfig{DefaultExportTimeout},
+			Compression: snappy.Name,
 		},
 		LogConfig: LogConfig{
 			Level:   "info",
@@ -231,6 +235,9 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 
 		a.Flag(lowerPrefix+".timeout", upperPrefix+" timeout used for OTLP Export() requests").
 			DurationVar(&op.Timeout.Duration)
+
+		a.Flag(lowerPrefix+".compression", upperPrefix+" compression used for OTLP requests (e.g., snappy).").
+			StringVar(&op.Compression)
 	}
 
 	makeOTLPFlags("destination", &cfg.Destination)

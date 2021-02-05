@@ -21,6 +21,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/snappy"
 	"github.com/prometheus/prometheus/pkg/textparse"
 	"github.com/stretchr/testify/require"
 )
@@ -156,6 +157,7 @@ destination:
     e: f
     G: h
   timeout: 14s
+  compression: compression_fmt
 
 prometheus:
   wal: wal-eeee
@@ -189,6 +191,7 @@ startup_timeout: 1777s
 					Timeout: DurationConfig{
 						14 * time.Second,
 					},
+					Compression: "compression_fmt",
 				},
 				Diagnostics: OTLPConfig{
 					Headers:    map[string]string{},
@@ -196,6 +199,7 @@ startup_timeout: 1777s
 					Timeout: DurationConfig{
 						60 * time.Second,
 					},
+					Compression: snappy.Name,
 				},
 				LogConfig: LogConfig{
 					Level:  "info",
@@ -258,6 +262,7 @@ log_config:
 				"--startup.timeout=1777s",
 				"--destination.attribute", "c=d",
 				"--destination.header", "g=h",
+				"--destination.compression", "compression_fmt",
 				"--prometheus.wal", "wal-eeee",
 				"--log.level=warning",
 				"--diagnostics.endpoint", "https://look.here",
@@ -290,6 +295,7 @@ log_config:
 					Timeout: DurationConfig{
 						60 * time.Second,
 					},
+					Compression: "compression_fmt",
 				},
 				Filters: []string{
 					`one{two="three"}`,
@@ -304,6 +310,7 @@ log_config:
 					Timeout: DurationConfig{
 						60 * time.Second,
 					},
+					Compression: snappy.Name,
 				},
 				DisableDiagnostics: true,
 				LogConfig: LogConfig{
@@ -330,6 +337,7 @@ destination:
   attributes:
     service.name: demo
   timeout: 10m
+  compression: compression_fmt
 
 diagnostics:
   endpoint: https://diagnose.me
@@ -338,6 +346,7 @@ diagnostics:
   attributes:
     C: D
   timeout: 1h40m
+  compression: compression_fmt
 
 prometheus:
   wal: /volume/wal
@@ -421,6 +430,7 @@ static_metadata:
 					Timeout: DurationConfig{
 						600 * time.Second,
 					},
+					Compression: "compression_fmt",
 				},
 				Diagnostics: OTLPConfig{
 					Endpoint: "https://diagnose.me",
@@ -433,6 +443,7 @@ static_metadata:
 					Timeout: DurationConfig{
 						6000 * time.Second,
 					},
+					Compression: "compression_fmt",
 				},
 				LogConfig: LogConfig{
 					Level:  "warn",

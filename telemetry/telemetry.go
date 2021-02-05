@@ -63,6 +63,7 @@ type (
 		ExportTimeout         time.Duration
 		resource              *resource.Resource
 		logger                log.Logger
+		Compressor            string
 	}
 
 	setupFunc func() (start, stop func(context.Context) error, err error)
@@ -130,6 +131,12 @@ func WithExportTimeout(t time.Duration) Option {
 func WithLogger(logger log.Logger) Option {
 	return func(c *Config) {
 		c.logger = logger
+	}
+}
+
+func WithCompressor(compressor string) Option {
+	return func(c *Config) {
+		c.Compressor = compressor
 	}
 }
 
@@ -211,7 +218,7 @@ func newResource(c *Config) (*resource.Resource, error) {
 	)
 }
 
-func newExporter(endpoint string, insecure bool, headers map[string]string) *otlp.Exporter {
+func newExporter(endpoint string, insecure bool, headers map[string]string, compressor string) *otlp.Exporter {
 	secureOption := otlpgrpc.WithTLSCredentials(credentials.NewClientTLSFromCert(nil, ""))
 	if insecure {
 		secureOption = otlpgrpc.WithInsecure()
@@ -219,6 +226,7 @@ func newExporter(endpoint string, insecure bool, headers map[string]string) *otl
 	driver := otlpgrpc.NewDriver(secureOption,
 		otlpgrpc.WithEndpoint(endpoint),
 		otlpgrpc.WithHeaders(headers),
+		otlpgrpc.WithCompressor(compressor),
 	)
 	return otlp.NewUnstartedExporter(driver,
 		otlp.WithMetricExportKindSelector(metricsdk.CumulativeExportKindSelector()),
@@ -230,7 +238,7 @@ func (c *Config) setupTracing() (start, stop func(ctx context.Context) error, er
 		level.Debug(c.logger).Log("msg", "tracing is disabled: no endpoint set")
 		return nil, nil, nil
 	}
-	spanExporter := newExporter(c.SpanExporterEndpoint, c.SpanExporterEndpointInsecure, c.Headers)
+	spanExporter := newExporter(c.SpanExporterEndpoint, c.SpanExporterEndpointInsecure, c.Headers, c.Compressor)
 
 	// TODO: Make a way to set the export timeout, there is
 	// apparently not such a thing for OTel-Go:
@@ -259,7 +267,7 @@ func (c *Config) setupMetrics() (start, stop func(ctx context.Context) error, er
 		level.Debug(c.logger).Log("msg", "metrics are disabled: no endpoint set")
 		return nil, nil, nil
 	}
-	metricExporter := newExporter(c.MetricsExporterEndpoint, c.MetricsExporterEndpointInsecure, c.Headers)
+	metricExporter := newExporter(c.MetricsExporterEndpoint, c.MetricsExporterEndpointInsecure, c.Headers, c.Compressor)
 
 	pusher := controller.New(
 		newCopyToCounterProcessor(
