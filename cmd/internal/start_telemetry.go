@@ -71,5 +71,6 @@ func startTelemetry(diagConfig config.OTLPConfig, defaultSvcName string, isSuper
 		telemetry.WithResourceAttributes(diagConfig.Attributes),
 		telemetry.WithExportTimeout(diagConfig.Timeout.Duration),
 		telemetry.WithMetricReportingPeriod(config.DefaultReportingPeriod),
+		telemetry.WithCompressor(diagConfig.Compression),
 	)
 }
