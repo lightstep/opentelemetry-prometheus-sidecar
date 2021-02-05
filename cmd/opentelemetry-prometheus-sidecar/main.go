@@ -161,6 +161,7 @@ func Main() bool {
 		Timeout:          cfg.Destination.Timeout.Duration,
 		RootCertificates: cfg.Security.RootCertificates,
 		Headers:          grpcMetadata.New(cfg.Destination.Headers),
+		Compressor:       cfg.Destination.Compression,
 	})
 
 	queueManager, err := otlp.NewQueueManager(

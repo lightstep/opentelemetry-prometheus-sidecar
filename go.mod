@@ -8,6 +8,7 @@ require (
 	github.com/go-kit/kit v0.10.0
 	github.com/gogo/protobuf v1.3.1
 	github.com/golang/protobuf v1.4.3
+	github.com/golang/snappy v0.0.2
 	github.com/google/go-cmp v0.5.4
 	github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry v0.0.0-00010101000000-000000000000
 	github.com/oklog/run v1.1.0

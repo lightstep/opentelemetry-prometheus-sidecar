@@ -21,6 +21,9 @@ destination:
 
   timeout: 2m
 
+  # Compression format to be used, if any. Defaults to snappy:
+  compression: snappy
+
 # Promehteus configuration:
 prometheus:
   # The primary HTTP endpoint:

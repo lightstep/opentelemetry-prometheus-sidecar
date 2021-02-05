@@ -85,6 +85,7 @@ type Client struct {
 	timeout          time.Duration
 	rootCertificates []string
 	headers          grpcMetadata.MD
+	compressor       string
 
 	conn *grpc.ClientConn
 }
@@ -96,6 +97,7 @@ type ClientConfig struct {
 	Timeout          time.Duration
 	RootCertificates []string
 	Headers          grpcMetadata.MD
+	Compressor       string
 }
 
 // NewClient creates a new Client.
@@ -110,6 +112,7 @@ func NewClient(conf ClientConfig) *Client {
 		timeout:          conf.Timeout,
 		rootCertificates: conf.RootCertificates,
 		headers:          conf.Headers,
+		compressor:       conf.Compressor,
 	}
 }
 
@@ -170,6 +173,9 @@ func (c *Client) getConnection(ctx context.Context) (_ *grpc.ClientConn, retErr 
 		dopts = append(dopts, grpc.WithTransportCredentials(credentials.NewTLS(&tcfg)))
 	} else {
 		dopts = append(dopts, grpc.WithInsecure())
+	}
+	if c.compressor != "" {
+		dopts = append(dopts, grpc.WithDefaultCallOptions(grpc.UseCompressor(c.compressor)))
 	}
 	address := c.url.Hostname()
 	if len(c.url.Port()) > 0 {
