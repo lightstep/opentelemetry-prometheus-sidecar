@@ -132,7 +132,7 @@ func Main() bool {
 	}
 
 	targetCache := targets.NewCache(
-		logger,
+		logger.With(logger, "component", "target_cache")),
 		httpClient,
 		targetsURL,
 		labels.FromMap(cfg.Destination.Attributes),

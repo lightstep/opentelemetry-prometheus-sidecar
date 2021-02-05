@@ -25,8 +25,16 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
+)
+
+var (
+	refreshTimer = telemetry.New(
+		"sidecar.targets.refresh.duration",
+		"Times the operation to refresh the sidecar's cache of Prometheus targets.",
+	)
 )
 
 const DefaultAPIEndpoint = "api/v1/targets"
@@ -87,7 +95,12 @@ func (c *Cache) Run(ctx context.Context) {
 	}
 }
 
-func (c *Cache) refresh(ctx context.Context) error {
+func (c *Cache) refresh(ctx context.Context) (retErr error) {
+	ctx, cancel := context.WithTimeout(ctx, config.DefaultPrometheusTimeout)
+	defer cancel()
+
+	defer refreshTimer.Start(ctx).Stop(&retErr)
+
 	req, err := http.NewRequestWithContext(ctx, "GET", c.url.String(), nil)
 	if err != nil {
 		return err
@@ -168,6 +181,14 @@ func (c *Cache) Get(ctx context.Context, lset labels.Labels) (*Target, error) {
 		err := c.refresh(ctx)
 		c.mtx.RLock()
 		if err != nil {
+			// Because this failure can lead to many lost
+			// data points, call it out specifically in
+			// the log.  The next point up the call stack
+			// where this is logged is several layers up
+			// where it is is given as the reason for failing
+			// to build a single point.
+			level.Error(c.logger).Log("msg", "refresh failed", "err", err)
+
 			return nil, errors.Wrap(err, "target refresh failed")
 		}
 		if ts, ok = c.targets[key]; !ok {
