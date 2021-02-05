@@ -171,24 +171,6 @@ README](https://github.com/Stackdriver/stackdriver-prometheus-sidecar/blob/maste
 contains more examples of how to patch an existing Prometheus
 deployment or deploy the sidecar without using Helm.
 
-#### Health Check Handler Probe Settings
-The Prometheus Sidecar package also comes with a health check handlers that respond to k8s probes.  To modify the configurations on the probes, use a stanza similar to the following example: 
-
-```
-    livenessProbe:
-      httpGet:
-        path: /-/health
-        port: admin-port
-      periodSeconds: 5
-
-    readinessProbe:
-      httpGet:
-        path: /-/ready
-        port: admin-port
-      failureThreshold: 6
-      periodSeconds: 10
-```
-
 ### Configuration
 
 Most sidecar configuration settings can be set through flags or a yaml
