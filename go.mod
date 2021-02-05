@@ -30,6 +30,7 @@ require (
 	github.com/prometheus/prometheus v1.8.2-0.20201015110737-0a7fdd3b7696
 	github.com/stretchr/testify v1.6.1
 	go.opentelemetry.io/otel v0.16.0
+	go.opentelemetry.io/otel/sdk v0.16.0
 	golang.org/x/tools v0.0.0-20201014170642-d1624618ad65 // indirect
 	google.golang.org/genproto v0.0.0-20200904004341-0bd0a958aa1d
 	google.golang.org/grpc v1.34.0

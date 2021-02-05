@@ -90,13 +90,14 @@ func Main() bool {
 
 	telemetry.StaticSetup(logger)
 
-	if shutdownTel := internal.StartTelemetry(
+	telem := internal.StartTelemetry(
 		cfg,
 		"opentelemetry-prometheus-sidecar",
 		isSupervisor,
 		logger,
-	); shutdownTel != nil {
-		defer shutdownTel(context.Background())
+	)
+	if telem != nil {
+		defer telem.Shutdown(context.Background())
 	}
 
 	// Start the supervisor.
@@ -108,7 +109,7 @@ func Main() bool {
 	ctx, cancelMain := telemetry.ContextWithSIGTERM(logger)
 	defer cancelMain()
 
-	healthChecker := health.NewChecker()
+	healthChecker := health.NewChecker(telem.Controller)
 
 	httpClient := &http.Client{
 		// Note: The Sidecar->Prometheus HTTP connection is not traced.
@@ -222,6 +223,15 @@ func Main() bool {
 		return false
 	}
 
+	// Sleep to allow the first scrapes to complete.
+	level.Debug(logger).Log("msg", "sleeping to allow Prometheus its first scrape")
+	select {
+	case <-time.After(cfg.StartupDelay.Duration):
+	case <-ctx.Done():
+		return true
+	}
+
+	level.Debug(logger).Log("msg", "starting now")
 	healthChecker.SetReady(true)
 
 	// Run three inter-depdendent components:
@@ -241,13 +251,6 @@ func Main() bool {
 	{
 		g.Add(
 			func() error {
-				// Sleep to allow the first scrapes to complete.
-				select {
-				case <-time.After(cfg.StartupDelay.Duration):
-				case <-ctx.Done():
-					return nil
-				}
-
 				err = prometheusReader.Run(ctx, startOffset)
 				level.Info(logger).Log("msg", "Prometheus reader stopped")
 				return err
@@ -391,6 +394,12 @@ func startSupervisor(cfg config.MainConfig, logger log.Logger) bool {
 	super := supervisor.New(supervisor.Config{
 		Logger: logger,
 		Admin:  cfg.Admin,
+
+		// Note: the metrics reporting interval is not
+		// configurable (see start_telemetry.go), but whatever
+		// it is we should poll at with a longer period to be
+		// sure a collection happens between health checks.
+		Period: time.Duration(float64(config.DefaultReportingPeriod) * 2),
 	})
 
 	os.Setenv(supervisorEnv, "active")

@@ -30,7 +30,6 @@ import (
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry/doevery"
 	"github.com/pkg/errors"
 	promconfig "github.com/prometheus/prometheus/config"
-	"go.opentelemetry.io/otel/label"
 	"go.opentelemetry.io/otel/metric"
 
 	// gRPC Status protobuf types we may want to see.  This type
@@ -138,7 +137,7 @@ func NewQueueManager(logger log.Logger, cfg promconfig.QueueConfig, timeout time
 	t.shards = t.newShardCollection(t.numShards)
 
 	t.sendOutcomesCounter = sidecar.OTelMeterMust.NewInt64Counter(
-		"sidecar.queue.outcome",
+		config.OutcomeMetric,
 		metric.WithDescription(
 			"The number of processed samples queued to be sent to the remote storage.",
 		),
@@ -520,7 +519,7 @@ func (s *shardCollection) sendSamplesWithBackoff(client StorageClient, samples [
 			s.qm.sendOutcomesCounter.Add(
 				ctx,
 				int64(len(samples)),
-				label.String("outcome", "success"))
+				config.OutcomeKey.String(config.OutcomeSuccessValue))
 			return
 		}
 
@@ -528,7 +527,7 @@ func (s *shardCollection) sendSamplesWithBackoff(client StorageClient, samples [
 			s.qm.sendOutcomesCounter.Add(
 				ctx,
 				int64(len(samples)),
-				label.String("outcome", "failed"))
+				config.OutcomeKey.String("failed"))
 
 			level.Error(s.qm.logger).Log(
 				"msg", "unrecoverable write error",
@@ -541,7 +540,7 @@ func (s *shardCollection) sendSamplesWithBackoff(client StorageClient, samples [
 		s.qm.sendOutcomesCounter.Add(
 			ctx,
 			int64(len(samples)),
-			label.String("outcome", "retry"))
+			config.OutcomeKey.String("retry"))
 
 		doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
 			level.Warn(s.qm.logger).Log(
@@ -561,7 +560,7 @@ func (s *shardCollection) sendSamplesWithBackoff(client StorageClient, samples [
 	s.qm.sendOutcomesCounter.Add(
 		ctx,
 		int64(len(samples)),
-		label.String("outcome", "aborted"))
+		config.OutcomeKey.String("aborted"))
 
 	level.Error(s.qm.logger).Log(
 		"msg", "aborted write",
