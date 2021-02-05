@@ -158,9 +158,9 @@ server:
     imagePullPolicy: Always
     args:
     - --prometheus.wal=/data/wal
-    - --destination.endpoint=${DESTINATION}
+    - --destination.endpoint=$(DESTINATION)
     - --destination.header=Access-Token=AAAAAAAAAAAAAAAA
-    - --diagnostics.endpoint=${DIAGNOSTICS_DESTINATION}
+    - --diagnostics.endpoint=$(DIAGNOSTICS_DESTINATION)
     - --diagnostics.header=Access-Token=BBBBBBBBBBBBBBBB
     volumeMounts:
     - name: storage-volume
