@@ -145,8 +145,10 @@ The sidecar requires write access to the directory to store its progress between
 ### Kubernetes and Helm setup
 
 To configure the sidecar for a Prometheus server installed using the
-[Prometheus Community Helm Charts](https://github.com/prometheus-community/helm-charts),
-add the following definition to your custom `values.yaml`:
+[Prometheus Community Helm Charts](https://github.com/prometheus-community/helm-charts). 
+
+#### Sidecar Setup
+To configure the core compoents of the Prometheus sidecar, add the following definition to your custom `values.yaml`:
 
 ```
 server:
@@ -156,15 +158,14 @@ server:
     imagePullPolicy: Always
     args:
     - --prometheus.wal=/data/wal
-    - --destination.endpoint=${DESTINATION}
+    - --destination.endpoint=$(DESTINATION)
     - --destination.header=Access-Token=AAAAAAAAAAAAAAAA
-    - --diagnostics.endpoint=${DIAGNOSTICS_DESTINATION}
+    - --diagnostics.endpoint=$(DIAGNOSTICS_DESTINATION)
     - --diagnostics.header=Access-Token=BBBBBBBBBBBBBBBB
     volumeMounts:
     - name: storage-volume
       mountPath: /data
 ```
-
 The [upstream Stackdriver Prometheus sidecar Kubernetes
 README](https://github.com/Stackdriver/stackdriver-prometheus-sidecar/blob/master/kube/README.md)
 contains more examples of how to patch an existing Prometheus
@@ -260,24 +261,6 @@ Use the `--destination.attribute=KEY=VALUE` flag to add additional resource attr
 
 Use the `--opentelemetry.use-meta-labels` flag to add discovery meta-labels to all exported timeseries.
 
-#### Diagnostics
-
-The sidecar is instrumented with the OpenTelemetry-Go SDK and runs
-with standard instrumentation packages, including runtime and host
-metrics and gRPC and HTTP tracing.  Configure diagnostics output OTLP
-settings similar to configuring the primary destination, for example:
-
-```
-diagnostics:
-  endpoint: https://otel-collector:443
-  headers:
-    Custom-Header: custom-value
-  attributes:
-    extra.resource: extra-value
-```
-
-Likewise, these fields can be accessed using `--diagnostics.endpoint`,
-`--diagnostics.header`, and `--diagnostics.attribute`.
 
 #### Filters
 	
@@ -324,6 +307,71 @@ Note:
 
 * All `static_metadata` entries must have `type` specified.
 * If `value_type` is specified, it will override the default value type for counters and gauges. All Prometheus metrics have a default type of double.
+
+## Diagnostics
+
+The sidecar is instrumented with the OpenTelemetry-Go SDK and runs with standard instrumentation packages, including runtime and host metrics and gRPC and HTTP tracing.  
+
+By default, diagnostics are autoconfigured tot he primary destination.  Configuration options are available to disable or configure alternative destinations and options.  
+
+### Configuration Options
+
+Separate diagnostics settings can be configure to output OTLP similar to configuring the primary destination, for example:
+
+```
+diagnostics:
+  endpoint: https://otel-collector:443
+  headers:
+    Custom-Header: custom-value
+  timeout: timeout-value
+  attributes:
+    extra.resource: extra-value
+```
+
+Likewise, these fields can be accessed using `--diagnostics.endpoint`,
+`--diagnostics.header`, `--diagnostics.timeout`, and `--diagnostics.attribute`.
+
+#### Log levels 
+
+The Prometheus sidecar provides options for logging in the case of diagnoising an issue.  
+* We recommend starting with setting the `--log.level` to be `debug`, `info`, `warn`, `error`.  
+* Additional options are available to set the output format of the logs (`--log.format` to be `logfmt` or `json`), and the number of logs to recorded (`--log.verbose` to be `0` for off, `1` for some, `2` for more)
+
+#### Disabling Diagnostics
+
+To disable diagnostics there are two flags to set.  To disable supervisor diagnostics which sends traces, set `--disable-supervisor` to `true` and to disable subordinate diagnostics which sends metrics `--disable-diagnostics` to `true`.
+
+### Diagnostic Outputs
+
+The Prometheus Sidecar has two main processes, the supervisor and a subordinate process.  Diagnostic traces are sent from the supervisor process and diagnostic metrics are sent from the subordinate process.  
+
+#### Sidecar Supervisor Tracing
+Traces from the supervisor process are most helpful for diagnosing unknown problems.  It signals lifecycle events and captures the stderr, attaching it to the trace.  
+
+The sidecar will output spans from its supervisor process with service.name=`opentelemetry-prometheus-sidecar-supervisor`.  There are two kinds of spans: operation=`health-client` and operation=`shutdown-report`.  These spans are also tagged with the attribute `sidecar-health` with values `ok`, `not yet ready` or `first time ready`.  
+
+#### Sidecar Subordinate Metrics
+Metrics from the subordinate process can help identify issues once the first metrics are successfully written.  There are 3 host/runtime metrics and 9 internal metrics.  
+
+**Host and Runtime Metrics**
+1. process.cpu.time, with tag (state:user,sys)
+2. system.network.io, with tag (direction:read,write)
+3. runtime.go.mem.heap_alloc
+
+**Internal Metrics**
+
+| Metric Name | Metric Type | Description | Additional Tags |
+| --- | --- | --- | ---|
+| sidecar.connect.duration.count | histogram | how many attempts to connect (and how long) | (error:true/false) |
+| sidecar.export.duration.count | histogram | how many attempts to export (and how long) | (error:true/false) |
+| sidecar.queue.outcome | counter | outcome of the sample in the queue | (outcome: success, failed, retry, aborted) |
+| sidecar.queue.capacity | gauge | number of available slots for samples (i.e., points) in the queue, counts buffer size times current number of shards | |
+| sidecar.queue.running | gauge | number of running shards, those which have not exited | |
+| sidecar.queue.shards | gauge | number of current shards, as set by the queue manager | |
+| sidecar.samples.produced | counter | number of samples (i.e., points) read from the prometheus WAL | |
+| sidecar.queue.size | gauge | number of samples (i.e., points) standing in a queue waiting to export | |
+| sidecar.series.dropped | counter | number of points dropped because of missing metadata | (key_reason:target_not_found/metadata_not_found)|
+
 
 ## Upstream
 
