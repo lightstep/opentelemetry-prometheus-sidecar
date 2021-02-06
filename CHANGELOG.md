@@ -8,6 +8,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+- Timeouts and diagnostics for Prometheus API calls (#100)
+- Snappy compression support enabled by default (#97)
+
 ## [0.13.1](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.13.1) - 2021-02-04
 
 - Supervisor kills the process after repeated healthcheck failures. (#95)
