@@ -105,6 +105,7 @@ func TestProducedProgress(t *testing.T) {
 		// and check for health.
 		for j := 0; j < k; j++ {
 			tester.producedInst.Add(ctx, 1)
+			tester.outcomeInst.Add(ctx, 1, label.String("outcome", "success"))
 
 			for i := 0; i < numSamples-1; i++ {
 				code, result := tester.getHealth()
@@ -208,8 +209,10 @@ func TestOutcomesNoSuccess(t *testing.T) {
 
 	require.Equal(t, http.StatusServiceUnavailable, code)
 	require.Contains(t, result.Status,
-		fmt.Sprintf("unhealthy: %s high error ratio",
+		fmt.Sprintf("unhealthy: %s{%s} stopped moving at %d",
 			config.OutcomeMetric,
+			outcomeGoodLabel,
+			0,
 		),
 	)
 }

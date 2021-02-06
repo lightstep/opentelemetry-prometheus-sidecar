@@ -276,11 +276,11 @@ func (h *healthy) check(metrics map[string][]exportRecord) error {
 
 	if outcomes.defined() {
 
-		if produced.matchDelta() == 0 {
+		if outcomes.matchDelta() == 0 {
 			return errors.Errorf("%s{%s} stopped moving at %v",
 				config.OutcomeMetric,
 				outcomeGoodLabel,
-				produced.matchValue(),
+				outcomes.matchValue(),
 			)
 		}
 
