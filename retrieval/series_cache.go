@@ -22,6 +22,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/targets"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry/doevery"
@@ -380,8 +381,8 @@ func (c *seriesCache) refresh(ctx context.Context, ref uint64) error {
 		}
 		if meta == nil {
 			droppedSeriesMetadataNotFound.Add(ctx, 1)
-			
-			doevery.TimePeriod(config.DefaultNoisyLogPeriod, f func() {
+
+			doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
 				level.Warn(c.logger).Log(
 					"msg", "metadata not found",
 					"metric_name", metricName,
