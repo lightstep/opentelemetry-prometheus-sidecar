@@ -33,6 +33,7 @@ import (
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/internal/otlptest"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/version"
 	"github.com/stretchr/testify/require"
@@ -220,7 +221,7 @@ func TestSampleDeliverySimple(t *testing.T) {
 	cfg.Capacity = n
 	cfg.MaxSamplesPerSend = n
 
-	tailer, err := tail.Tail(context.Background(), dir)
+	tailer, err := tail.Tail(context.Background(), telemetry.DefaultLogger(), dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -266,7 +267,7 @@ func TestSampleDeliveryMultiShard(t *testing.T) {
 	cfg.MaxSamplesPerSend = 1
 	cfg.MaxShards = numShards
 
-	tailer, err := tail.Tail(context.Background(), dir)
+	tailer, err := tail.Tail(context.Background(), telemetry.DefaultLogger(), dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -318,7 +319,7 @@ func TestSampleDeliveryTimeout(t *testing.T) {
 	cfg.MaxShards = 1
 	cfg.BatchSendDeadline = model.Duration(100 * time.Millisecond)
 
-	tailer, err := tail.Tail(context.Background(), dir)
+	tailer, err := tail.Tail(context.Background(), telemetry.DefaultLogger(), dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -370,7 +371,7 @@ func TestSampleDeliveryOrder(t *testing.T) {
 	c := NewTestStorageClient(t, false)
 	c.expectSamples(samples)
 
-	tailer, err := tail.Tail(context.Background(), dir)
+	tailer, err := tail.Tail(context.Background(), telemetry.DefaultLogger(), dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -482,7 +483,7 @@ func TestSpawnNotMoreThanMaxConcurrentSendsGoroutines(t *testing.T) {
 	cfg.MaxShards = 1
 	cfg.Capacity = n
 
-	tailer, err := tail.Tail(context.Background(), dir)
+	tailer, err := tail.Tail(context.Background(), telemetry.DefaultLogger(), dir)
 	if err != nil {
 		t.Fatal(err)
 	}
