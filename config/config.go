@@ -106,6 +106,12 @@ type MetricRenamesConfig struct {
 	To   string `json:"to"`
 }
 
+
+// TODO: Note that the ../metadata package cannot depend on this package
+// because of a cycle involving this type, which is _nearly_ identical to
+// the Entry{} type of that package.  If that package would use _this_ type
+// it would help greatly, and then that package could refer to this one for
+// configuration.
 type StaticMetadataConfig struct {
 	Metric	  string `json:"metric"`
 	Type	  string `json:"type"`
