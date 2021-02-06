@@ -25,9 +25,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/textparse"
-	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 )
 
 var (
@@ -177,7 +177,6 @@ func (c *Cache) fetch(ctx context.Context, typ string, q url.Values) (_ *apiResp
 	if err != nil {
 		return nil, errors.Wrap(err, "build request")
 	}
-	req = req.WithContext(ctx)
 
 	resp, err := c.client.Do(req)
 	if err != nil {
