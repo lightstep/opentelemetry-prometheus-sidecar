@@ -26,12 +26,13 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
 )
 
 var (
-	refreshTimer = telemetry.New(
+	refreshTimer = telemetry.NewTimer(
 		"sidecar.targets.refresh.duration",
 		"Times the operation to refresh the sidecar's cache of Prometheus targets.",
 	)
