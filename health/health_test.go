@@ -190,6 +190,30 @@ func TestOutcomes4951(t *testing.T) {
 	}
 }
 
+func TestOutcomesNoSuccess(t *testing.T) {
+	ctx := context.Background()
+	tester := testController(t)
+
+	for j := 0; j < numSamples-1; j++ {
+		tester.outcomeInst.Add(ctx, 10, label.String("outcome", "failed"))
+		tester.producedInst.Add(ctx, 1)
+
+		code, result := tester.getHealth()
+
+		require.Equal(t, http.StatusOK, code)
+		require.Equal(t, "healthy", result.Status)
+	}
+
+	code, result := tester.getHealth()
+
+	require.Equal(t, http.StatusServiceUnavailable, code)
+	require.Contains(t, result.Status,
+		fmt.Sprintf("unhealthy: %s high error ratio",
+			config.OutcomeMetric,
+		),
+	)
+}
+
 func TestSuperStackdump(t *testing.T) {
 	tester := testController(t)
 
