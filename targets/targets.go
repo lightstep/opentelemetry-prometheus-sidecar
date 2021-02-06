@@ -27,6 +27,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry/doevery"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
 )
@@ -178,6 +179,9 @@ func (c *Cache) Get(ctx context.Context, lset labels.Labels) (*Target, error) {
 	// This means for subsequent gets against the job/instance pair, requests will return
 	// no targets until a refresh triggered by another lookup or the background routine populates it.
 	if !ok {
+		// Note! this code path into refresh() is not rate limited.  We can
+		// attempt this frequently when reading the WAL of a dead Prometheus.
+		// Should this back off for other reasons?
 		c.mtx.RUnlock()
 		err := c.refresh(ctx)
 		c.mtx.RLock()
@@ -188,7 +192,9 @@ func (c *Cache) Get(ctx context.Context, lset labels.Labels) (*Target, error) {
 			// where this is logged is several layers up
 			// where it is is given as the reason for failing
 			// to build a single point.
-			level.Error(c.logger).Log("msg", "refresh failed", "err", err)
+			doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
+				level.Error(c.logger).Log("msg", "refresh failed", "err", err)
+			})
 
 			return nil, errors.Wrap(err, "target refresh failed")
 		}
