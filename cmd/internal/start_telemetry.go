@@ -8,6 +8,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
+	"github.com/prometheus/common/version"
 )
 
 type ShutdownFunc func(context.Context)
@@ -22,6 +23,10 @@ func StartTelemetry(cfg config.MainConfig, defaultSvcNAme string, isSuper bool, 
 	if diagConfig.Endpoint == "" {
 		return telemetry.InternalOnly()
 	}
+
+	diagConfig.Attributes = copyMap(diagConfig.Attributes)
+	diagConfig.Headers = copyMap(diagConfig.Headers)
+	diagConfig.Attributes["sidecar.version"] = version.Version
 
 	return startTelemetry(diagConfig, defaultSvcNAme, isSuper, logger)
 }
@@ -73,4 +78,12 @@ func startTelemetry(diagConfig config.OTLPConfig, defaultSvcName string, isSuper
 		telemetry.WithMetricReportingPeriod(config.DefaultReportingPeriod),
 		telemetry.WithCompressor(diagConfig.Compression),
 	)
+}
+
+func copyMap(m map[string]string) map[string]string {
+	r := map[string]string{}
+	for k, v := range m {
+		r[k] = v
+	}
+	return r
 }
