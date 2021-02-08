@@ -364,7 +364,7 @@ func (r *Response) MetricLogSummary(name string) (pairs []interface{}) {
 				// The log package strips `=`, replace with `:` instead.
 				"{", strings.Replace(e.Labels, "=", ":", -1), "}",
 			),
-			e.Value)
+			uint64(e.Value))
 	}
 	return
 }
