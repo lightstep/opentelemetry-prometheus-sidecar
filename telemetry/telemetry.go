@@ -23,7 +23,6 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/pkg/errors"
 	hostMetrics "go.opentelemetry.io/contrib/instrumentation/host"
 	runtimeMetrics "go.opentelemetry.io/contrib/instrumentation/runtime"
@@ -68,6 +67,12 @@ type (
 	}
 
 	setupFunc func(*Telemetry) (start, stop func(context.Context) error, err error)
+)
+
+const (
+	// Note: These are duplicated from ../config, to avoid package cycles.
+        DefaultExportTimeout      = time.Second * 60
+        DefaultReportingPeriod    = time.Second * 30
 )
 
 // WithSpanExporterEndpoint configures the endpoint for sending spans via OTLP
@@ -171,10 +176,10 @@ func newConfig(opts ...Option) Config {
 	}
 
 	if c.ExportTimeout <= 0 {
-		c.ExportTimeout = config.DefaultExportTimeout
+		c.ExportTimeout = DefaultExportTimeout
 	}
 	if c.MetricReportingPeriod <= 0 {
-		c.MetricReportingPeriod = config.DefaultReportingPeriod
+		c.MetricReportingPeriod = DefaultReportingPeriod
 	}
 
 	var err error

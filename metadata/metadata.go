@@ -25,8 +25,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/textparse"
+)
+
+var (
+	fetchTimer = telemetry.NewTimer(
+		"sidecar.metadata.fetch.duration",
+		"Times the operation to fetch the sidecar's cache of Prometheus metadata.",
+	)
 )
 
 // Cache populates and maintains a cache of metric metadata it retrieves
@@ -55,6 +63,10 @@ const (
 	INT64        ValueType = 2
 	DISTRIBUTION ValueType = 3
 	HISTOGRAM    ValueType = 4
+
+	// The following should refer to config.DefaultPrometheusTimeout,
+	// except for an unnecessary cyclic dependency.
+	defaultPrometheusTimeout = time.Minute
 )
 
 // DefaultEndpointPath is the default HTTP path on which Prometheus serves
@@ -152,15 +164,19 @@ func (c *Cache) Get(ctx context.Context, job, instance, metric string) (*Entry, 
 	return nil, nil
 }
 
-func (c *Cache) fetch(ctx context.Context, typ string, q url.Values) (*apiResponse, error) {
+func (c *Cache) fetch(ctx context.Context, typ string, q url.Values) (_ *apiResponse, retErr error) {
+	ctx, cancel := context.WithTimeout(ctx, defaultPrometheusTimeout)
+	defer cancel()
+
+	defer fetchTimer.Start(ctx).Stop(&retErr)
+
 	u := *c.promURL
 	u.RawQuery = q.Encode()
 
-	req, err := http.NewRequest("GET", u.String(), nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", u.String(), nil)
 	if err != nil {
 		return nil, errors.Wrap(err, "build request")
 	}
-	req = req.WithContext(ctx)
 
 	resp, err := c.client.Do(req)
 	if err != nil {
