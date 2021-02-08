@@ -26,6 +26,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wal"
@@ -37,6 +39,8 @@ type Tailer struct {
 	dir string
 	cur io.ReadCloser
 
+	logger log.Logger
+
 	mtx         sync.Mutex
 	nextSegment int
 	offset      int // Bytes read within the current reader.
@@ -46,10 +50,11 @@ type Tailer struct {
 // are read before reading any WAL segments.
 // Tailing may fail if we are racing with the DB itself in deleting obsolete checkpoints
 // and segments. The caller should implement relevant logic to retry in those cases.
-func Tail(ctx context.Context, dir string) (*Tailer, error) {
+func Tail(ctx context.Context, logger log.Logger, dir string) (*Tailer, error) {
 	t := &Tailer{
-		ctx: ctx,
-		dir: dir,
+		ctx:    ctx,
+		dir:    dir,
+		logger: logger,
 	}
 	cpdir, k, err := wal.LastCheckpoint(dir)
 	if errors.Cause(err) == record.ErrNotFound {
@@ -185,10 +190,17 @@ func (t *Tailer) Read(b []byte) (int, error) {
 		// one is really done.
 		// We could do something more sophisticated to save syscalls, but this
 		// seems fine for the expected throughput (<5MB/s).
-		next, err := openSegment(t.dir, t.getNextSegment())
+		segment := t.getNextSegment()
+		next, err := openSegment(t.dir, segment)
 		if err == record.ErrNotFound {
 			// Next segment doesn't exist yet. We'll probably just have to
-			// wait for more data to be written.
+			// wait for more data to be written.  Note: We may also be
+			// in a race with Prometheus cleaning its WAL.
+			level.Warn(t.logger).Log(
+				"msg", "waiting for write-ahead log segment",
+				"segment", segment,
+			)
+
 			select {
 			case <-time.After(backoff):
 			case <-t.ctx.Done():

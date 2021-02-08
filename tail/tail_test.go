@@ -27,6 +27,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/prometheus/prometheus/tsdb/wal"
 	"github.com/stretchr/testify/require"
 )
@@ -65,7 +66,7 @@ func TestTailFuzz(t *testing.T) {
 	defer os.RemoveAll(dir)
 	ctx, cancel := context.WithCancel(context.Background())
 
-	rc, err := Tail(ctx, dir)
+	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +156,7 @@ func BenchmarkTailFuzz(t *testing.B) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	rc, err := Tail(ctx, dir)
+	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir)
 	if err != nil {
 		t.Fatal(err)
 	}
