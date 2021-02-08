@@ -8,6 +8,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+- Supervisor will kill the sidecar when there are no successful writes after 
+  repeated healthchecks. (#101)
 - Print the number of dropped series in the supervisor health report. (#102)
 
 ## [0.13.1](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.13.1) - 2021-02-04

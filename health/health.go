@@ -276,6 +276,14 @@ func (h *healthy) check(metrics map[string][]exportRecord) error {
 
 	if outcomes.defined() {
 
+		if outcomes.matchDelta() == 0 {
+			return errors.Errorf("%s{%s} stopped moving at %v",
+				config.OutcomeMetric,
+				outcomeGoodLabel,
+				outcomes.matchValue(),
+			)
+		}
+
 		goodRatio := outcomes.matchRatio()
 
 		if !math.IsNaN(goodRatio) && goodRatio < thresholdRatio {
