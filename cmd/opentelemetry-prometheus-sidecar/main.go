@@ -145,7 +145,11 @@ func Main() bool {
 	}
 	metadataCache := metadata.NewCache(httpClient, metadataURL, staticMetadata)
 
-	tailer, err := tail.Tail(ctx, cfg.Prometheus.WAL)
+	tailer, err := tail.Tail(
+		ctx,
+		log.With(logger, "component", "wal_reader"),
+		cfg.Prometheus.WAL,
+	)
 	if err != nil {
 		level.Error(logger).Log("msg", "tailing WAL failed", "err", err)
 		return false
