@@ -22,8 +22,10 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/targets"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry/doevery"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/textparse"
@@ -35,7 +37,7 @@ import (
 
 var (
 	droppedSeries = sidecar.OTelMeterMust.NewInt64Counter(
-		"sidecar.dropped.series",
+		config.DroppedSeriesMetric,
 		metric.WithDescription("Number of series that were dropped, not exported"),
 	)
 	keyReason = label.Key("key_reason")
@@ -380,7 +382,12 @@ func (c *seriesCache) refresh(ctx context.Context, ref uint64) error {
 		if meta == nil {
 			droppedSeriesMetadataNotFound.Add(ctx, 1)
 
-			level.Debug(c.logger).Log("msg", "metadata not found", "metric_name", metricName)
+			doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
+				level.Warn(c.logger).Log(
+					"msg", "metadata not found",
+					"metric_name", metricName,
+				)
+			})
 			return nil
 		}
 	}
