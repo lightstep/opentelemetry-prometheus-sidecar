@@ -34,6 +34,7 @@ import (
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/health"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/pkg/errors"
+	"github.com/prometheus/common/version"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/label"
@@ -42,7 +43,7 @@ import (
 )
 
 var (
-	tracer = otel.Tracer("github.com/lightstep/opentelemetry-prometheus-sidecar/supervisor")
+	tracer = otel.GetTracerProvider().Tracer("github.com/lightstep/opentelemetry-prometheus-sidecar/supervisor", trace.WithInstrumentationVersion(version.Version))
 
 	stackdumpRE = regexp.MustCompile(`goroutine \d+ \[.+\]:\n`)
 )
