@@ -105,6 +105,7 @@ func TestProducedProgress(t *testing.T) {
 		// and check for health.
 		for j := 0; j < k; j++ {
 			tester.producedInst.Add(ctx, 1)
+			tester.outcomeInst.Add(ctx, 1, label.String("outcome", "success"))
 
 			for i := 0; i < numSamples-1; i++ {
 				code, result := tester.getHealth()
@@ -188,6 +189,32 @@ func TestOutcomes4951(t *testing.T) {
 		require.Equal(t, http.StatusOK, code)
 		require.Equal(t, "healthy", result.Status)
 	}
+}
+
+func TestOutcomesNoSuccess(t *testing.T) {
+	ctx := context.Background()
+	tester := testController(t)
+
+	for j := 0; j < numSamples-1; j++ {
+		tester.outcomeInst.Add(ctx, 10, label.String("outcome", "failed"))
+		tester.producedInst.Add(ctx, 1)
+
+		code, result := tester.getHealth()
+
+		require.Equal(t, http.StatusOK, code)
+		require.Equal(t, "healthy", result.Status)
+	}
+
+	code, result := tester.getHealth()
+
+	require.Equal(t, http.StatusServiceUnavailable, code)
+	require.Contains(t, result.Status,
+		fmt.Sprintf("unhealthy: %s{%s} stopped moving at %d",
+			config.OutcomeMetric,
+			outcomeGoodLabel,
+			0,
+		),
+	)
 }
 
 func TestSuperStackdump(t *testing.T) {
