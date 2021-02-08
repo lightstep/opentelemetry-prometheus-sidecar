@@ -405,6 +405,7 @@ func (s *Supervisor) noteHealthy(hr health.Response) string {
 	}
 	summary = append(summary, hr.MetricLogSummary(config.ProcessedMetric)...)
 	summary = append(summary, hr.MetricLogSummary(config.OutcomeMetric)...)
+	summary = append(summary, hr.MetricLogSummary(config.DroppedSeriesMetric)...)
 
 	level.Info(s.logger).Log(summary...)
 

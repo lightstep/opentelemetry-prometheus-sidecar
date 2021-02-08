@@ -27,6 +27,7 @@ import (
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/targets"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/textparse"
 	"github.com/prometheus/prometheus/tsdb/record"
@@ -66,7 +67,7 @@ func TestReader_Progress(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tailer, err := tail.Tail(ctx, dir)
+	tailer, err := tail.Tail(ctx, telemetry.DefaultLogger(), dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +146,7 @@ func TestReader_Progress(t *testing.T) {
 	ctx, cancel = context.WithCancel(context.Background())
 	defer cancel()
 
-	tailer, err = tail.Tail(ctx, dir)
+	tailer, err = tail.Tail(ctx, telemetry.DefaultLogger(), dir)
 	if err != nil {
 		t.Fatal(err)
 	}

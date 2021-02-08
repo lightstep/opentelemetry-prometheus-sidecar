@@ -77,10 +77,11 @@ an OpenTelemetry (https://opentelemetry.io) Protocol endpoint.
 
 	// Some metric names are shared across packages, for healthchecking.
 
-	SidecarPrefix   = "sidecar."
-	ProcessedMetric = "sidecar.samples.processed"
-	ProducedMetric  = "sidecar.samples.produced"
-	OutcomeMetric   = "sidecar.queue.outcome"
+	SidecarPrefix       = "sidecar."
+	ProcessedMetric     = "sidecar.samples.processed"
+	ProducedMetric      = "sidecar.samples.produced"
+	OutcomeMetric       = "sidecar.queue.outcome"
+	DroppedSeriesMetric = "sidecar.dropped.series"
 
 	OutcomeKey          = label.Key("outcome")
 	OutcomeSuccessValue = "success"
@@ -126,7 +127,7 @@ type OTLPConfig struct {
 	Headers     map[string]string `json:"headers"`
 	Attributes  map[string]string `json:"attributes"`
 	Timeout     DurationConfig    `json:"timeout"`
-	Compression string           `json:"compression"`
+	Compression string            `json:"compression"`
 }
 
 type LogConfig struct {
