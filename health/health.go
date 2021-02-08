@@ -41,7 +41,6 @@ const (
 
 	numSamples     = 5
 	thresholdRatio = 0.5
-	stackdumpAfter = 3
 )
 
 type (
@@ -58,8 +57,7 @@ type (
 		*controller.Controller
 		tracker map[string]*metricTracker
 
-		lock     sync.Mutex
-		failures int
+		lock sync.Mutex
 		Response
 	}
 
@@ -199,14 +197,11 @@ func (h *healthy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		defer h.lock.Unlock()
 
 		if fromSuper {
-			saveStack := h.Response.Stackdump
 			h.Response = resp
-			if h.Response.Stackdump == "" {
-				h.Response.Stackdump = saveStack
-				resp.Stackdump = saveStack
-			}
 		} else {
+			// Only send the stackdump to the supervisor
 			resp = h.Response
+			resp.Stackdump = ""
 		}
 
 		return resp
@@ -292,16 +287,9 @@ func (h *healthy) check(metrics map[string][]exportRecord) error {
 }
 
 func (h *healthy) countFailure(res *Response) {
-	h.lock.Lock()
-	h.failures++
-	failed := h.failures
-	h.lock.Unlock()
-
-	if failed%stackdumpAfter == 0 {
-		buf := make([]byte, 1<<14)
-		sz := runtime.Stack(buf, true)
-		res.Stackdump = string(buf[:sz])
-	}
+	buf := make([]byte, 1<<14)
+	sz := runtime.Stack(buf, true)
+	res.Stackdump = string(buf[:sz])
 }
 
 // update adds one match/other pair to the tracker.

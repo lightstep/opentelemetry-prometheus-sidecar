@@ -201,22 +201,14 @@ func TestSuperStackdump(t *testing.T) {
 		require.Equal(t, "", result.Stackdump)
 	}
 
-	for i := 0; i < stackdumpAfter-1; i++ {
-		code, result := tester.getHealth()
-
-		require.Equal(t, http.StatusServiceUnavailable, code)
-		require.Equal(t, "", result.Stackdump)
-	}
-
 	code, result := tester.getHealth()
 
 	require.Equal(t, http.StatusServiceUnavailable, code)
 	require.Contains(t, result.Stackdump, "goroutine")
 	oldStack := result.Stackdump
 
-	// The next result still has a stackdump, identical
 	code, result = tester.getHealth()
 
 	require.Equal(t, http.StatusServiceUnavailable, code)
-	require.Equal(t, oldStack, result.Stackdump)
+	require.NotEqual(t, oldStack, result.Stackdump)
 }
