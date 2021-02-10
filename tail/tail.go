@@ -28,10 +28,16 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry/doevery"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wal"
 )
+
+// checkPageSize is the standard Prometheus page size.  Segment transitions should
+// take place at multiples of this size, or else something is wrong.
+const checkPageSize = 32 * 1024
 
 // Tailer tails a write ahead log in a given directory.
 type Tailer struct {
@@ -125,21 +131,23 @@ func (t *Tailer) Size() (int, error) {
 
 func (t *Tailer) incOffset(v int) {
 	t.mtx.Lock()
+	defer t.mtx.Unlock()
 	t.offset += v
-	t.mtx.Unlock()
 }
 
-func (t *Tailer) incNextSegment() {
+func (t *Tailer) incNextSegment() int {
 	t.mtx.Lock()
+	defer t.mtx.Unlock()
+	finalOffset := t.offset
 	t.nextSegment++
 	t.offset = 0
-	t.mtx.Unlock()
+	return finalOffset
 }
 
 func (t *Tailer) getNextSegment() int {
 	t.mtx.Lock()
+	defer t.mtx.Unlock()
 	v := t.nextSegment
-	t.mtx.Unlock()
 	return v
 }
 
@@ -196,10 +204,12 @@ func (t *Tailer) Read(b []byte) (int, error) {
 			// Next segment doesn't exist yet. We'll probably just have to
 			// wait for more data to be written.  Note: We may also be
 			// in a race with Prometheus cleaning its WAL.
-			level.Warn(t.logger).Log(
-				"msg", "waiting for write-ahead log segment",
-				"segment", segment,
-			)
+			doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
+				level.Warn(t.logger).Log(
+					"msg", "waiting for write-ahead log segment",
+					"segment", segment,
+				)
+			})
 
 			select {
 			case <-time.After(backoff):
@@ -214,8 +224,27 @@ func (t *Tailer) Read(b []byte) (int, error) {
 			t.incOffset(n)
 			return n, errors.Wrap(err, "open next segment")
 		}
+
+		// Having discovered a new segment, give the the current segment
+		// a second try.
+		if n, err = t.cur.Read(b); err != io.EOF {
+			t.incOffset(n)
+			return n, err
+		}
+
+		finalOffset := t.incNextSegment()
+		if finalOffset&(checkPageSize-1) != 0 {
+			// Note: is it possible that Prometheus could not have fsynced
+			// the old segment before opening the new one?  Probably not.
+			// This error is avoidable, if so.
+			return n, errors.Errorf(
+				"segment %d transition at unexpected offset: %d",
+				segment-1,
+				finalOffset,
+			)
+		}
+
 		t.cur = next
-		t.incNextSegment()
 	}
 }
 
