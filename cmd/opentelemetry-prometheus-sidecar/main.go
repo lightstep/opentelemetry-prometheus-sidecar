@@ -238,20 +238,11 @@ func Main() bool {
 	level.Debug(logger).Log("msg", "starting now")
 	healthChecker.SetReady(true)
 
-	// Run three inter-depdendent components:
-	// (1) Target cache
-	// (2) Prometheus reader
-	// (3) Queue manager
+	// Run two inter-dependent components:
+	// (1) Prometheus reader
+	// (2) Queue manager
 	// TODO: Replace this with x/sync/errgroup
 	var g run.Group
-	{
-		g.Add(func() error {
-			targetCache.Run(ctx)
-			return nil
-		}, func(error) {
-			cancelMain()
-		})
-	}
 	{
 		g.Add(
 			func() error {

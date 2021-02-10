@@ -2,4 +2,5 @@
 opentelemetry_sidecar.json
 # this binary
 /opentelemetry-prometheus-sidecar
+vendor/
 
