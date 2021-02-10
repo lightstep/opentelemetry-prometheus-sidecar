@@ -28,16 +28,27 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry/doevery"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wal"
+	"go.opentelemetry.io/otel/metric"
 )
 
 // checkPageSize is the standard Prometheus page size.  Segment transitions should
 // take place at multiples of this size, or else something is wrong.
 const checkPageSize = 32 * 1024
+
+var (
+	segmentOpenCounter = sidecar.OTelMeterMust.NewInt64Counter(
+		"sidecar.segment.opened",
+		metric.WithDescription(
+			"The number of attempts to open a WAL segment",
+		),
+	)
+)
 
 // Tailer tails a write ahead log in a given directory.
 type Tailer struct {
@@ -200,6 +211,7 @@ func (t *Tailer) Read(b []byte) (int, error) {
 		// seems fine for the expected throughput (<5MB/s).
 		segment := t.getNextSegment()
 		next, err := openSegment(t.dir, segment)
+		segmentOpenCounter.Add(t.ctx, 1)
 		if err == record.ErrNotFound {
 			// Next segment doesn't exist yet. We'll probably just have to
 			// wait for more data to be written.  Note: We may also be
