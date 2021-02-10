@@ -234,9 +234,12 @@ func (t *Tailer) Read(b []byte) (int, error) {
 
 		finalOffset := t.incNextSegment()
 		if finalOffset&(checkPageSize-1) != 0 {
-			// Note: is it possible that Prometheus could not have fsynced
-			// the old segment before opening the new one?  Probably not.
-			// This error is avoidable, if so.
+			// Note: is it possible that Prometheus could not have
+			// fsynced the old segment before opening the new one?
+			// Probably not.  If this error happens in production
+			// and the Prometheus server is not crashing, it means
+			// we are still not properly synchronizing the segment
+			// change-over.
 			return n, errors.Errorf(
 				"segment %d transition at unexpected offset: %d",
 				segment-1,
