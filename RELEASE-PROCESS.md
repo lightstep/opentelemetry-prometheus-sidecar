@@ -15,4 +15,8 @@ make DOCKER_IMAGE_TAG=$USER push
 kubectl delete namespace ${KUBE_NAMESPACE}
 ```
 
-If OK, then release by running `./release.sh {VERSION}`
+Test the docker image built from main:
+docker pull lightstep/opentelemetry-prometheus-sidecar:main
+
+Once validated, create a release:
+git tag v0.1.2 && git push v0.1.2
