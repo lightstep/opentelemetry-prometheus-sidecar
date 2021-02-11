@@ -1,0 +1,45 @@
+name: Release and Tag
+
+
+on:
+  push:
+    tags:
+      - 'v*' # Push events to matching v*, i.e. v1.0, v20.15.10
+
+jobs:
+  build:
+    name: Create Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@latest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          body: |
+            - ${{ github.ref }}
+          draft: false
+          prerelease: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+
+      - name: Login to DockerHub
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v1 
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Tag image
+        run: |
+          DOCKER_IMAGE=lightstep/opentelemetry-prometheus-sidecar
+          docker pull ${DOCKER_IMAGE}:sha-${GITHUB_SHA::8}
+          docker tag ${DOCKER_IMAGE}:sha-${GITHUB_SHA::8} ${DOCKER_IMAGE}:latest
+          docker tag ${DOCKER_IMAGE}:sha-${GITHUB_SHA::8} ${DOCKER_IMAGE}:${GITHUB_REF##*/}
+          docker push ${DOCKER_IMAGE}:latest
+          docker push ${DOCKER_IMAGE}:${GITHUB_REF##*/}
