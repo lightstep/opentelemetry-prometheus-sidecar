@@ -271,6 +271,14 @@ func (h *healthy) check(metrics map[string][]exportRecord) error {
 
 	if outcomes.defined() {
 
+		if outcomes.matchDelta() == 0 {
+			return errors.Errorf("%s{%s} stopped moving at %v",
+				config.OutcomeMetric,
+				outcomeGoodLabel,
+				outcomes.matchValue(),
+			)
+		}
+
 		goodRatio := outcomes.matchRatio()
 
 		if !math.IsNaN(goodRatio) && goodRatio < thresholdRatio {
@@ -352,7 +360,7 @@ func (r *Response) MetricLogSummary(name string) (pairs []interface{}) {
 				// The log package strips `=`, replace with `:` instead.
 				"{", strings.Replace(e.Labels, "=", ":", -1), "}",
 			),
-			e.Value)
+			uint64(e.Value))
 	}
 	return
 }

@@ -8,6 +8,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+## [0.14.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.14.0) - 2021-02-08
+
+- Timeouts and diagnostics for Prometheus API calls (#100)
+- Snappy compression support enabled by default (#97)
+- Supervisor will kill the sidecar when there are no successful writes after 
+  repeated healthchecks. (#101)
+- Print the number of dropped series in the supervisor health report. (#102)
+
 ## [0.13.1](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.13.1) - 2021-02-04
 
 - Supervisor kills the process after repeated healthcheck failures. (#95)

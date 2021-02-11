@@ -28,6 +28,7 @@ import (
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/targets"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry/doevery"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
 	"github.com/prometheus/prometheus/tsdb/record"
@@ -150,11 +151,23 @@ Outer:
 		case record.Series:
 			series, err = decoder.Series(rec, series[:0])
 			if err != nil {
-				level.Error(r.logger).Log("error", err)
+				level.Error(r.logger).Log("msg", "decode series", "err", err)
 				continue
 			}
 			for _, s := range series {
-				seriesCache.set(ctx, s.Ref, s.Labels, r.tailer.CurrentSegment())
+				err = seriesCache.set(ctx, s.Ref, s.Labels, r.tailer.CurrentSegment())
+				if err != nil {
+					// TODO: This code path deserves the same kind of
+					// backoff used in the record.Samples branch.
+					// We'll hit Prometheus quite hard if the target
+					// cache refresh is failing.
+					doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
+						level.Error(r.logger).Log(
+							"msg", "update series cache",
+							"err", err,
+						)
+					})
+				}
 			}
 		case record.Samples:
 			// Skip sample records before the the boundary offset.
@@ -169,13 +182,10 @@ Outer:
 			}
 			samples, err = decoder.Samples(rec, samples[:0])
 			if err != nil {
-				level.Error(r.logger).Log("error", err)
+				level.Error(r.logger).Log("decode samples", "err", err)
 				continue
 			}
 			backoff := time.Duration(0)
-			// Do not increment the metric for produced samples each time but rather
-			// once at the end.
-			// Otherwise it will increase CPU usage by ~10%.
 			processed, produced := len(samples), 0
 
 			for len(samples) > 0 {
@@ -194,7 +204,7 @@ Outer:
 				outputSample, hash, newSamples, err := builder.next(ctx, samples)
 				samples = newSamples
 				if err != nil {
-					level.Warn(r.logger).Log("msg", "Failed to build sample", "err", err)
+					level.Warn(r.logger).Log("msg", "failed to build sample", "err", err)
 					backoff = exponential(backoff)
 					continue
 				}

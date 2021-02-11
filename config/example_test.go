@@ -1,16 +1,14 @@
-package sidecar
+package config
 
 import (
         "encoding/json"
         "fmt"
         "io/ioutil"
         "log"
-
-        "github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 )
 
 func Example() {
-        cfg, _, _, err := config.Configure([]string{
+        cfg, _, _, err := Configure([]string{
                 "program",
                 "--config-file=./sidecar.example.yaml",
         }, ioutil.ReadFile)
