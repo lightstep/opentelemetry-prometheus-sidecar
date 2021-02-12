@@ -319,17 +319,14 @@ func waitForPrometheus(ctx context.Context, logger log.Logger, promURL *url.URL)
 	for {
 		select {
 		case <-ctx.Done():
-			fmt.Println("BAILING OUT PCHECK")
 			return ctx.Err()
 		case <-tick.C:
-			fmt.Println("PCHECK TICK")
 			resp, err := http.Get(u.String())
 			if err != nil {
 				level.Warn(logger).Log("msg", "Prometheus readiness check", "err", err)
 				continue
 			}
 			if resp.StatusCode/100 == 2 {
-				fmt.Println("PCHECK COOL")
 				return nil
 			}
 
@@ -353,20 +350,21 @@ func parseFilters(logger log.Logger, filters []string) ([][]*labels.Matcher, err
 }
 
 func selfTest(ctx context.Context, promURL *url.URL, scf otlp.StorageClientFactory, timeout time.Duration, logger log.Logger) error {
-	fmt.Println("START SELFTEST")
 	client := scf.New()
-
-	level.Debug(logger).Log("msg", "starting selftest")
 
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
+
+	level.Debug(logger).Log("msg", "checking source readiness")
 
 	// These tests are performed sequentially, to keep the logs simple.
 	// Note waitForPrometheus has no unrecoverable error conditions, so
 	// loops until success or the context is canceled.
 	if err := waitForPrometheus(ctx, logger, promURL); err != nil {
-		return errors.Wrap(err, "Prometheus is not ready")
+		return errors.Wrap(err, "source is not ready")
 	}
+
+	level.Debug(logger).Log("msg", "checking destination endpoint")
 
 	// Outbound connection test.
 	{

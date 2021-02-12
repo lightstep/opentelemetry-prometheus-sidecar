@@ -113,8 +113,6 @@ Loop:
 		time.Sleep(time.Second)
 	}
 
-	// t.Logf("stdout: %v\n", bout.String())
-	// t.Logf("stderr: %v\n", berr.String())
 	if !startedOk {
 		t.Errorf("opentelemetry-prometheus-sidecar didn't start in the specified timeout")
 		return
@@ -122,7 +120,7 @@ Loop:
 	if err := cmd.Process.Kill(); err == nil {
 		t.Errorf("opentelemetry-prometheus-sidecar didn't shutdown after sending the Interrupt signal")
 	}
-	const expected = "Prometheus is not ready: context canceled"
+	const expected = "source is not ready: context canceled"
 	require.Error(t, stoppedErr)
 	require.Contains(t, stoppedErr.Error(), "exit status 1")
 

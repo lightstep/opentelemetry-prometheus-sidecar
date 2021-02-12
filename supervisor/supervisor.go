@@ -49,7 +49,7 @@ var (
 )
 
 const (
-	healthURI = "/-/health?supervisor=true"
+	healthURL = "http://0.0.0.0/-/health?supervisor=true"
 
 	supervisorBufferSize = 1 << 14
 )
@@ -221,7 +221,7 @@ func (s *Supervisor) healthcheckErr(ctx context.Context) (err error) {
 
 	// Make the request and try to parse the result.
 	err = func() error {
-		req, err := http.NewRequestWithContext(ctx, "GET", healthURI, nil)
+		req, err := http.NewRequestWithContext(ctx, "GET", healthURL, nil)
 		if err != nil {
 			return errors.Wrap(err, "build request")
 		}
