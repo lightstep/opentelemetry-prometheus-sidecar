@@ -50,26 +50,25 @@ var (
 
 const (
 	healthURI = "/-/health?supervisor=true"
-	readyURI  = "/-/ready"
 
 	supervisorBufferSize = 1 << 14
 )
 
 type (
 	Config struct {
-		Logger log.Logger
-		Admin  config.AdminConfig
-		Period time.Duration
+		Logger    log.Logger
+		Admin     config.AdminConfig
+		Telemetry *telemetry.Telemetry
 	}
 
 	Supervisor struct {
 		logger   log.Logger
 		endpoint string
-		period   time.Duration
 		client   *http.Client
-		readied  bool
+		telem    *telemetry.Telemetry
 
 		veryUnhealthy bool
+		goodOutcomes  int
 
 		lock      sync.Mutex
 		logBuffer []string
@@ -86,9 +85,9 @@ func New(cfg Config) *Supervisor {
 	}
 	return &Supervisor{
 		logger:    cfg.Logger,
-		period:    cfg.Period,
 		endpoint:  endpoint,
 		client:    client,
+		telem:     cfg.Telemetry,
 		logBuffer: make([]string, 0, config.DefaultSupervisorLogsHistory),
 	}
 }
@@ -154,10 +153,11 @@ func (s *Supervisor) supervise(ctx context.Context, cmd *exec.Cmd, wg *sync.Wait
 	defer wg.Done()
 
 	for {
-		sleep := s.period
-		ready, _ := s.checkTarget()
-		if !ready {
-			sleep = config.DefaultHealthCheckTimeout
+		var sleep time.Duration
+		if s.goodOutcomes > 0 {
+			sleep = config.DefaultHealthCheckPeriod
+		} else {
+			sleep = config.DefaultReadinessPeriod
 		}
 
 		// Sleep or be canceled.
@@ -177,9 +177,17 @@ func (s *Supervisor) supervise(ctx context.Context, cmd *exec.Cmd, wg *sync.Wait
 		s.healthcheck(ctx)
 
 		if s.veryUnhealthy {
+			// A stackdump was already reported. We're
+			// going to flush these spans, stop reporting
+			// telemetry, then kill the process.
+			s.finalSpan(errors.New("process is unhealthy"))
+
+			s.telem.Shutdown(ctx)
+
 			// The process is repeatedly failing its internal health check,
 			// and we have seen a stackdump already.
 			cmd.Process.Kill()
+			return
 		}
 	}
 }
@@ -195,8 +203,6 @@ func (s *Supervisor) healthcheck(ctx context.Context) {
 func (s *Supervisor) healthcheckErr(ctx context.Context) (err error) {
 	ctx, cancel := context.WithTimeout(ctx, config.DefaultHealthCheckTimeout)
 	defer cancel()
-
-	ready, target := s.checkTarget()
 
 	ctx, span := tracer.Start(ctx, "health-client")
 
@@ -215,7 +221,7 @@ func (s *Supervisor) healthcheckErr(ctx context.Context) (err error) {
 
 	// Make the request and try to parse the result.
 	err = func() error {
-		req, err := http.NewRequestWithContext(ctx, "GET", target, nil)
+		req, err := http.NewRequestWithContext(ctx, "GET", healthURI, nil)
 		if err != nil {
 			return errors.Wrap(err, "build request")
 		}
@@ -253,18 +259,11 @@ func (s *Supervisor) healthcheckErr(ctx context.Context) (err error) {
 		return nil
 	}()
 
-	good := err == nil
-
 	var hstat string
-	switch {
-	case ready && good:
+	if err == nil {
 		hstat = s.noteHealthy(hr)
-	case ready && !good:
+	} else {
 		hstat = s.noteUnhealthy(hr)
-	case !ready && good:
-		hstat = s.noteReady()
-	case !ready && !good:
-		hstat = s.noteUnready()
 	}
 
 	span.SetAttributes(label.String("sidecar.health", hstat))
@@ -281,7 +280,7 @@ func (s *Supervisor) finalSpan(err error) {
 
 	if err != nil {
 		span.RecordError(err)
-		span.SetStatus(codes.Error, "unexpected shutdown")
+		span.SetStatus(codes.Error, err.Error())
 		return
 	}
 	span.SetStatus(codes.Ok, "graceful shutdown")
@@ -375,31 +374,6 @@ func (s *Supervisor) copyLogs() []string {
 	return cp
 }
 
-func (s *Supervisor) checkTarget() (bool, string) {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-
-	if s.readied {
-		return true, s.endpoint + healthURI
-	}
-	return false, s.endpoint + readyURI
-}
-
-func (s *Supervisor) noteReady() string {
-	level.Info(s.logger).Log("msg", "sidecar is ready")
-
-	s.lock.Lock()
-	defer s.lock.Unlock()
-
-	s.readied = true
-	return "first time ready"
-}
-
-func (s *Supervisor) noteUnready() string {
-	level.Info(s.logger).Log("msg", "sidecar is not ready")
-	return "not ready yet"
-}
-
 func (s *Supervisor) noteHealthy(hr health.Response) string {
 	summary := []interface{}{
 		"msg", "sidecar is running",
@@ -407,6 +381,8 @@ func (s *Supervisor) noteHealthy(hr health.Response) string {
 	summary = append(summary, hr.MetricLogSummary(config.ProcessedMetric)...)
 	summary = append(summary, hr.MetricLogSummary(config.OutcomeMetric)...)
 	summary = append(summary, hr.MetricLogSummary(config.DroppedSeriesMetric)...)
+
+	s.goodOutcomes = hr.GoodOutcomes
 
 	level.Info(s.logger).Log(summary...)
 

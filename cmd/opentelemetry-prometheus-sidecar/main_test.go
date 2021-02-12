@@ -64,19 +64,6 @@ func TestStartupInterrupt(t *testing.T) {
 		t.Skip("skipping test in short mode.")
 	}
 
-	ts := newTestServer(t)
-
-	runPrometheusService(ts)
-	go func() {
-		// By sleeping 5 seconds here, we require the
-		// sidecar's selftest to try and fail for 5 seconds
-		// before succeeding, after which the interrupt is
-		// delivered here.
-		time.Sleep(5 * time.Second)
-		runMetricsService(ts)
-	}()
-	defer ts.Stop()
-
 	cmd := exec.Command(
 		os.Args[0],
 		append(e2eTestMainCommonFlags,
@@ -126,30 +113,29 @@ Loop:
 		time.Sleep(time.Second)
 	}
 
-	t.Logf("stdout: %v\n", bout.String())
-	t.Logf("stderr: %v\n", berr.String())
+	// t.Logf("stdout: %v\n", bout.String())
+	// t.Logf("stderr: %v\n", berr.String())
 	if !startedOk {
 		t.Errorf("opentelemetry-prometheus-sidecar didn't start in the specified timeout")
 		return
 	}
 	if err := cmd.Process.Kill(); err == nil {
-		t.Errorf("opentelemetry-prometheus-sidecar didn't shutdown gracefully after sending the Interrupt signal")
-	} else if stoppedErr != nil && stoppedErr.Error() != "signal: interrupt" {
-		// TODO - find a better way to detect when the process didn't exit as expected!
-		// (See *os.ProcessState)
-		t.Errorf("opentelemetry-prometheus-sidecar exited with an unexpected error:%v", stoppedErr)
+		t.Errorf("opentelemetry-prometheus-sidecar didn't shutdown after sending the Interrupt signal")
 	}
+	const expected = "Prometheus is not ready: context canceled"
+	require.Error(t, stoppedErr)
+	require.Contains(t, stoppedErr.Error(), "exit status 1")
 
 	// Because the fake endpoint was started after the start of
 	// the test, we should see some gRPC warnings the connection up
 	// until --startup.timeout takes effect.
-	require.Contains(t, berr.String(), "connect: connection refused")
+	require.Contains(t, berr.String(), expected)
 
 	// The process should have been interrupted.
 	require.Contains(t, berr.String(), "received SIGTERM, exiting")
 
-	// The selftest should have finished, since we waited for ready.
-	require.Contains(t, berr.String(), "selftest was successful")
+	// The selftest was interrupted.
+	require.Contains(t, berr.String(), "selftest failed, not starting")
 }
 
 func TestMainExitOnFailure(t *testing.T) {

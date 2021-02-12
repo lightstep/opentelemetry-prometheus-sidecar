@@ -174,7 +174,7 @@ func (c *Client) getConnection(ctx context.Context) (_ *grpc.ClientConn, retErr 
 	} else {
 		dopts = append(dopts, grpc.WithInsecure())
 	}
-	if c.compressor != "" {
+	if c.compressor != "" && c.compressor != "none" {
 		dopts = append(dopts, grpc.WithDefaultCallOptions(grpc.UseCompressor(c.compressor)))
 	}
 	address := c.url.Hostname()

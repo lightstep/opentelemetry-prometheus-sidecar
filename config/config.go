@@ -43,6 +43,7 @@ const (
 
 	DefaultExportTimeout	  = time.Second * 60
 	DefaultHealthCheckTimeout = time.Second * 5
+	DefaultReadinessPeriod    = time.Second * 5
 	DefaultMaxPointAge	  = time.Hour * 25
 	DefaultReportingPeriod	  = time.Second * 30
 	DefaultStartupDelay	  = time.Minute
@@ -50,6 +51,11 @@ const (
 	DefaultStartupTimeout	  = time.Minute * 5
 	DefaultNoisyLogPeriod	  = time.Second * 5
 	DefaultPrometheusTimeout  = time.Second * 60
+
+	// Note: this has to be longer than the metrics SDK's
+	// reporting period, which is copied in ../telemetry to avoid
+	// a cycle.
+	DefaultHealthCheckPeriod = DefaultReportingPeriod * 2
 
 	DefaultSupervisorBufferSize  = 16384
 	DefaultSupervisorLogsHistory = 16

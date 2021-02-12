@@ -71,8 +71,8 @@ type (
 
 const (
 	// Note: These are duplicated from ../config, to avoid package cycles.
-        DefaultExportTimeout      = time.Second * 60
-        DefaultReportingPeriod    = time.Second * 30
+	DefaultExportTimeout   = time.Second * 60
+	DefaultReportingPeriod = time.Second * 30
 )
 
 // WithSpanExporterEndpoint configures the endpoint for sending spans via OTLP
@@ -229,11 +229,15 @@ func newExporter(endpoint string, insecure bool, headers map[string]string, comp
 	if insecure {
 		secureOption = otlpgrpc.WithInsecure()
 	}
-	driver := otlpgrpc.NewDriver(secureOption,
+	opts := []otlpgrpc.Option{
+		secureOption,
 		otlpgrpc.WithEndpoint(endpoint),
 		otlpgrpc.WithHeaders(headers),
-		otlpgrpc.WithCompressor(compressor),
-	)
+	}
+	if compressor != "" && compressor != "none" {
+		opts = append(opts, otlpgrpc.WithCompressor(compressor))
+	}
+	driver := otlpgrpc.NewDriver(opts...)
 	return otlp.NewUnstartedExporter(driver,
 		otlp.WithMetricExportKindSelector(metricsdk.CumulativeExportKindSelector()),
 	)

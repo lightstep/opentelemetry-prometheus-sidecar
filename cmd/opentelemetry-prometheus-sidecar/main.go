@@ -45,6 +45,10 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	grpcMetadata "google.golang.org/grpc/metadata"
+
+	// register grpc compressors
+	_ "github.com/lightstep/opentelemetry-prometheus-sidecar/snappy"
+	_ "google.golang.org/grpc/encoding/gzip"
 )
 
 // Note on metrics instrumentation relative ot the original OpenCensus
@@ -102,7 +106,7 @@ func Main() bool {
 
 	// Start the supervisor.
 	if isSupervisor {
-		return startSupervisor(cfg, logger)
+		return startSupervisor(cfg, telem, logger)
 	}
 
 	// Start the sidecar.  This context lasts the lifetime of the sidecar.
@@ -236,7 +240,7 @@ func Main() bool {
 	}
 
 	level.Debug(logger).Log("msg", "starting now")
-	healthChecker.SetReady(true)
+	healthChecker.SetRunning()
 
 	// Run three inter-depdendent components:
 	// (1) Target cache
@@ -305,7 +309,7 @@ func usage(err error) {
 	)
 }
 
-func waitForPrometheus(ctx context.Context, logger log.Logger, promURL *url.URL) bool {
+func waitForPrometheus(ctx context.Context, logger log.Logger, promURL *url.URL) error {
 	tick := time.NewTicker(3 * time.Second)
 	defer tick.Stop()
 
@@ -315,15 +319,18 @@ func waitForPrometheus(ctx context.Context, logger log.Logger, promURL *url.URL)
 	for {
 		select {
 		case <-ctx.Done():
-			return false
+			fmt.Println("BAILING OUT PCHECK")
+			return ctx.Err()
 		case <-tick.C:
+			fmt.Println("PCHECK TICK")
 			resp, err := http.Get(u.String())
 			if err != nil {
 				level.Warn(logger).Log("msg", "Prometheus readiness check", "err", err)
 				continue
 			}
 			if resp.StatusCode/100 == 2 {
-				return true
+				fmt.Println("PCHECK COOL")
+				return nil
 			}
 
 			level.Warn(logger).Log("msg", "Prometheus is not ready", "status", resp.Status)
@@ -346,6 +353,7 @@ func parseFilters(logger log.Logger, filters []string) ([][]*labels.Matcher, err
 }
 
 func selfTest(ctx context.Context, promURL *url.URL, scf otlp.StorageClientFactory, timeout time.Duration, logger log.Logger) error {
+	fmt.Println("START SELFTEST")
 	client := scf.New()
 
 	level.Debug(logger).Log("msg", "starting selftest")
@@ -356,8 +364,8 @@ func selfTest(ctx context.Context, promURL *url.URL, scf otlp.StorageClientFacto
 	// These tests are performed sequentially, to keep the logs simple.
 	// Note waitForPrometheus has no unrecoverable error conditions, so
 	// loops until success or the context is canceled.
-	if !waitForPrometheus(ctx, logger, promURL) {
-		return fmt.Errorf("Prometheus is not ready")
+	if err := waitForPrometheus(ctx, logger, promURL); err != nil {
+		return errors.Wrap(err, "Prometheus is not ready")
 	}
 
 	// Outbound connection test.
@@ -394,16 +402,11 @@ func logStartup(cfg config.MainConfig, logger log.Logger) {
 	}
 }
 
-func startSupervisor(cfg config.MainConfig, logger log.Logger) bool {
+func startSupervisor(cfg config.MainConfig, telem *telemetry.Telemetry, logger log.Logger) bool {
 	super := supervisor.New(supervisor.Config{
-		Logger: logger,
-		Admin:  cfg.Admin,
-
-		// Note: the metrics reporting interval is not
-		// configurable (see start_telemetry.go), but whatever
-		// it is we should poll at with a longer period to be
-		// sure a collection happens between health checks.
-		Period: time.Duration(float64(config.DefaultReportingPeriod) * 2),
+		Logger:    logger,
+		Admin:     cfg.Admin,
+		Telemetry: telem,
 	})
 
 	os.Setenv(supervisorEnv, "active")
@@ -413,8 +416,9 @@ func startSupervisor(cfg config.MainConfig, logger log.Logger) bool {
 
 func newAdminServer(hc *health.Checker, acfg config.AdminConfig, logger log.Logger) *http.Server {
 	mux := http.NewServeMux()
-	mux.Handle("/-/health", hc.Health())
-	mux.Handle("/-/ready", hc.Ready())
+
+	mux.Handle("/-/health", hc.Alive())
+
 	address := fmt.Sprint(acfg.ListenIP, ":", acfg.Port)
 	return &http.Server{
 		Addr:    address,

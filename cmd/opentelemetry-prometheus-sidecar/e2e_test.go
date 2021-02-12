@@ -58,7 +58,7 @@ var (
 		"--admin.port=9093",
 	}
 
-	e2eReadyURL = "http://0.0.0.0:9093/-/ready"
+	e2eReadyURL = "http://0.0.0.0:9093/-/health"
 )
 
 const (
