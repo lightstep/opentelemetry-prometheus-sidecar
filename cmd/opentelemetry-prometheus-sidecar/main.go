@@ -37,7 +37,6 @@ import (
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/retrieval"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/supervisor"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
-	"github.com/lightstep/opentelemetry-prometheus-sidecar/targets"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/oklog/run"
 	"github.com/pkg/errors"
@@ -125,20 +124,6 @@ func Main() bool {
 	// Parse was validated already, ignore error.
 	promURL, _ := url.Parse(cfg.Prometheus.Endpoint)
 
-	targetsURL, err := promURL.Parse(targets.DefaultAPIEndpoint)
-	if err != nil {
-		level.Error(logger).Log("msg", "error parsing --prometheus.endpoint", "err", err)
-		return false
-	}
-
-	targetCache := targets.NewCache(
-		log.With(logger, "component", "target_cache"),
-		httpClient,
-		targetsURL,
-		labels.FromMap(cfg.Destination.Attributes),
-		cfg.OpenTelemetry.UseMetaLabels,
-	)
-
 	metadataURL, err := promURL.Parse(metadata.DefaultEndpointPath)
 	if err != nil {
 		panic(err)
@@ -186,11 +171,11 @@ func Main() bool {
 		tailer,
 		filters,
 		metricRenames,
-		targetCache,
 		metadataCache,
 		queueManager,
 		cfg.OpenTelemetry.MetricsPrefix,
 		cfg.Prometheus.MaxPointAge.Duration,
+		labels.FromMap(cfg.Destination.Attributes),
 	)
 
 	// Start the admin server.
@@ -238,20 +223,11 @@ func Main() bool {
 	level.Debug(logger).Log("msg", "starting now")
 	healthChecker.SetReady(true)
 
-	// Run three inter-depdendent components:
-	// (1) Target cache
-	// (2) Prometheus reader
-	// (3) Queue manager
+	// Run two inter-depdendent components:
+	// (1) Prometheus reader
+	// (2) Queue manager
 	// TODO: Replace this with x/sync/errgroup
 	var g run.Group
-	{
-		g.Add(func() error {
-			targetCache.Run(ctx)
-			return nil
-		}, func(error) {
-			cancelMain()
-		})
-	}
 	{
 		g.Add(
 			func() error {

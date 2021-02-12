@@ -26,7 +26,6 @@ import (
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/internal/otlptest"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
-	"github.com/lightstep/opentelemetry-prometheus-sidecar/targets"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/textparse"
@@ -82,20 +81,16 @@ func TestReader_Progress(t *testing.T) {
 	}
 
 	// Populate the getters with data.
-	targetMap := targetMap{
-		"job1/inst1": &targets.Target{
-			Labels: labels.FromStrings("job", "job1", "instance", "inst1"),
-			DiscoveredLabels: labels.FromStrings(
-				"project_id", "proj1",
-				"namespace", "ns1", "location", "loc1",
-				"job", "job1", "__address__", "inst1"),
-		},
-	}
+	extraLabels := labels.FromStrings(
+		"project_id", "proj1",
+		"namespace", "ns1", "location", "loc1",
+		"job", "job1", "__address__", "inst1")
+
 	metadataMap := metadataMap{
 		"job1/inst1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, Help: "help"},
 	}
 
-	r := NewPrometheusReader(nil, dir, tailer, nil, nil, targetMap, metadataMap, &nopAppender{}, "", 0)
+	r := NewPrometheusReader(nil, dir, tailer, nil, nil, metadataMap, &nopAppender{}, "", 0, extraLabels)
 	r.progressSaveInterval = 200 * time.Millisecond
 
 	// Populate sample data
@@ -152,7 +147,7 @@ func TestReader_Progress(t *testing.T) {
 	}
 
 	recorder := &nopAppender{}
-	r = NewPrometheusReader(nil, dir, tailer, nil, nil, targetMap, metadataMap, recorder, "", 0)
+	r = NewPrometheusReader(nil, dir, tailer, nil, nil, metadataMap, recorder, "", 0, extraLabels)
 	go r.Run(ctx, progressOffset)
 
 	// Wait for reader to process until the end.

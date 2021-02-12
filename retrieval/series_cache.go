@@ -24,7 +24,6 @@ import (
 	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
-	"github.com/lightstep/opentelemetry-prometheus-sidecar/targets"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry/doevery"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -80,9 +79,9 @@ type seriesCache struct {
 	logger        log.Logger
 	dir           string
 	filters       [][]*labels.Matcher
-	targets       TargetGetter
 	metaget       MetadataGetter
 	metricsPrefix string
+	extraLabels   labels.Labels
 	renames       map[string]string
 
 	// lastCheckpoint holds the index of the last checkpoint we garbage collected for.
@@ -136,9 +135,9 @@ func newSeriesCache(
 	dir string,
 	filters [][]*labels.Matcher,
 	renames map[string]string,
-	targets TargetGetter,
 	metaget MetadataGetter,
 	metricsPrefix string,
+	extraLabels labels.Labels,
 ) *seriesCache {
 	if logger == nil {
 		logger = log.NewNopLogger()
@@ -147,11 +146,11 @@ func newSeriesCache(
 		logger:        logger,
 		dir:           dir,
 		filters:       filters,
-		targets:       targets,
 		metaget:       metaget,
 		entries:       map[uint64]*seriesCacheEntry{},
 		intervals:     map[uint64]sampleInterval{},
 		metricsPrefix: metricsPrefix,
+		extraLabels:   extraLabels,
 		renames:       renames,
 	}
 }
@@ -333,28 +332,6 @@ func (c *seriesCache) refresh(ctx context.Context, ref uint64) error {
 	entry.lastRefresh = time.Now()
 	entryLabels := copyLabels(entry.lset)
 
-	// Probe for the target, its applicable resource, and the series metadata.
-	// They will be used subsequently for all other Prometheus series that map to the same
-	// OpenTelemetry series.
-	// If either of those pieces of data is missing, the series will be skipped.
-	target, err := c.targets.Get(ctx, entryLabels)
-	if err != nil {
-		return errors.Wrap(err, "retrieving target failed")
-	}
-	if target == nil {
-		// This condition occurs when the Prometheus server restarts and we lose
-		// all memory of targets.
-		droppedSeriesTargetNotFound.Add(ctx, 1)
-
-		doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
-			level.Warn(c.logger).Log("msg", "target not found", "labels", entry.lset)
-		})
-
-		// NOTE: The use of a target cache is considered potentially unnecessary.
-		// We lose any and discovered resource information that was not logged
-		// by Prometheus.
-		return nil
-	}
 	// Remove __name__ label.
 	for i, l := range entryLabels {
 		if l.Name == "__name__" {
@@ -363,8 +340,6 @@ func (c *seriesCache) refresh(ctx context.Context, ref uint64) error {
 		}
 	}
 
-	// Remove target.Labels, which are redundant with Resource.
-	entryLabels = targets.DropTargetLabels(entryLabels, target.Labels)
 	var (
 		metricName     = entry.lset.Get("__name__")
 		baseMetricName string
@@ -409,10 +384,11 @@ func (c *seriesCache) refresh(ctx context.Context, ref uint64) error {
 			}
 		}
 	}
+
 	ts := tsDesc{
 		Name:     c.getMetricName(c.metricsPrefix, metricName),
 		Labels:   entryLabels,
-		Resource: target.DiscoveredLabels, // Note: pre-sorted
+		Resource: c.extraLabels,
 	}
 	sort.Sort(&ts.Labels)
 
