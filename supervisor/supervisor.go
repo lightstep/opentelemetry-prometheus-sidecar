@@ -49,7 +49,7 @@ var (
 )
 
 const (
-	healthURL = "http://0.0.0.0/-/health?supervisor=true"
+	healthURI = "/-/health?supervisor=true"
 
 	supervisorBufferSize = 1 << 14
 )
@@ -221,7 +221,7 @@ func (s *Supervisor) healthcheckErr(ctx context.Context) (err error) {
 
 	// Make the request and try to parse the result.
 	err = func() error {
-		req, err := http.NewRequestWithContext(ctx, "GET", healthURL, nil)
+		req, err := http.NewRequestWithContext(ctx, "GET", s.endpoint + healthURI, nil)
 		if err != nil {
 			return errors.Wrap(err, "build request")
 		}
@@ -375,16 +375,18 @@ func (s *Supervisor) copyLogs() []string {
 }
 
 func (s *Supervisor) noteHealthy(hr health.Response) string {
-	summary := []interface{}{
-		"msg", "sidecar is running",
-	}
-	summary = append(summary, hr.MetricLogSummary(config.ProcessedMetric)...)
-	summary = append(summary, hr.MetricLogSummary(config.OutcomeMetric)...)
-	summary = append(summary, hr.MetricLogSummary(config.DroppedSeriesMetric)...)
-
 	s.goodOutcomes = hr.GoodOutcomes
 
-	level.Info(s.logger).Log(summary...)
+	if hr.Metrics != nil {
+		summary := []interface{}{
+			"msg", "sidecar is running",
+		}
+		summary = append(summary, hr.MetricLogSummary(config.ProcessedMetric)...)
+		summary = append(summary, hr.MetricLogSummary(config.OutcomeMetric)...)
+		summary = append(summary, hr.MetricLogSummary(config.DroppedSeriesMetric)...)
+
+		level.Info(s.logger).Log(summary...)
+	}
 
 	return "ok"
 }
