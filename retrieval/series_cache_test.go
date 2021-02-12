@@ -20,18 +20,24 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/go-kit/kit/log"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
-	"github.com/lightstep/opentelemetry-prometheus-sidecar/targets"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/textparse"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wal"
 )
+
+// metadataMap implements a MetadataGetter for exact matches of job/instance/metric inputs.
+// TODO: Move me back to transform_test.go once it is restored.
+type metadataMap map[string]*metadata.Entry
+
+func (m metadataMap) Get(ctx context.Context, job, instance, metric string) (*metadata.Entry, error) {
+	      return m[job+"/"+instance+"/"+metric], nil
+}
 
 // This test primarily verifies the garbage collection logic of the cache.
 // The getters are verified integrated into the sample builder in transform_test.go
@@ -53,9 +59,9 @@ func TestScrapeCache_GarbageCollect(t *testing.T) {
 	}()
 	logger := log.NewLogfmtLogger(logBuffer)
 	c := newSeriesCache(logger, dir, nil, nil,
-		targetMap{"/": &targets.Target{}},
 		metadataMap{"//": &metadata.Entry{MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE}},
 		"",
+		labels.FromStrings(),
 	)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -180,7 +186,7 @@ func TestScrapeCache_GarbageCollect(t *testing.T) {
 }
 
 func TestSeriesCache_Refresh(t *testing.T) {
-	targetMap := targetMap{}
+	extraLabels := labels.FromStrings()
 	metadataMap := metadataMap{}
 	logBuffer := &bytes.Buffer{}
 	defer func() {
@@ -189,7 +195,7 @@ func TestSeriesCache_Refresh(t *testing.T) {
 		}
 	}()
 	logger := log.NewLogfmtLogger(logBuffer)
-	c := newSeriesCache(logger, "", nil, nil, targetMap, metadataMap, "")
+	c := newSeriesCache(logger, "", nil, nil, metadataMap, "", extraLabels)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -204,12 +210,9 @@ func TestSeriesCache_Refresh(t *testing.T) {
 		t.Fatalf("unexpected series entry found: %v", entry)
 	}
 
-	// Set a series but the metadata and target getters won't have sufficient information for it.
+	// Set a series but the metadata.
 	if err := c.set(ctx, refID, labels.FromStrings("__name__", "metric1", "job", "job1", "instance", "inst1"), 5); err != nil {
 		t.Fatalf("unexpected error: %s", err)
-	}
-	if !strings.Contains(logBuffer.String(), "target not found") {
-		t.Errorf("expected error \"target not found\", got: %v", logBuffer)
 	}
 	// We should still not receive anything.
 	entry, ok, err = c.get(ctx, refID)
@@ -221,10 +224,7 @@ func TestSeriesCache_Refresh(t *testing.T) {
 	}
 
 	// Populate the getters with data.
-	targetMap["job1/inst1"] = &targets.Target{
-		Labels:           labels.FromStrings("job", "job1", "instance", "inst1"),
-		DiscoveredLabels: labels.FromStrings("__resource_a", "resource2_a"),
-	}
+	extraLabels = labels.FromStrings("__resource_a", "resource2_a")
 	metadataMap["job1/inst1/metric1"] = &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE}
 
 	// Hack the timestamp of the last update to be sufficiently in the past that a refresh
@@ -249,14 +249,9 @@ func TestSeriesCache_RefreshMetadataNotFound(t *testing.T) {
 		}
 	}()
 	logger := log.NewLogfmtLogger(logBuffer)
-	targetMap := targetMap{
-		"job1/inst1": &targets.Target{
-			Labels:           labels.FromStrings("job", "job1", "instance", "inst1"),
-			DiscoveredLabels: labels.FromStrings("__resource_a", "resource2_a"),
-		},
-	}
+	extraLabels := labels.FromStrings("__resource_a", "resource2_a")
 	metadataMap := metadataMap{}
-	c := newSeriesCache(logger, "", nil, nil, targetMap, metadataMap, "")
+	c := newSeriesCache(logger, "", nil, nil, metadataMap, "", extraLabels)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -265,9 +260,6 @@ func TestSeriesCache_RefreshMetadataNotFound(t *testing.T) {
 	// Set will trigger a refresh.
 	if err := c.set(ctx, refID, labels.FromStrings("__name__", "metric1", "job", "job1", "instance", "inst1"), 5); err != nil {
 		t.Fatalf("unexpected error: %s", err)
-	}
-	if !strings.Contains(logBuffer.String(), "metadata not found") {
-		t.Errorf("expected error \"metadata not found\", got: %v", logBuffer)
 	}
 
 	// Get shouldn't find data because of the previous error.
@@ -282,12 +274,7 @@ func TestSeriesCache_RefreshMetadataNotFound(t *testing.T) {
 
 func TestSeriesCache_Filter(t *testing.T) {
 	// Populate the getters with data.
-	targetMap := targetMap{
-		"job1/inst1": &targets.Target{
-			Labels:           labels.FromStrings("job", "job1", "instance", "inst1"),
-			DiscoveredLabels: labels.FromStrings("__resource_a", "resource2_a"),
-		},
-	}
+	extraLabels := labels.FromStrings("__resource_a", "resource2_a")
 	metadataMap := metadataMap{
 		"job1/inst1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
 	}
@@ -304,7 +291,7 @@ func TestSeriesCache_Filter(t *testing.T) {
 			&labels.Matcher{Type: labels.MatchEqual, Name: "b", Value: "b1"},
 		},
 		{&labels.Matcher{Type: labels.MatchEqual, Name: "c", Value: "c1"}},
-	}, nil, targetMap, metadataMap, "")
+	}, nil, metadataMap, "", extraLabels)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -337,12 +324,7 @@ func TestSeriesCache_Filter(t *testing.T) {
 
 func TestSeriesCache_RenameMetric(t *testing.T) {
 	// Populate the getters with data.
-	targetMap := targetMap{
-		"job1/inst1": &targets.Target{
-			Labels:           labels.FromStrings("job", "job1", "instance", "inst1"),
-			DiscoveredLabels: labels.FromStrings("__resource_a", "resource2_a"),
-		},
-	}
+	extraLabels := labels.FromStrings("__resource_a", "resource2_a")
 	metadataMap := metadataMap{
 		"job1/inst1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
 		"job1/inst1/metric2": &metadata.Entry{Metric: "metric2", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
@@ -356,7 +338,7 @@ func TestSeriesCache_RenameMetric(t *testing.T) {
 	logger := log.NewLogfmtLogger(logBuffer)
 	c := newSeriesCache(logger, "", nil,
 		map[string]string{"metric2": "metric3"},
-		targetMap, metadataMap, "")
+		metadataMap, "", extraLabels)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
