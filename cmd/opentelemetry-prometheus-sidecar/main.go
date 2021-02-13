@@ -113,7 +113,7 @@ func Main() bool {
 	ctx, cancelMain := telemetry.ContextWithSIGTERM(logger)
 	defer cancelMain()
 
-	healthChecker := health.NewChecker(telem.Controller)
+	healthChecker := health.NewChecker(telem.Controller, logger)
 
 	httpClient := &http.Client{
 		// Note: The Sidecar->Prometheus HTTP connection is not traced.

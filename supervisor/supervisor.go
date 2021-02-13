@@ -67,8 +67,11 @@ type (
 		client   *http.Client
 		telem    *telemetry.Telemetry
 
+		// isRunning means the sidecar enter its run state.
+		isRunning bool
+
+		// veryUnhealthy means the sidecar returned a stackdump.
 		veryUnhealthy bool
-		goodOutcomes  int
 
 		lock      sync.Mutex
 		logBuffer []string
@@ -154,7 +157,7 @@ func (s *Supervisor) supervise(ctx context.Context, cmd *exec.Cmd, wg *sync.Wait
 
 	for {
 		var sleep time.Duration
-		if s.goodOutcomes > 0 {
+		if s.isRunning {
 			sleep = config.DefaultHealthCheckPeriod
 		} else {
 			sleep = config.DefaultReadinessPeriod
@@ -221,7 +224,7 @@ func (s *Supervisor) healthcheckErr(ctx context.Context) (err error) {
 
 	// Make the request and try to parse the result.
 	err = func() error {
-		req, err := http.NewRequestWithContext(ctx, "GET", s.endpoint + healthURI, nil)
+		req, err := http.NewRequestWithContext(ctx, "GET", s.endpoint+healthURI, nil)
 		if err != nil {
 			return errors.Wrap(err, "build request")
 		}
@@ -375,9 +378,10 @@ func (s *Supervisor) copyLogs() []string {
 }
 
 func (s *Supervisor) noteHealthy(hr health.Response) string {
-	s.goodOutcomes = hr.GoodOutcomes
+	s.isRunning = hr.Running
 
-	if hr.Metrics != nil {
+	if len(hr.Metrics) > 0 {
+
 		summary := []interface{}{
 			"msg", "sidecar is running",
 		}
@@ -393,11 +397,12 @@ func (s *Supervisor) noteHealthy(hr health.Response) string {
 
 func (s *Supervisor) noteUnhealthy(hr health.Response) string {
 	if hr.Stackdump != "" {
+		s.veryUnhealthy = true
+
 		summary := []interface{}{
-			"msg", "process is very unhealthy",
+			"msg", "process is unhealthy",
 			"stackdump", hr.Stackdump,
 		}
-		s.veryUnhealthy = true
 		level.Warn(s.logger).Log(summary...)
 	}
 	return "unhealthy"

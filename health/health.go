@@ -24,6 +24,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/pkg/errors"
 	"go.opentelemetry.io/otel/label"
@@ -48,15 +50,14 @@ type (
 		readyHandler ready
 		aliveHandler alive
 
+		logger            log.Logger
 		startTime         time.Time
 		metricsController *controller.Controller
 
 		lock         sync.Mutex
 		isRunning    bool
-		goodOutcomes int
 		tracker      map[string]*metricTracker
-		superCheckin time.Time
-		forcedUpdate time.Time
+		lastUpdate   time.Time
 		lastResponse Response
 	}
 
@@ -78,11 +79,11 @@ type (
 	}
 
 	Response struct {
-		Code         int                       `json:"code"`
-		Status       string                    `json:"status"`
-		Metrics      map[string][]exportRecord `json:"metrics"`
-		GoodOutcomes int                       `json:"good_outcomes"`
-		Stackdump    string                    `json:"stackdump"`
+		Code      int                       `json:"code"`
+		Status    string                    `json:"status"`
+		Metrics   map[string][]exportRecord `json:"metrics"`
+		Running   bool                      `json:"running"`
+		Stackdump string                    `json:"stackdump"`
 	}
 
 	exportRecord struct {
@@ -93,8 +94,9 @@ type (
 
 // NewChecker returns a new ready and liveness checkers based on
 // state from the metrics controller.
-func NewChecker(cont *controller.Controller) *Checker {
+func NewChecker(cont *controller.Controller, logger log.Logger) *Checker {
 	c := &Checker{
+		logger:            logger,
 		startTime:         time.Now(),
 		metricsController: cont,
 		tracker:           map[string]*metricTracker{},
@@ -117,22 +119,6 @@ func (c *Checker) SetRunning() {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	c.isRunning = true
-}
-
-func (c *Checker) checkIfSuperHealthy(r *http.Request) (isSuper, isHealthy bool) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
-	fromSuper := len(r.URL.Query().Get("supervisor")) != 0
-	if !fromSuper {
-		if c.superCheckin.IsZero() {
-			return false, false
-		}
-		return false, time.Since(c.superCheckin) < 2*config.DefaultHealthCheckPeriod
-	}
-
-	c.superCheckin = time.Now()
-	return true, true
 }
 
 // getMetrics scans the current metrics processor state, copies the
@@ -191,9 +177,6 @@ func (a *alive) getMetrics() (map[string][]exportRecord, error) {
 // 1. the number of samples produced must rise
 // 2. the ratio of {outcome=success}/{*} >= 0.5 over `numSamples`
 func (a *alive) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-
-	isSuper, superIsHealthy := a.checkIfSuperHealthy(r)
-
 	ok(w, func() Response {
 		var resp Response
 
@@ -207,17 +190,19 @@ func (a *alive) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		shouldUpdate := isSuper
+		shouldUpdate := false
 
-		if !superIsHealthy {
-			if a.forcedUpdate.IsZero() || time.Since(a.forcedUpdate) > config.DefaultHealthCheckPeriod {
-				a.forcedUpdate = time.Now()
-				shouldUpdate = true
-			}
+		if a.lastUpdate.IsZero() || time.Since(a.lastUpdate) > config.DefaultHealthCheckPeriod {
+			a.lastUpdate = time.Now()
+			shouldUpdate = true
 		}
 
 		if shouldUpdate {
+			level.Debug(a.logger).Log("msg", "health check update")
+
 			metrics, err := a.getMetrics()
+
+			resp.Running = a.isRunning
 
 			if err != nil {
 				resp.Code = http.StatusInternalServerError
@@ -230,17 +215,11 @@ func (a *alive) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				resp.Code = http.StatusOK
 				resp.Status = "healthy"
 				resp.Metrics = metrics
-				resp.GoodOutcomes = a.goodOutcomes
 			}
 
 			a.lastResponse = resp
 		} else {
 			resp = a.lastResponse
-		}
-
-		if superIsHealthy && !isSuper {
-			// Clear the stackdump if there's a healthy supervisor.
-			resp.Stackdump = ""
 		}
 
 		return resp
@@ -250,8 +229,6 @@ func (a *alive) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // ServeHTTP implements a liveness handler that returns ready after
 // SetReady(true) is called.
 func (r *ready) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	_, _ = r.checkIfSuperHealthy(req)
-
 	ok(w, func() Response {
 		r.lock.Lock()
 		defer r.lock.Unlock()
@@ -331,8 +308,6 @@ func (a *alive) check(metrics map[string][]exportRecord) error {
 				errorRatio*100,
 			)
 		}
-
-		a.goodOutcomes = int(outcomes.matchValue())
 	}
 
 	return nil
@@ -369,6 +344,8 @@ func (m *metricTracker) lastSample() metricPair {
 
 // defined returns true if the samples slice is full of `numSamples` items.
 func (m *metricTracker) defined() bool {
+	// @@@ Not defined, so ... waiting for first health.  Checking
+	// every 5 seconds because haven't had health.
 	return len(m.samples) == numSamples
 }
 

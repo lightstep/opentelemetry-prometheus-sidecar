@@ -46,7 +46,7 @@ func testController(t *testing.T) *tester {
 	produced := metric.Must(provider.Meter("test")).NewInt64Counter(config.ProducedMetric)
 	outcome := metric.Must(provider.Meter("test")).NewInt64Counter(config.OutcomeMetric)
 
-	checker := NewChecker(cont)
+	checker := NewChecker(cont, telemetry.DefaultLogger())
 
 	aliveServer := httptest.NewServer(checker.Alive())
 
