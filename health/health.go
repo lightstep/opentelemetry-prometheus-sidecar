@@ -344,8 +344,6 @@ func (m *metricTracker) lastSample() metricPair {
 
 // defined returns true if the samples slice is full of `numSamples` items.
 func (m *metricTracker) defined() bool {
-	// @@@ Not defined, so ... waiting for first health.  Checking
-	// every 5 seconds because haven't had health.
 	return len(m.samples) == numSamples
 }
 
