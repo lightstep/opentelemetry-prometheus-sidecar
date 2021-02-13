@@ -8,6 +8,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+## [0.15.1](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.15.1) - 2021-02-12
+
+- Disabled target refresh and caching functionality (#115)
+- WAL reader segment change-over race condition fixed. (#112)
+
+
 ## [0.14.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.14.0) - 2021-02-08
 
 - Timeouts and diagnostics for Prometheus API calls (#100)

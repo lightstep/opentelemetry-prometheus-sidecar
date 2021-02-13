@@ -267,12 +267,10 @@ func TestE2E(t *testing.T) {
 			rvals[attr.Key] = attr.Value.Value.(*common.AnyValue_StringValue).StringValue
 		}
 
+		// At this moment, the labels in static_configs are NOT
+		// passed to the Resource.
 		if diff, equal := messagediff.PrettyDiff(rvals, map[string]string{
 			"service.name": "Service",
-			"instance":     "127.0.0.1:19002",
-			"job":          "test-target",
-			"label1":       "L1",
-			"label2":       "L2",
 		}); !equal {
 			t.Errorf("unexpected resources:\n%v", diff)
 		}

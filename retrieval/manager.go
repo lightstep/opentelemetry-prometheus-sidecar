@@ -27,7 +27,6 @@ import (
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
-	"github.com/lightstep/opentelemetry-prometheus-sidecar/targets"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry/doevery"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
@@ -48,26 +47,22 @@ var (
 	)
 )
 
-type TargetGetter interface {
-	Get(ctx context.Context, lset labels.Labels) (*targets.Target, error)
-}
-
 type MetadataGetter interface {
 	Get(ctx context.Context, job, instance, metric string) (*metadata.Entry, error)
 }
 
-// NewProemtheusReader is the PrometheusReader constructor
+// NewPrometheusReader is the PrometheusReader constructor
 func NewPrometheusReader(
 	logger log.Logger,
 	walDirectory string,
 	tailer *tail.Tailer,
 	filters [][]*labels.Matcher,
 	metricRenames map[string]string,
-	targetGetter TargetGetter,
 	metadataGetter MetadataGetter,
 	appender Appender,
 	metricsPrefix string,
 	maxPointAge time.Duration,
+	extraLabels labels.Labels,
 ) *PrometheusReader {
 	if logger == nil {
 		logger = log.NewNopLogger()
@@ -78,12 +73,12 @@ func NewPrometheusReader(
 		tailer:               tailer,
 		filters:              filters,
 		walDirectory:         walDirectory,
-		targetGetter:         targetGetter,
 		metadataGetter:       metadataGetter,
 		progressSaveInterval: time.Minute,
 		metricRenames:        metricRenames,
 		metricsPrefix:        metricsPrefix,
 		maxPointAge:          maxPointAge,
+		extraLabels:          extraLabels,
 	}
 }
 
@@ -93,12 +88,12 @@ type PrometheusReader struct {
 	tailer               *tail.Tailer
 	filters              [][]*labels.Matcher
 	metricRenames        map[string]string
-	targetGetter         TargetGetter
 	metadataGetter       MetadataGetter
 	appender             Appender
 	progressSaveInterval time.Duration
 	metricsPrefix        string
 	maxPointAge          time.Duration
+	extraLabels          labels.Labels
 }
 
 func (r *PrometheusReader) Run(ctx context.Context, startOffset int) error {
@@ -109,9 +104,9 @@ func (r *PrometheusReader) Run(ctx context.Context, startOffset int) error {
 		r.walDirectory,
 		r.filters,
 		r.metricRenames,
-		r.targetGetter,
 		r.metadataGetter,
 		r.metricsPrefix,
+		r.extraLabels,
 	)
 	go seriesCache.run(ctx)
 
