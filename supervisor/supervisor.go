@@ -382,17 +382,18 @@ func (s *Supervisor) copyLogs() []string {
 func (s *Supervisor) noteHealthy(hr health.Response) string {
 	s.isRunning = hr.Running
 
-	if len(hr.Metrics) > 0 {
+	var summary []interface{}
+	if len(hr.Metrics) == 0 {
+		summary = append(summary, "msg", "sidecar is initializing")
+	} else {
+		summary = append(summary, "msg", "sidecar is running")
 
-		summary := []interface{}{
-			"msg", "sidecar is running",
-		}
 		summary = append(summary, hr.MetricLogSummary(config.ProcessedMetric)...)
 		summary = append(summary, hr.MetricLogSummary(config.OutcomeMetric)...)
 		summary = append(summary, hr.MetricLogSummary(config.DroppedSeriesMetric)...)
-
-		level.Info(s.logger).Log(summary...)
 	}
+
+	level.Info(s.logger).Log(summary...)
 
 	return "ok"
 }
