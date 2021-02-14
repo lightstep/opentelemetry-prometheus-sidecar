@@ -46,7 +46,7 @@ func testController(t *testing.T) *tester {
 	produced := metric.Must(provider.Meter("test")).NewInt64Counter(config.ProducedMetric)
 	outcome := metric.Must(provider.Meter("test")).NewInt64Counter(config.OutcomeMetric)
 
-	checker := NewChecker(cont, telemetry.DefaultLogger())
+	checker := NewChecker(cont, 0 /* uncached */, telemetry.DefaultLogger())
 
 	aliveServer := httptest.NewServer(checker.Alive())
 
@@ -65,21 +65,9 @@ func (t *tester) Collect() {
 }
 
 func (t *tester) getHealth() (int, Response) {
-	return t.getHealthFrom(true)
-}
-
-func (t *tester) getHealthUnsupervised() (int, Response) {
-	return t.getHealthFrom(false)
-}
-
-func (t *tester) getHealthFrom(isSuper bool) (int, Response) {
 	require.NoError(t.T, t.Controller.Collect(context.Background()))
 
 	url := t.aliveServer.URL
-
-	if isSuper {
-		url += "?supervisor=true"
-	}
 
 	resp, err := http.Get(url)
 	require.NoError(t.T, err)
@@ -140,13 +128,6 @@ func TestOutcomesProgress(t *testing.T) {
 		require.Equal(t, "healthy", result.Status)
 	}
 
-	for i := 0; i < 10; i++ {
-		// These do not change results
-		code, result := tester.getHealthUnsupervised()
-		require.Equal(t, "healthy", result.Status)
-		require.Equal(t, http.StatusOK, code)
-	}
-
 	for j := 0; j < numSamples/2; j++ {
 		tester.outcomeInst.Add(ctx, 10, label.String("outcome", "failed"))
 		tester.producedInst.Add(ctx, 1)
@@ -165,13 +146,6 @@ func TestOutcomesProgress(t *testing.T) {
 			config.OutcomeMetric,
 		),
 	)
-
-	for i := 0; i < 10; i++ {
-		// These do not change results or dump stacks.
-		code, result := tester.getHealthUnsupervised()
-		require.Equal(t, http.StatusServiceUnavailable, code)
-		require.Equal(t, "", result.Stackdump)
-	}
 }
 
 func TestOutcomes4951(t *testing.T) {

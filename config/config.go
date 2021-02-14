@@ -36,26 +36,21 @@ import (
 )
 
 const (
-	DefaultAdminPort	  = 9091
-	DefaultAdminListenIP	  = "0.0.0.0"
+	DefaultAdminPort          = 9091
+	DefaultAdminListenIP      = "0.0.0.0"
 	DefaultPrometheusEndpoint = "http://127.0.0.1:9090/"
-	DefaultWALDirectory	  = "data/wal"
+	DefaultWALDirectory       = "data/wal"
 
-	DefaultExportTimeout	  = time.Second * 60
+	DefaultExportTimeout      = time.Second * 60
 	DefaultHealthCheckTimeout = time.Second * 5
+	DefaultHealthCheckPeriod  = time.Second * 60
 	DefaultReadinessPeriod    = time.Second * 5
-	DefaultMaxPointAge	  = time.Hour * 25
-	DefaultReportingPeriod	  = time.Second * 30
-	DefaultStartupDelay	  = time.Minute
-	DefaultShutdownDelay	  = time.Minute
-	DefaultStartupTimeout	  = time.Minute * 5
-	DefaultNoisyLogPeriod	  = time.Second * 5
+	DefaultMaxPointAge        = time.Hour * 25
+	DefaultStartupDelay       = time.Minute
+	DefaultShutdownDelay      = time.Minute
+	DefaultStartupTimeout     = time.Minute * 5
+	DefaultNoisyLogPeriod     = time.Second * 5
 	DefaultPrometheusTimeout  = time.Second * 60
-
-	// Note: this has to be longer than the metrics SDK's
-	// reporting period, which is copied in ../telemetry to avoid
-	// a cycle.
-	DefaultHealthCheckPeriod = DefaultReportingPeriod * 2
 
 	DefaultSupervisorBufferSize  = 16384
 	DefaultSupervisorLogsHistory = 16
@@ -89,8 +84,10 @@ an OpenTelemetry (https://opentelemetry.io) Protocol endpoint.
 	OutcomeMetric       = "sidecar.queue.outcome"
 	DroppedSeriesMetric = "sidecar.dropped.series"
 
-	OutcomeKey	    = label.Key("outcome")
+	OutcomeKey          = label.Key("outcome")
 	OutcomeSuccessValue = "success"
+
+	HealthCheckURI = "/-/health"
 )
 
 var (
@@ -113,17 +110,16 @@ type MetricRenamesConfig struct {
 	To   string `json:"to"`
 }
 
-
 // TODO: Note that the ../metadata package cannot depend on this package
 // because of a cycle involving this type, which is _nearly_ identical to
 // the Entry{} type of that package.  If that package would use _this_ type
 // it would help greatly, and then that package could refer to this one for
 // configuration.
 type StaticMetadataConfig struct {
-	Metric	  string `json:"metric"`
-	Type	  string `json:"type"`
+	Metric    string `json:"metric"`
+	Type      string `json:"type"`
 	ValueType string `json:"value_type"`
-	Help	  string `json:"help"`
+	Help      string `json:"help"`
 }
 
 type SecurityConfig struct {
@@ -135,22 +131,22 @@ type DurationConfig struct {
 }
 
 type OTLPConfig struct {
-	Endpoint    string	      `json:"endpoint"`
-	Headers	    map[string]string `json:"headers"`
+	Endpoint    string            `json:"endpoint"`
+	Headers     map[string]string `json:"headers"`
 	Attributes  map[string]string `json:"attributes"`
 	Timeout     DurationConfig    `json:"timeout"`
 	Compression string            `json:"compression"`
 }
 
 type LogConfig struct {
-	Level	string `json:"level"`
-	Format	string `json:"format"`
+	Level   string `json:"level"`
+	Format  string `json:"format"`
 	Verbose int    `json:"verbose"`
 }
 
 type PromConfig struct {
-	Endpoint    string	   `json:"endpoint"`
-	WAL	    string	   `json:"wal"`
+	Endpoint    string         `json:"endpoint"`
+	WAL         string         `json:"wal"`
 	MaxPointAge DurationConfig `json:"max_point_age"`
 }
 
@@ -160,26 +156,27 @@ type OTelConfig struct {
 }
 
 type AdminConfig struct {
-	ListenIP string `json:"listen_ip"`
-	Port	 int	`json:"port"`
+	ListenIP          string         `json:"listen_ip"`
+	Port              int            `json:"port"`
+	HealthCheckPeriod DurationConfig `json:"health_check_period"`
 }
 
 type MainConfig struct {
 	// Note: These fields are ordered so that JSON and YAML
 	// marshal in order of importance.
 
-	Destination    OTLPConfig	      `json:"destination"`
-	Prometheus     PromConfig	      `json:"prometheus"`
-	OpenTelemetry  OTelConfig	      `json:"opentelemetry"`
-	Admin	       AdminConfig	      `json:"admin"`
-	Security       SecurityConfig	      `json:"security"`
-	Diagnostics    OTLPConfig	      `json:"diagnostics"`
-	StartupDelay   DurationConfig	      `json:"startup_delay"`
-	StartupTimeout DurationConfig	      `json:"startup_timeout"`
-	Filters	       []string		      `json:"filters"`
+	Destination    OTLPConfig             `json:"destination"`
+	Prometheus     PromConfig             `json:"prometheus"`
+	OpenTelemetry  OTelConfig             `json:"opentelemetry"`
+	Admin          AdminConfig            `json:"admin"`
+	Security       SecurityConfig         `json:"security"`
+	Diagnostics    OTLPConfig             `json:"diagnostics"`
+	StartupDelay   DurationConfig         `json:"startup_delay"`
+	StartupTimeout DurationConfig         `json:"startup_timeout"`
+	Filters        []string               `json:"filters"`
 	MetricRenames  []MetricRenamesConfig  `json:"metric_renames"`
 	StaticMetadata []StaticMetadataConfig `json:"static_metadata"`
-	LogConfig      LogConfig	      `json:"log_config"`
+	LogConfig      LogConfig              `json:"log_config"`
 
 	DisableSupervisor  bool `json:"disable_supervisor"`
 	DisableDiagnostics bool `json:"disable_diagnostics"`
@@ -194,13 +191,14 @@ type FileReadFunc func(filename string) ([]byte, error)
 func DefaultMainConfig() MainConfig {
 	return MainConfig{
 		Prometheus: PromConfig{
-			WAL:	     DefaultWALDirectory,
+			WAL:         DefaultWALDirectory,
 			Endpoint:    DefaultPrometheusEndpoint,
 			MaxPointAge: DurationConfig{DefaultMaxPointAge},
 		},
 		Admin: AdminConfig{
-			Port:	  DefaultAdminPort,
-			ListenIP: DefaultAdminListenIP,
+			Port:              DefaultAdminPort,
+			ListenIP:          DefaultAdminListenIP,
+			HealthCheckPeriod: DurationConfig{DefaultHealthCheckPeriod},
 		},
 		Destination: OTLPConfig{
 			Headers:     map[string]string{},
@@ -215,8 +213,8 @@ func DefaultMainConfig() MainConfig {
 			Compression: snappy.Name,
 		},
 		LogConfig: LogConfig{
-			Level:	 "info",
-			Format:	 "logfmt",
+			Level:   "info",
+			Format:  "logfmt",
 			Verbose: 0,
 		},
 		StartupDelay: DurationConfig{
@@ -298,6 +296,11 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 	a.Flag("startup.timeout", "Timeout at startup to allow the endpoint to become available. Default: "+DefaultStartupTimeout.String()).
 		DurationVar(&cfg.StartupTimeout.Duration)
 
+	// TODO: The warning about how to set healthcheck.period can
+	// be verified once Prometheus starts - it exports a metric
+	// with actual scrape intervals labeled by intended interval.
+	a.Flag("healthcheck.period", "Period for internal health checking; set at a minimum to the shortest Promethues scrape period").DurationVar(&cfg.Admin.HealthCheckPeriod.Duration)
+
 	a.Flag(promlogflag.LevelFlagName, promlogflag.LevelFlagHelp).StringVar(&cfg.LogConfig.Level)
 	a.Flag(promlogflag.FormatFlagName, promlogflag.FormatFlagHelp).StringVar(&cfg.LogConfig.Format)
 	a.Flag("log.verbose", "Verbose logging level: 0 = off, 1 = some, 2 = more; 1 is automatically added when log.level is 'debug'; impacts logging from the gRPC library in particular").
@@ -363,8 +366,8 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 	// parsing succeeds in cases w/o a scheme, needs to be
 	// validated anyway.
 	type namedURL struct {
-		name	   string
-		value	   string
+		name       string
+		value      string
 		allowEmpty bool
 	}
 	for _, pair := range []namedURL{
@@ -468,10 +471,10 @@ func processMainConfig(cfg *MainConfig) (map[string]string, []*metadata.Entry, e
 		staticMetadata = append(
 			staticMetadata,
 			&metadata.Entry{
-				Metric:	    sm.Metric,
+				Metric:     sm.Metric,
 				MetricType: textparse.MetricType(sm.Type),
 				ValueType:  valueType,
-				Help:	    sm.Help,
+				Help:       sm.Help,
 			},
 		)
 	}

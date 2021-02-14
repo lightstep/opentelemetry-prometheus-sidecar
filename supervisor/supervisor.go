@@ -49,8 +49,6 @@ var (
 )
 
 const (
-	healthURI = "/-/health?supervisor=true"
-
 	supervisorBufferSize = 1 << 14
 )
 
@@ -66,6 +64,7 @@ type (
 		endpoint string
 		client   *http.Client
 		telem    *telemetry.Telemetry
+		period   time.Duration
 
 		// isRunning means the sidecar enter its run state.
 		isRunning bool
@@ -89,6 +88,7 @@ func New(cfg Config) *Supervisor {
 	return &Supervisor{
 		logger:    cfg.Logger,
 		endpoint:  endpoint,
+		period:    cfg.Admin.HealthCheckPeriod.Duration,
 		client:    client,
 		telem:     cfg.Telemetry,
 		logBuffer: make([]string, 0, config.DefaultSupervisorLogsHistory),
@@ -158,7 +158,7 @@ func (s *Supervisor) supervise(ctx context.Context, cmd *exec.Cmd, wg *sync.Wait
 	for {
 		var sleep time.Duration
 		if s.isRunning {
-			sleep = config.DefaultHealthCheckPeriod
+			sleep = s.period
 		} else {
 			sleep = config.DefaultReadinessPeriod
 		}
@@ -224,7 +224,7 @@ func (s *Supervisor) healthcheckErr(ctx context.Context) (err error) {
 
 	// Make the request and try to parse the result.
 	err = func() error {
-		req, err := http.NewRequestWithContext(ctx, "GET", s.endpoint+healthURI, nil)
+		req, err := http.NewRequestWithContext(ctx, "GET", s.endpoint+config.HealthCheckURI, nil)
 		if err != nil {
 			return errors.Wrap(err, "build request")
 		}

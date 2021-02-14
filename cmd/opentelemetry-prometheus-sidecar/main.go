@@ -112,7 +112,9 @@ func Main() bool {
 	ctx, cancelMain := telemetry.ContextWithSIGTERM(logger)
 	defer cancelMain()
 
-	healthChecker := health.NewChecker(telem.Controller, logger)
+	healthChecker := health.NewChecker(
+		telem.Controller, cfg.Admin.HealthCheckPeriod.Duration, logger,
+	)
 
 	httpClient := &http.Client{
 		// Note: The Sidecar->Prometheus HTTP connection is not traced.
@@ -391,7 +393,7 @@ func startSupervisor(cfg config.MainConfig, telem *telemetry.Telemetry, logger l
 func newAdminServer(hc *health.Checker, acfg config.AdminConfig, logger log.Logger) *http.Server {
 	mux := http.NewServeMux()
 
-	mux.Handle("/-/health", hc.Alive())
+	mux.Handle(config.HealthCheckURI, hc.Alive())
 
 	address := fmt.Sprint(acfg.ListenIP, ":", acfg.Port)
 	return &http.Server{

@@ -51,6 +51,7 @@ type (
 		aliveHandler alive
 
 		logger            log.Logger
+		period            time.Duration
 		startTime         time.Time
 		metricsController *controller.Controller
 
@@ -94,9 +95,10 @@ type (
 
 // NewChecker returns a new ready and liveness checkers based on
 // state from the metrics controller.
-func NewChecker(cont *controller.Controller, logger log.Logger) *Checker {
+func NewChecker(cont *controller.Controller, period time.Duration, logger log.Logger) *Checker {
 	c := &Checker{
 		logger:            logger,
+		period:            period,
 		startTime:         time.Now(),
 		metricsController: cont,
 		tracker:           map[string]*metricTracker{},
@@ -192,14 +194,12 @@ func (a *alive) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		shouldUpdate := false
 
-		if a.lastUpdate.IsZero() || time.Since(a.lastUpdate) > config.DefaultHealthCheckPeriod {
+		if a.period == 0 || a.lastUpdate.IsZero() || time.Since(a.lastUpdate) > a.period {
 			a.lastUpdate = time.Now()
 			shouldUpdate = true
 		}
 
 		if shouldUpdate {
-			level.Debug(a.logger).Log("msg", "health check update")
-
 			metrics, err := a.getMetrics()
 
 			resp.Running = a.isRunning
@@ -216,6 +216,11 @@ func (a *alive) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				resp.Status = "healthy"
 				resp.Metrics = metrics
 			}
+
+			level.Debug(a.logger).Log(
+				"msg", "health inspection",
+				"status", resp.Status,
+			)
 
 			a.lastResponse = resp
 		} else {

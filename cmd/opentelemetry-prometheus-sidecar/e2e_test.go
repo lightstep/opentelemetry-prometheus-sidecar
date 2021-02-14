@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	metricService "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/collector/metrics/v1"
 	common "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/common/v1"
 	metrics "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
@@ -58,7 +59,7 @@ var (
 		"--admin.port=9093",
 	}
 
-	e2eReadyURL = "http://0.0.0.0:9093/-/health"
+	e2eReadyURL = "http://0.0.0.0:9093" + config.HealthCheckURI
 )
 
 const (
