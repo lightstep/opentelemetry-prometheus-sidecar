@@ -24,7 +24,6 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
-	metrics "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
 	traces "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/trace/v1"
 	"github.com/stretchr/testify/require"
 )
@@ -265,29 +264,60 @@ func TestSuperStackDump(t *testing.T) {
 		return
 	}
 
-	var diagMetrics []*metrics.ResourceMetrics
 	var diagSpans []*traces.ResourceSpans
 
 	go func() {
-		for rm := range ms.metrics {
-			diagMetrics = append(diagMetrics, rm)
-		}
-	}()
-
-	go func() {
 		for rs := range ts.spans {
+			// Note: below searching for a stack dump and
+			// a few key strings, as a simple test.  TODO:
+			// improve by testing support, factoring the
+			// special-purpose logic here into another
+			// package.
 			diagSpans = append(diagSpans, rs)
 		}
 	}()
 
+	go func() {
+		for _ = range ms.metrics {
+			// Dumping the metrics diagnostics here.
+			// TODO: add testing support to validate
+			// metrics from tests and then build more
+			// tests based on metrics.
+		}
+	}()
+
+	// The process is expected to kill itself.
 	err = cmd.Wait()
 	require.Error(t, err)
 
-	t.Logf("stdout: %v\n", bout.String())
-	t.Logf("stderr: %v\n", berr.String())
+	foundCrash := false
+	for _, rs := range diagSpans {
+		for _, span := range rs.InstrumentationLibrarySpans[0].Spans {
+			require.Contains(t, []string{"health-client", "shutdown-report"}, span.Name)
 
-	// @@@ Test diagMetrics and diagSpans
+			if span.Name == "shutdown-report" {
+				continue
+			}
+			sa := map[string]string{}
+			for _, a := range span.Attributes {
+				sa[a.Key] = a.Value.String()
+			}
+			statusCode := sa["http.status_code"]
+			require.Contains(t, []string{
+				"int_value:200 ",
+				"int_value:503 ",
+			}, statusCode)
 
-	require.Contains(t, berr.String(), "selftest failed, not starting")
-	require.Contains(t, berr.String(), "selftest recoverable error, still trying")
+			if statusCode == "int_value:200 " {
+				continue
+			}
+
+			foundCrash = true
+			require.Contains(t, sa["sidecar.status"], "unhealthy")
+			require.Contains(t, sa["sidecar.stackdump"], "goroutine")
+			require.Contains(t, sa["sidecar.stackdump"], "net/http.(*ServeMux).ServeHTTP")
+		}
+	}
+
+	require.True(t, foundCrash, "expected to find a crash report")
 }

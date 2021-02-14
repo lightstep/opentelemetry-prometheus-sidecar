@@ -235,6 +235,8 @@ func (s *Supervisor) healthcheckErr(ctx context.Context) (err error) {
 		}
 		defer resp.Body.Close()
 
+		// Note: The Go SDK 0.16 appears to lose track of the codes.Error status
+		// being set here. It does not appear in the output span.  TODO: investigate.
 		span.SetAttributes(semconv.HTTPAttributesFromHTTPStatusCode(resp.StatusCode)...)
 		span.SetStatus(semconv.SpanStatusFromHTTPStatusCode(resp.StatusCode))
 
