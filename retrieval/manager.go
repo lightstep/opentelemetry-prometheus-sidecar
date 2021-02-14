@@ -97,7 +97,7 @@ type PrometheusReader struct {
 }
 
 func (r *PrometheusReader) Run(ctx context.Context, startOffset int) error {
-	level.Info(r.logger).Log("msg", "Starting Prometheus reader...")
+	level.Info(r.logger).Log("msg", "starting Prometheus reader")
 
 	seriesCache := newSeriesCache(
 		r.logger,
@@ -219,11 +219,10 @@ Outer:
 
 		case record.Tombstones:
 		default:
-			// TODO: How about Unknown?
 			level.Warn(r.logger).Log("msg", "unknown WAL record type")
 		}
 	}
-	level.Info(r.logger).Log("msg", "Done processing WAL.")
+	level.Info(r.logger).Log("msg", "done processing WAL")
 	return reader.Err()
 }
 

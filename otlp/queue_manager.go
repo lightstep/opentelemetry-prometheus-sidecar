@@ -215,7 +215,7 @@ func (t *QueueManager) Start() error {
 // Stop stops sending samples to the remote storage and waits for pending
 // sends to complete.
 func (t *QueueManager) Stop() error {
-	level.Info(t.logger).Log("msg", "Stopping remote storage...")
+	level.Info(t.logger).Log("msg", "stopping remote storage")
 	close(t.quit)
 	t.wg.Wait()
 
@@ -223,7 +223,7 @@ func (t *QueueManager) Stop() error {
 	defer t.shardsMtx.Unlock()
 	t.shards.stop()
 
-	level.Info(t.logger).Log("msg", "Remote storage stopped.")
+	level.Info(t.logger).Log("msg", "remote storage stopped")
 	return nil
 }
 

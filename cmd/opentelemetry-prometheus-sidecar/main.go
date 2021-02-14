@@ -237,14 +237,15 @@ func Main() bool {
 	{
 		g.Add(
 			func() error {
+				level.Info(logger).Log("msg", "starting Prometheus reader")
 				err = prometheusReader.Run(ctx, startOffset)
-				level.Info(logger).Log("msg", "Prometheus reader stopped")
 				return err
 			},
 			func(err error) {
 				// Prometheus reader needs to be stopped before closing the TSDB
 				// so that it doesn't try to write samples to a closed storage.
-				level.Info(logger).Log("msg", "Stopping Prometheus reader...")
+				// See the use of `stopCh` below to explain how this works.
+				level.Info(logger).Log("msg", "stopping Prometheus reader")
 				cancelMain()
 			},
 		)
@@ -256,20 +257,23 @@ func Main() bool {
 				if err := queueManager.Start(); err != nil {
 					return err
 				}
-				level.Info(logger).Log("msg", "OpenTelemetry client started")
+				level.Info(logger).Log("msg", "starting OpenTelemetry writer")
 				<-stopCh
 				return nil
 			},
 			func(err error) {
 				if err := queueManager.Stop(); err != nil {
-					level.Error(logger).Log("msg", "Error stopping OpenTelemetry writer", "err", err)
+					level.Error(logger).Log(
+						"msg", "stopping OpenTelemetry writer",
+						"err", err,
+					)
 				}
 				close(stopCh)
 			},
 		)
 	}
 	if err := g.Run(); err != nil {
-		level.Error(logger).Log("err", err)
+		level.Error(logger).Log("msg", "run loop error", "err", err)
 		return false
 	}
 
@@ -301,14 +305,20 @@ func waitForPrometheus(ctx context.Context, logger log.Logger, promURL *url.URL)
 		case <-tick.C:
 			resp, err := http.Get(u.String())
 			if err != nil {
-				level.Warn(logger).Log("msg", "Prometheus readiness check", "err", err)
+				level.Warn(logger).Log(
+					"msg", "Prometheus readiness check",
+					"err", err,
+				)
 				continue
 			}
 			if resp.StatusCode/100 == 2 {
 				return nil
 			}
 
-			level.Warn(logger).Log("msg", "Prometheus is not ready", "status", resp.Status)
+			level.Warn(logger).Log(
+				"msg", "Prometheus is not ready",
+				"status", resp.Status,
+			)
 		}
 	}
 }
@@ -333,7 +343,7 @@ func selfTest(ctx context.Context, promURL *url.URL, scf otlp.StorageClientFacto
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	level.Debug(logger).Log("msg", "checking source readiness")
+	level.Debug(logger).Log("msg", "checking Prometheus readiness")
 
 	// These tests are performed sequentially, to keep the logs simple.
 	// Note waitForPrometheus has no unrecoverable error conditions, so
@@ -342,7 +352,7 @@ func selfTest(ctx context.Context, promURL *url.URL, scf otlp.StorageClientFacto
 		return errors.Wrap(err, "source is not ready")
 	}
 
-	level.Debug(logger).Log("msg", "checking destination endpoint")
+	level.Debug(logger).Log("msg", "checking OpenTelemetry endpoint")
 
 	// Outbound connection test.
 	{
@@ -362,7 +372,7 @@ func selfTest(ctx context.Context, promURL *url.URL, scf otlp.StorageClientFacto
 
 func logStartup(cfg config.MainConfig, logger log.Logger) {
 	level.Info(logger).Log(
-		"msg", "Starting OpenTelemetry Prometheus sidecar",
+		"msg", "starting OpenTelemetry Prometheus sidecar",
 		"version", version.Info(),
 		"build_context", version.BuildContext(),
 		"host_details", Uname(),
