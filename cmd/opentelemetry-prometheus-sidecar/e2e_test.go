@@ -22,8 +22,10 @@ import (
 
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	metricService "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/collector/metrics/v1"
+	traceService "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/collector/trace/v1"
 	common "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/common/v1"
 	metrics "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
+	traces "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/trace/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	grpcMetadata "google.golang.org/grpc/metadata"
@@ -37,9 +39,15 @@ import (
 
 type (
 	testServer struct {
-		t      *testing.T
-		stops  chan func()
-		result chan *metrics.ResourceMetrics
+		t       *testing.T
+		stops   chan func()
+		metrics chan *metrics.ResourceMetrics
+	}
+
+	traceServer struct {
+		t     *testing.T
+		stops chan func()
+		spans chan *traces.ResourceSpans
 	}
 )
 
@@ -48,16 +56,22 @@ var (
 
 	// e2eTestMainCommonFlags are needed to correctly call the
 	// test gRPC server's Export().
-	e2eTestMainCommonFlags = []string{
+	e2eTestMainSupervisorFlags = []string{
 		"--security.root-certificate=testdata/certs/root_ca.crt",
 		"--destination.endpoint=https://127.0.0.1:19001",
+		"--diagnostics.endpoint=http://127.0.0.1:19000",
 		"--prometheus.endpoint=http://0.0.0.0:19093",
 		"--destination.header",
 		fmt.Sprint(e2eTestHeaderName, "=", e2eTestHeaderValue),
-		"--disable-supervisor",
-		"--disable-diagnostics",
+		"--diagnostics.header",
+		fmt.Sprint(e2eTestHeaderName, "=", e2eTestHeaderValue),
 		"--admin.port=9093",
 	}
+
+	e2eTestMainCommonFlags = append(e2eTestMainSupervisorFlags,
+		"--disable-supervisor",
+		"--disable-diagnostics",
+	)
 
 	e2eReadyURL = "http://0.0.0.0:9093" + config.HealthCheckURI
 )
@@ -224,7 +238,7 @@ func TestE2E(t *testing.T) {
 
 	// Gather results
 	var results []*metrics.ResourceMetrics
-	for res := range ts.result {
+	for res := range ts.metrics {
 		switch res.InstrumentationLibraryMetrics[0].Metrics[0].Name {
 		case "some_counter", "some_gauge":
 			// OK
@@ -334,6 +348,23 @@ func runMetricsService(ts *testServer) {
 	}
 }
 
+func runDiagnosticsService(ms *testServer, ts *traceServer) {
+	listener, err := net.Listen("tcp", "127.0.0.1:19000")
+	if err != nil {
+		log.Fatalf("failed to listen: %s", err)
+	}
+
+	grpcServer := grpc.NewServer()
+	metricService.RegisterMetricsServiceServer(grpcServer, ms)
+	traceService.RegisterTraceServiceServer(grpcServer, ts)
+
+	ts.stops <- grpcServer.Stop
+
+	if err := grpcServer.Serve(listener); err != nil {
+		log.Fatalf("failed to serve: %s", err)
+	}
+}
+
 func (s *testServer) Export(ctx context.Context, req *metricService.ExportMetricsServiceRequest) (*metricService.ExportMetricsServiceResponse, error) {
 	var emptyValue = metricService.ExportMetricsServiceResponse{}
 	md, ok := grpcMetadata.FromIncomingContext(ctx)
@@ -349,11 +380,31 @@ func (s *testServer) Export(ctx context.Context, req *metricService.ExportMetric
 	}
 
 	for _, rm := range req.ResourceMetrics {
-		s.result <- rm
+		s.metrics <- rm
 	}
 
 	return &emptyValue, nil
+}
 
+func (s *traceServer) Export(ctx context.Context, req *traceService.ExportTraceServiceRequest) (*traceService.ExportTraceServiceResponse, error) {
+	var emptyValue = traceService.ExportTraceServiceResponse{}
+	md, ok := grpcMetadata.FromIncomingContext(ctx)
+
+	// Test the custom header is present
+	if !ok {
+		s.t.Error("Missing gRPC Headers")
+		return &emptyValue, fmt.Errorf("Missing gRPC headers")
+	}
+	if len(md[e2eTestHeaderName]) != 1 || md[e2eTestHeaderName][0] != e2eTestHeaderValue {
+		s.t.Error("Wrong gRPC header value", md)
+		return &emptyValue, fmt.Errorf("Wrong gRPC header value")
+	}
+
+	for _, ts := range req.ResourceSpans {
+		s.spans <- ts
+	}
+
+	return &emptyValue, nil
 }
 
 func (s *testServer) Stop() {
@@ -366,8 +417,24 @@ func (s *testServer) Stop() {
 
 func newTestServer(t *testing.T) *testServer {
 	return &testServer{
-		t:      t,
-		stops:  make(chan func(), 3), // 3 = max number of stop functions registered
-		result: make(chan *metrics.ResourceMetrics, e2eTestScrapes),
+		t:       t,
+		stops:   make(chan func(), 3), // 3 = max number of stop functions registered
+		metrics: make(chan *metrics.ResourceMetrics, e2eTestScrapes),
+	}
+}
+
+func (s *traceServer) Stop() {
+	close(s.stops)
+
+	for stop := range s.stops {
+		stop()
+	}
+}
+
+func newTraceServer(t *testing.T) *traceServer {
+	return &traceServer{
+		t:     t,
+		stops: make(chan func(), 3), // 3 = max number of stop functions registered
+		spans: make(chan *traces.ResourceSpans, e2eTestScrapes),
 	}
 }

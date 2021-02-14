@@ -24,6 +24,8 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
+	metrics "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
+	traces "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/trace/v1"
 	"github.com/stretchr/testify/require"
 )
 
@@ -224,6 +226,67 @@ func TestStartupUnhealthyEndpoint(t *testing.T) {
 
 	t.Logf("stdout: %v\n", bout.String())
 	t.Logf("stderr: %v\n", berr.String())
+
+	require.Contains(t, berr.String(), "selftest failed, not starting")
+	require.Contains(t, berr.String(), "selftest recoverable error, still trying")
+}
+
+func TestSuperStackDump(t *testing.T) {
+	// Tests that the selftest detects an unhealthy endpoint during the selftest.
+	if testing.Short() {
+		t.Skip("skipping test in short mode.")
+	}
+
+	cmd := exec.Command(
+		os.Args[0],
+		append(e2eTestMainSupervisorFlags,
+			"--prometheus.wal=testdata/wal",
+			"--healthcheck.period=1s",
+			"--startup.delay=0s",
+			"--log.level=debug",
+		)...)
+
+	ms := newTestServer(t)
+	defer ms.Stop()
+	go runMetricsService(ms)
+	runPrometheusService(ms) // Note: there's no metadata api here, we'll see failures.
+
+	ts := newTraceServer(t)
+	defer ts.Stop()
+	go runDiagnosticsService(ms, ts)
+
+	cmd.Env = append(os.Environ(), "RUN_MAIN=1")
+	var bout, berr bytes.Buffer
+	cmd.Stdout = &bout
+	cmd.Stderr = &berr
+	err := cmd.Start()
+	if err != nil {
+		t.Errorf("execution error: %v", err)
+		return
+	}
+
+	var diagMetrics []*metrics.ResourceMetrics
+	var diagSpans []*traces.ResourceSpans
+
+	go func() {
+		for rm := range ms.metrics {
+			diagMetrics = append(diagMetrics, rm)
+		}
+	}()
+
+	go func() {
+		for rs := range ts.spans {
+			diagSpans = append(diagSpans, rs)
+		}
+	}()
+
+	err = cmd.Wait()
+	require.Error(t, err)
+
+	t.Logf("stdout: %v\n", bout.String())
+	t.Logf("stderr: %v\n", berr.String())
+
+	// @@@ Test diagMetrics and diagSpans
 
 	require.Contains(t, berr.String(), "selftest failed, not starting")
 	require.Contains(t, berr.String(), "selftest recoverable error, still trying")
