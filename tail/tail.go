@@ -37,9 +37,17 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
-// checkPageSize is the standard Prometheus page size.  Segment transitions should
-// take place at multiples of this size, or else something is wrong.
-const checkPageSize = 32 * 1024
+const (
+	// promPageSize is the standard Prometheus page size.
+	// Segment transitions should take place at multiples of this
+	// size, or else something is wrong.
+	promPageSize = 32 * 1024
+
+	// promSegmentSize is the Prometheus segment size.  Although
+	// the Prom code makes this a variable, the application does
+	// not (apparently?) expose it as a variable, so we hard-code.
+	promSegmentSize = wal.DefaultSegmentSize
+)
 
 var (
 	segmentOpenCounter = sidecar.OTelMeterMust.NewInt64Counter(
@@ -245,13 +253,10 @@ func (t *Tailer) Read(b []byte) (int, error) {
 		}
 
 		finalOffset := t.incNextSegment()
-		if finalOffset&(checkPageSize-1) != 0 {
-			// Note: is it possible that Prometheus could not have
-			// fsynced the old segment before opening the new one?
-			// Probably not.  If this error happens in production
-			// and the Prometheus server is not crashing, it means
-			// we are still not properly synchronizing the segment
-			// change-over.
+		if finalOffset&(promPageSize-1) != 0 {
+			// Note: Prometheus DOES NOT fsync the old segment
+			// before opening the new one.
+
 			return n, errors.Errorf(
 				"segment %d transition at unexpected offset: %d",
 				segment-1,
