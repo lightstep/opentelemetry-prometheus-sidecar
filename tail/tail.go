@@ -130,8 +130,6 @@ func listSegments(dir string) (refs []segmentRef, err error) {
 	return refs, nil
 }
 
-const segmentSize = 128 * 1024 * 1024
-
 // Size returns the total size of the WAL as indicated by its highest segment.
 // It includes the size of any past segments that may no longer exist.
 func (t *Tailer) Size() (int, error) {
@@ -145,13 +143,19 @@ func (t *Tailer) Size() (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	return last.index*segmentSize + int(fi.Size()), nil
+	return last.index*promSegmentSize + int(fi.Size()), nil
 }
 
 func (t *Tailer) incOffset(v int) {
 	t.mtx.Lock()
 	defer t.mtx.Unlock()
 	t.offset += v
+}
+
+func (t *Tailer) currentOffset() int {
+	t.mtx.Lock()
+	defer t.mtx.Unlock()
+	return t.offset
 }
 
 func (t *Tailer) incNextSegment() int {
@@ -180,7 +184,7 @@ func (t *Tailer) Offset() int {
 	if t.nextSegment == 0 {
 		return 0
 	}
-	return (t.nextSegment-1)*segmentSize + t.offset
+	return (t.nextSegment-1)*promSegmentSize + t.offset
 }
 
 // Close all underlying resources of the tailer.
@@ -245,14 +249,37 @@ func (t *Tailer) Read(b []byte) (int, error) {
 			return n, errors.Wrap(err, "open next segment")
 		}
 
-		// Having discovered a new segment, give the the current segment
-		// a second try.
-		if n, err = t.cur.Read(b); err != io.EOF {
-			t.incOffset(n)
-			return n, err
+		offset := t.currentOffset()
+
+		for {
+			if offset == promSegmentSize {
+				level.Info(t.logger).Log(
+					"msg", "WAL segment complete",
+					"segment", segment-1,
+				)
+				break
+			}
+
+			// @@@ HERE:
+			//   prometheus.WaitForReady()
+			//   does Prom give you info about PID or something we could use in /metrics?
+			// Try to read more from the same file.
+			//   look for at least a full block.
+			//   Prometheus typically zero-pads its final block.
+			//   yet we see this fail.
+			// When we still have a partial block after all of this, we need a
+			// way to force the reader to re-open.
+
+			// Having discovered a new segment, give the the current segment
+			// a second try.
+			if n, err = t.cur.Read(b); err != io.EOF {
+				t.incOffset(n)
+				return n, err
+			}
 		}
 
 		finalOffset := t.incNextSegment()
+
 		if finalOffset&(promPageSize-1) != 0 {
 			// Note: Prometheus DOES NOT fsync the old segment
 			// before opening the new one.
