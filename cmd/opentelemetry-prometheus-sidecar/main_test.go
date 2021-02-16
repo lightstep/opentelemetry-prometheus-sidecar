@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"sync"
 	"testing"
 	"time"
 
@@ -246,12 +247,10 @@ func TestSuperStackDump(t *testing.T) {
 		)...)
 
 	ms := newTestServer(t)
-	defer ms.Stop()
 	go runMetricsService(ms)
 	runPrometheusService(ms) // Note: there's no metadata api here, we'll see failures.
 
 	ts := newTraceServer(t)
-	defer ts.Stop()
 	go runDiagnosticsService(ms, ts)
 
 	cmd.Env = append(os.Environ(), "RUN_MAIN=1")
@@ -264,9 +263,12 @@ func TestSuperStackDump(t *testing.T) {
 		return
 	}
 
+	var lock sync.Mutex
 	var diagSpans []*traces.ResourceSpans
 
 	go func() {
+		lock.Lock()
+		defer lock.Unlock()
 		for rs := range ts.spans {
 			// Note: below searching for a stack dump and
 			// a few key strings, as a simple test.  TODO:
@@ -289,6 +291,12 @@ func TestSuperStackDump(t *testing.T) {
 	// The process is expected to kill itself.
 	err = cmd.Wait()
 	require.Error(t, err)
+
+	ms.Stop()
+	ts.Stop()
+
+	lock.Lock()
+	defer lock.Unlock()
 
 	foundCrash := false
 	for _, rs := range diagSpans {

@@ -409,6 +409,7 @@ func (s *traceServer) Export(ctx context.Context, req *traceService.ExportTraceS
 
 func (s *testServer) Stop() {
 	close(s.stops)
+	close(s.metrics)
 
 	for stop := range s.stops {
 		stop()
@@ -425,6 +426,7 @@ func newTestServer(t *testing.T) *testServer {
 
 func (s *traceServer) Stop() {
 	close(s.stops)
+	close(s.spans)
 
 	for stop := range s.stops {
 		stop()
