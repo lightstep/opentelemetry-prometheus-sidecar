@@ -266,16 +266,26 @@ func TestSuperStackDump(t *testing.T) {
 	var lock sync.Mutex
 	var diagSpans []*traces.ResourceSpans
 
+	ctx, cancel := context.WithCancel(context.Background())
+	var wg sync.WaitGroup
+	wg.Add(1)
+
 	go func() {
+		defer wg.Done()
 		lock.Lock()
 		defer lock.Unlock()
-		for rs := range ts.spans {
-			// Note: below searching for a stack dump and
-			// a few key strings, as a simple test.  TODO:
-			// improve by testing support, factoring the
-			// special-purpose logic here into another
-			// package.
-			diagSpans = append(diagSpans, rs)
+		for {
+			select {
+			case rs := <-ts.spans:
+				// Note: below searching for a stack dump and
+				// a few key strings, as a simple test.  TODO:
+				// improve by testing support, factoring the
+				// special-purpose logic here into another
+				// package.
+				diagSpans = append(diagSpans, rs)
+			case <-ctx.Done():
+				return
+			}
 		}
 	}()
 
@@ -292,6 +302,8 @@ func TestSuperStackDump(t *testing.T) {
 	err = cmd.Wait()
 	require.Error(t, err)
 
+	cancel()
+	wg.Wait()
 	ms.Stop()
 	ts.Stop()
 

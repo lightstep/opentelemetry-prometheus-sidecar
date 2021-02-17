@@ -16,7 +16,11 @@ type ShutdownFunc func(context.Context)
 func StartTelemetry(cfg config.MainConfig, defaultSvcName string, isSuper bool, logger log.Logger) *telemetry.Telemetry {
 	diagConfig := cfg.Diagnostics
 
-	if diagConfig.Endpoint == "" && !cfg.DisableDiagnostics {
+	if cfg.DisableDiagnostics {
+		return telemetry.InternalOnly()
+	}
+
+	if diagConfig.Endpoint == "" {
 		diagConfig = cfg.Destination
 	}
 

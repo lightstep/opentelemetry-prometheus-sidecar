@@ -195,7 +195,6 @@ func TestE2E(t *testing.T) {
 		append(e2eTestMainCommonFlags,
 			"--prometheus.wal", path.Join(dataDir, "wal"),
 			"--destination.attribute=service.name=Service",
-			"--log.level=debug",
 			"--startup.delay=1s",
 		)...,
 	)
@@ -205,9 +204,6 @@ func TestE2E(t *testing.T) {
 	if err := sideCmd.Start(); err != nil {
 		log.Fatal(err)
 	}
-	defer sideCmd.Wait()
-	defer sideCmd.Process.Kill()
-
 	// Start scrape target
 	go func() {
 		scrapes := 1
@@ -254,6 +250,10 @@ func TestE2E(t *testing.T) {
 			break
 		}
 	}
+
+	// Stop the external process.
+	sideCmd.Process.Kill()
+	sideCmd.Wait()
 
 	// Stop the in-process services
 	ts.Stop()
@@ -409,11 +409,12 @@ func (s *traceServer) Export(ctx context.Context, req *traceService.ExportTraceS
 
 func (s *testServer) Stop() {
 	close(s.stops)
-	close(s.metrics)
 
 	for stop := range s.stops {
 		stop()
 	}
+
+	//close(s.metrics)
 }
 
 func newTestServer(t *testing.T) *testServer {
@@ -426,11 +427,12 @@ func newTestServer(t *testing.T) *testServer {
 
 func (s *traceServer) Stop() {
 	close(s.stops)
-	close(s.spans)
 
 	for stop := range s.stops {
 		stop()
 	}
+
+	//close(s.spans)
 }
 
 func newTraceServer(t *testing.T) *traceServer {
