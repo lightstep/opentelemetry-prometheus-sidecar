@@ -32,11 +32,7 @@ require (
 	go.opentelemetry.io/contrib/propagators v0.16.0
 	go.opentelemetry.io/otel v0.16.0
 	go.opentelemetry.io/otel/exporters/otlp v0.16.0
-	// go.opentelemetry.io/otel/metric v0.16.0
 	go.opentelemetry.io/otel/sdk v0.16.0
-	// go.opentelemetry.io/otel/sdk/export/metric v0.16.0
-	// go.opentelemetry.io/otel/sdk/metric v0.16.0
-	// go.opentelemetry.io/otel/trace v0.16.0
 	google.golang.org/genproto v0.0.0-20200904004341-0bd0a958aa1d
 	google.golang.org/grpc v1.35.0
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
