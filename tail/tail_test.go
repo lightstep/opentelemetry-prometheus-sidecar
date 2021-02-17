@@ -28,7 +28,9 @@ import (
 	"time"
 
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
+	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/tsdb/wal"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -56,6 +58,71 @@ func TestOpenSegment(t *testing.T) {
 		require.Equal(t, fmt.Sprint(i), string(body))
 		require.NoError(t, rc.Close())
 	}
+}
+
+func TestCorruption(t *testing.T) {
+	dir := "./testdata/corruption"
+	ctx, cancel := context.WithCancel(context.Background())
+
+	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rc.Close()
+	wr := wal.NewReader(rc)
+	var read [][]byte
+	for len(read) < 1 && wr.Next() {
+		read = append(read, append([]byte(nil), wr.Record()...))
+	}
+	if wr.Err() == nil {
+		t.Fatal(errors.New("expected corruption error"))
+	}
+
+	assert.Contains(t, wr.Err().Error(), "corruption after")
+
+	go func() {
+		time.Sleep(time.Second)
+		cancel()
+	}()
+	if wr.Next() {
+		t.Fatal("read unexpected record")
+	}
+	if wr.Err() == nil {
+		t.Fatal(errors.New("expected EOF error"))
+	}
+	assert.Contains(t, wr.Err().Error(), "unexpected EOF")
+}
+
+func TestInvalidSegment(t *testing.T) {
+	dir := "./testdata/invalid-segment"
+	ctx, cancel := context.WithCancel(context.Background())
+
+	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rc.Close()
+	wr := wal.NewReader(rc)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	var read [][]byte
+	for len(read) < 1 && wr.Next() {
+		read = append(read, append([]byte(nil), wr.Record()...))
+	}
+
+	go func() {
+		time.Sleep(time.Second)
+		cancel()
+	}()
+	if wr.Next() {
+		t.Fatal("read unexpected record")
+	}
+	if wr.Err() == nil {
+		t.Fatal(errors.New("expected segment transition error"))
+	}
+	assert.Contains(t, wr.Err().Error(), "segment 0 transition at unexpected")
 }
 
 func TestTailFuzz(t *testing.T) {
