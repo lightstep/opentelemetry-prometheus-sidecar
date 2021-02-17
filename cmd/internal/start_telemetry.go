@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"net/url"
+	"time"
 
 	"github.com/go-kit/kit/log"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
@@ -12,10 +13,14 @@ import (
 
 type ShutdownFunc func(context.Context)
 
-func StartTelemetry(cfg config.MainConfig, defaultSvcNAme string, isSuper bool, logger log.Logger) *telemetry.Telemetry {
+func StartTelemetry(cfg config.MainConfig, defaultSvcName string, isSuper bool, logger log.Logger) *telemetry.Telemetry {
 	diagConfig := cfg.Diagnostics
 
-	if diagConfig.Endpoint == "" && !cfg.DisableDiagnostics {
+	if cfg.DisableDiagnostics {
+		return telemetry.InternalOnly()
+	}
+
+	if diagConfig.Endpoint == "" {
 		diagConfig = cfg.Destination
 	}
 
@@ -23,10 +28,14 @@ func StartTelemetry(cfg config.MainConfig, defaultSvcNAme string, isSuper bool, 
 		return telemetry.InternalOnly()
 	}
 
-	return startTelemetry(diagConfig, defaultSvcNAme, isSuper, logger)
+	// reportingPeriod should be faster than the health check period,
+	// because we are using metrics data for internal health checking.
+	reportingPeriod := cfg.Admin.HealthCheckPeriod.Duration / 2
+
+	return startTelemetry(diagConfig, reportingPeriod, defaultSvcName, isSuper, logger)
 }
 
-func startTelemetry(diagConfig config.OTLPConfig, defaultSvcName string, isSuper bool, logger log.Logger) *telemetry.Telemetry {
+func startTelemetry(diagConfig config.OTLPConfig, reportingPeriod time.Duration, defaultSvcName string, isSuper bool, logger log.Logger) *telemetry.Telemetry {
 	endpoint, _ := url.Parse(diagConfig.Endpoint)
 	hostport := endpoint.Hostname()
 	if len(endpoint.Port()) > 0 {
@@ -70,7 +79,7 @@ func startTelemetry(diagConfig config.OTLPConfig, defaultSvcName string, isSuper
 		telemetry.WithHeaders(diagConfig.Headers),
 		telemetry.WithResourceAttributes(diagConfig.Attributes),
 		telemetry.WithExportTimeout(diagConfig.Timeout.Duration),
-		telemetry.WithMetricReportingPeriod(config.DefaultReportingPeriod),
+		telemetry.WithMetricReportingPeriod(reportingPeriod),
 		telemetry.WithCompressor(diagConfig.Compression),
 	)
 }

@@ -44,6 +44,10 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	grpcMetadata "google.golang.org/grpc/metadata"
+
+	// register grpc compressors
+	_ "github.com/lightstep/opentelemetry-prometheus-sidecar/snappy"
+	_ "google.golang.org/grpc/encoding/gzip"
 )
 
 // Note on metrics instrumentation relative ot the original OpenCensus
@@ -101,14 +105,16 @@ func Main() bool {
 
 	// Start the supervisor.
 	if isSupervisor {
-		return startSupervisor(cfg, logger)
+		return startSupervisor(cfg, telem, logger)
 	}
 
 	// Start the sidecar.  This context lasts the lifetime of the sidecar.
 	ctx, cancelMain := telemetry.ContextWithSIGTERM(logger)
 	defer cancelMain()
 
-	healthChecker := health.NewChecker(telem.Controller)
+	healthChecker := health.NewChecker(
+		telem.Controller, cfg.Admin.HealthCheckPeriod.Duration, logger,
+	)
 
 	httpClient := &http.Client{
 		// Note: The Sidecar->Prometheus HTTP connection is not traced.
@@ -221,7 +227,7 @@ func Main() bool {
 	}
 
 	level.Debug(logger).Log("msg", "starting now")
-	healthChecker.SetReady(true)
+	healthChecker.SetRunning()
 
 	// Run two inter-depdendent components:
 	// (1) Prometheus reader
@@ -231,14 +237,15 @@ func Main() bool {
 	{
 		g.Add(
 			func() error {
+				level.Info(logger).Log("msg", "starting Prometheus reader")
 				err = prometheusReader.Run(ctx, startOffset)
-				level.Info(logger).Log("msg", "Prometheus reader stopped")
 				return err
 			},
 			func(err error) {
 				// Prometheus reader needs to be stopped before closing the TSDB
 				// so that it doesn't try to write samples to a closed storage.
-				level.Info(logger).Log("msg", "Stopping Prometheus reader...")
+				// See the use of `stopCh` below to explain how this works.
+				level.Info(logger).Log("msg", "stopping Prometheus reader")
 				cancelMain()
 			},
 		)
@@ -250,20 +257,23 @@ func Main() bool {
 				if err := queueManager.Start(); err != nil {
 					return err
 				}
-				level.Info(logger).Log("msg", "OpenTelemetry client started")
+				level.Info(logger).Log("msg", "starting OpenTelemetry writer")
 				<-stopCh
 				return nil
 			},
 			func(err error) {
 				if err := queueManager.Stop(); err != nil {
-					level.Error(logger).Log("msg", "Error stopping OpenTelemetry writer", "err", err)
+					level.Error(logger).Log(
+						"msg", "stopping OpenTelemetry writer",
+						"err", err,
+					)
 				}
 				close(stopCh)
 			},
 		)
 	}
 	if err := g.Run(); err != nil {
-		level.Error(logger).Log("err", err)
+		level.Error(logger).Log("msg", "run loop error", "err", err)
 		return false
 	}
 
@@ -281,7 +291,7 @@ func usage(err error) {
 	)
 }
 
-func waitForPrometheus(ctx context.Context, logger log.Logger, promURL *url.URL) bool {
+func waitForPrometheus(ctx context.Context, logger log.Logger, promURL *url.URL) error {
 	tick := time.NewTicker(3 * time.Second)
 	defer tick.Stop()
 
@@ -291,18 +301,24 @@ func waitForPrometheus(ctx context.Context, logger log.Logger, promURL *url.URL)
 	for {
 		select {
 		case <-ctx.Done():
-			return false
+			return ctx.Err()
 		case <-tick.C:
 			resp, err := http.Get(u.String())
 			if err != nil {
-				level.Warn(logger).Log("msg", "Prometheus readiness check", "err", err)
+				level.Warn(logger).Log(
+					"msg", "Prometheus readiness check",
+					"err", err,
+				)
 				continue
 			}
 			if resp.StatusCode/100 == 2 {
-				return true
+				return nil
 			}
 
-			level.Warn(logger).Log("msg", "Prometheus is not ready", "status", resp.Status)
+			level.Warn(logger).Log(
+				"msg", "Prometheus is not ready",
+				"status", resp.Status,
+			)
 		}
 	}
 }
@@ -324,17 +340,19 @@ func parseFilters(logger log.Logger, filters []string) ([][]*labels.Matcher, err
 func selfTest(ctx context.Context, promURL *url.URL, scf otlp.StorageClientFactory, timeout time.Duration, logger log.Logger) error {
 	client := scf.New()
 
-	level.Debug(logger).Log("msg", "starting selftest")
-
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
+
+	level.Debug(logger).Log("msg", "checking Prometheus readiness")
 
 	// These tests are performed sequentially, to keep the logs simple.
 	// Note waitForPrometheus has no unrecoverable error conditions, so
 	// loops until success or the context is canceled.
-	if !waitForPrometheus(ctx, logger, promURL) {
-		return fmt.Errorf("Prometheus is not ready")
+	if err := waitForPrometheus(ctx, logger, promURL); err != nil {
+		return errors.Wrap(err, "source is not ready")
 	}
+
+	level.Debug(logger).Log("msg", "checking OpenTelemetry endpoint")
 
 	// Outbound connection test.
 	{
@@ -354,7 +372,7 @@ func selfTest(ctx context.Context, promURL *url.URL, scf otlp.StorageClientFacto
 
 func logStartup(cfg config.MainConfig, logger log.Logger) {
 	level.Info(logger).Log(
-		"msg", "Starting OpenTelemetry Prometheus sidecar",
+		"msg", "starting OpenTelemetry Prometheus sidecar",
 		"version", version.Info(),
 		"build_context", version.BuildContext(),
 		"host_details", Uname(),
@@ -370,16 +388,11 @@ func logStartup(cfg config.MainConfig, logger log.Logger) {
 	}
 }
 
-func startSupervisor(cfg config.MainConfig, logger log.Logger) bool {
+func startSupervisor(cfg config.MainConfig, telem *telemetry.Telemetry, logger log.Logger) bool {
 	super := supervisor.New(supervisor.Config{
-		Logger: logger,
-		Admin:  cfg.Admin,
-
-		// Note: the metrics reporting interval is not
-		// configurable (see start_telemetry.go), but whatever
-		// it is we should poll at with a longer period to be
-		// sure a collection happens between health checks.
-		Period: time.Duration(float64(config.DefaultReportingPeriod) * 2),
+		Logger:    logger,
+		Admin:     cfg.Admin,
+		Telemetry: telem,
 	})
 
 	os.Setenv(supervisorEnv, "active")
@@ -389,8 +402,9 @@ func startSupervisor(cfg config.MainConfig, logger log.Logger) bool {
 
 func newAdminServer(hc *health.Checker, acfg config.AdminConfig, logger log.Logger) *http.Server {
 	mux := http.NewServeMux()
-	mux.Handle("/-/health", hc.Health())
-	mux.Handle("/-/ready", hc.Ready())
+
+	mux.Handle(config.HealthCheckURI, hc.Alive())
+
 	address := fmt.Sprint(acfg.ListenIP, ":", acfg.Port)
 	return &http.Server{
 		Addr:    address,

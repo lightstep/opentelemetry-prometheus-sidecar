@@ -22,8 +22,10 @@ import (
 	"runtime"
 	"strings"
 	"sync"
-	"sync/atomic"
+	"time"
 
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/pkg/errors"
 	"go.opentelemetry.io/otel/label"
@@ -41,26 +43,31 @@ const (
 
 	numSamples     = 5
 	thresholdRatio = 0.5
-	stackdumpAfter = 3
 )
 
 type (
 	Checker struct {
-		ready
-		healthy
+		readyHandler ready
+		aliveHandler alive
+
+		logger            log.Logger
+		period            time.Duration
+		startTime         time.Time
+		metricsController *controller.Controller
+
+		lock         sync.Mutex
+		isRunning    bool
+		tracker      map[string]*metricTracker
+		lastUpdate   time.Time
+		lastResponse Response
 	}
 
 	ready struct {
-		atomic.Value
+		*Checker
 	}
 
-	healthy struct {
-		*controller.Controller
-		tracker map[string]*metricTracker
-
-		lock     sync.Mutex
-		failures int
-		Response
+	alive struct {
+		*Checker
 	}
 
 	metricPair struct {
@@ -76,6 +83,7 @@ type (
 		Code      int                       `json:"code"`
 		Status    string                    `json:"status"`
 		Metrics   map[string][]exportRecord `json:"metrics"`
+		Running   bool                      `json:"running"`
 		Stackdump string                    `json:"stackdump"`
 	}
 
@@ -85,48 +93,46 @@ type (
 	}
 )
 
-// NewChecker returns a new health and readiness checker based on
+// NewChecker returns a new ready and liveness checkers based on
 // state from the metrics controller.
-func NewChecker(cont *controller.Controller) *Checker {
+func NewChecker(cont *controller.Controller, period time.Duration, logger log.Logger) *Checker {
 	c := &Checker{
-		healthy: healthy{
-			Controller: cont,
-			tracker:    map[string]*metricTracker{},
-			Response: Response{
-				Code: http.StatusOK,
-			},
+		logger:            logger,
+		period:            period,
+		startTime:         time.Now(),
+		metricsController: cont,
+		tracker:           map[string]*metricTracker{},
+		lastResponse: Response{
+			Code: http.StatusOK,
 		},
 	}
-	c.ready.Value.Store(false)
+	c.readyHandler.Checker = c
+	c.aliveHandler.Checker = c
 	return c
 }
 
-// Health returns a healthcheck handler.
-func (c *Checker) Health() http.Handler {
-	return &c.healthy
+// Alive returns a liveness handler.
+func (c *Checker) Alive() http.Handler {
+	return &c.aliveHandler
 }
 
-// Ready returns a readiness handler.
-func (c *Checker) Ready() http.Handler {
-	return &c.ready
-}
-
-// SetReady indicates when the process is ready.
-func (c *Checker) SetReady(ready bool) {
-	c.ready.Value.Store(ready)
+// SetRunning indicates when the process is ready.
+func (c *Checker) SetRunning() {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	c.isRunning = true
 }
 
 // getMetrics scans the current metrics processor state, copies the
 // `sidecar.*` metrics into the result, for use in the healtcheck
 // body.
-func (h *healthy) getMetrics() (map[string][]exportRecord, error) {
-	cont := h.Controller
+func (a *alive) getMetrics() (map[string][]exportRecord, error) {
+	cont := a.metricsController
 	ret := map[string][]exportRecord{}
 	enc := label.DefaultEncoder()
 
-	// Note: we can't Collect() the metric controller, because
-	// there is a pusher configured.
-
+	// Note: we use the latest checkpoint, which is computed
+	// periodically for the OTLP metrics exporter.
 	if err := cont.ForEach(export.CumulativeExportKindSelector(),
 		func(rec export.Record) error {
 			var num number.Number
@@ -172,62 +178,75 @@ func (h *healthy) getMetrics() (map[string][]exportRecord, error) {
 //
 // 1. the number of samples produced must rise
 // 2. the ratio of {outcome=success}/{*} >= 0.5 over `numSamples`
-func (h *healthy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (a *alive) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ok(w, func() Response {
 		var resp Response
 
-		fromSuper := len(r.URL.Query().Get("supervisor")) != 0
+		a.lock.Lock()
+		defer a.lock.Unlock()
 
-		if fromSuper {
-			metrics, err := h.getMetrics()
+		if !a.isRunning {
+			return Response{
+				Code:   http.StatusOK,
+				Status: "starting",
+			}
+		}
+
+		shouldUpdate := false
+
+		if a.period == 0 || a.lastUpdate.IsZero() || time.Since(a.lastUpdate) > a.period {
+			a.lastUpdate = time.Now()
+			shouldUpdate = true
+		}
+
+		if shouldUpdate {
+			metrics, err := a.getMetrics()
+
+			resp.Running = a.isRunning
 
 			if err != nil {
 				resp.Code = http.StatusInternalServerError
 				resp.Status = fmt.Sprint("internal error: ", err)
-			} else if err := h.check(metrics); err != nil {
+			} else if err := a.check(metrics); err != nil {
 				resp.Code = http.StatusServiceUnavailable
 				resp.Status = fmt.Sprint("unhealthy: ", err)
-				h.countFailure(&resp)
+				a.countFailure(&resp)
 			} else {
 				resp.Code = http.StatusOK
 				resp.Status = "healthy"
 				resp.Metrics = metrics
 			}
-		}
 
-		h.lock.Lock()
-		defer h.lock.Unlock()
+			level.Debug(a.logger).Log(
+				"msg", "health inspection",
+				"status", resp.Status,
+			)
 
-		if fromSuper {
-			saveStack := h.Response.Stackdump
-			h.Response = resp
-			if h.Response.Stackdump == "" {
-				h.Response.Stackdump = saveStack
-				resp.Stackdump = saveStack
-			}
+			a.lastResponse = resp
 		} else {
-			resp = h.Response
+			resp = a.lastResponse
 		}
 
 		return resp
 	})
 }
 
-// ServeHTTP implements a readiness handler that returns ready after
+// ServeHTTP implements a liveness handler that returns ready after
 // SetReady(true) is called.
-func (r *ready) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
+func (r *ready) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	ok(w, func() Response {
-		code := http.StatusServiceUnavailable
-		status := "starting"
+		r.lock.Lock()
+		defer r.lock.Unlock()
 
-		if r.Value.Load().(bool) {
-			code = http.StatusOK
-			status = "running"
+		if !r.isRunning {
+			return Response{
+				Code:   http.StatusServiceUnavailable,
+				Status: "starting",
+			}
 		}
-
 		return Response{
-			Code:   code,
-			Status: status,
+			Code:   http.StatusOK,
+			Status: "running",
 		}
 	})
 }
@@ -243,12 +262,12 @@ func ok(w http.ResponseWriter, f func() Response) {
 
 // check parses selected counter metrics and returns an error if the
 // sidecar is unhealthy based on their values.
-func (h *healthy) check(metrics map[string][]exportRecord) error {
+func (a *alive) check(metrics map[string][]exportRecord) error {
 	sumWhere := func(name, labels string) *metricTracker {
-		t, ok := h.tracker[name]
+		t, ok := a.tracker[name]
 		if !ok {
 			t = &metricTracker{}
-			h.tracker[name] = t
+			a.tracker[name] = t
 		}
 		var matchCount, otherCount float64
 		for _, e := range metrics[name] {
@@ -299,17 +318,10 @@ func (h *healthy) check(metrics map[string][]exportRecord) error {
 	return nil
 }
 
-func (h *healthy) countFailure(res *Response) {
-	h.lock.Lock()
-	h.failures++
-	failed := h.failures
-	h.lock.Unlock()
-
-	if failed%stackdumpAfter == 0 {
-		buf := make([]byte, 1<<14)
-		sz := runtime.Stack(buf, true)
-		res.Stackdump = string(buf[:sz])
-	}
+func (a *alive) countFailure(res *Response) {
+	buf := make([]byte, 1<<14)
+	sz := runtime.Stack(buf, true)
+	res.Stackdump = string(buf[:sz])
 }
 
 // update adds one match/other pair to the tracker.

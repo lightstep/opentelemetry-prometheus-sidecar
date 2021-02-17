@@ -51,6 +51,11 @@ admin:
   listen_ip: 0.0.0.0
   port: 10000
 
+  # Controls how often the health check status is updated.  This must
+  # be raised for Prometheus configurations that scrape infrequently.
+  # Default: 1m
+  health_check_period: 20s
+
 # Security settings:
 security:
   # Root certificates used in TLS settings:
