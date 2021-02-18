@@ -8,6 +8,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+## [0.16.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.16.0) - 2021-02-18
+
 ### Added
 
 - The sidecar's health check period is now configurable via `--healthcheck.period`. The metrics reporting
