@@ -13,24 +13,27 @@ import (
 	"github.com/pkg/errors"
 )
 
-func WaitForReady(ctx context.Context, logger log.Logger, promURL *url.URL) error {
+func WaitForReady(inCtx context.Context, logger log.Logger, promURL *url.URL) error {
 	u := *promURL
 	u.Path = path.Join(promURL.Path, "/-/ready")
 
-	// warnCount prevents logging on the first failure, since we
+	// warnSkipped prevents logging on the first failure, since we
 	// will try again and this lets us avoid the first sleep
-	warnCount := 0
+	warnSkipped := false
 
 	tick := time.NewTicker(config.DefaultHealthCheckTimeout)
 	defer tick.Stop()
 
 	for {
+		ctx, cancel := context.WithTimeout(inCtx, config.DefaultHealthCheckTimeout)
 		req, err := http.NewRequestWithContext(ctx, "GET", u.String(), nil)
 		if err != nil {
+			cancel()
 			return errors.Wrap(err, "build request")
 		}
 
 		success := func() bool {
+			defer cancel()
 			resp, err := http.DefaultClient.Do(req)
 
 			if resp != nil && resp.Body != nil {
@@ -41,7 +44,8 @@ func WaitForReady(ctx context.Context, logger log.Logger, promURL *url.URL) erro
 				return true
 			}
 
-			if warnCount == 0 {
+			if !warnSkipped {
+				warnSkipped = true
 				return false
 			}
 			if err != nil {
@@ -49,7 +53,6 @@ func WaitForReady(ctx context.Context, logger log.Logger, promURL *url.URL) erro
 			} else {
 				level.Warn(logger).Log("msg", "Prometheus is not ready", "status", resp.Status)
 			}
-			warnCount++
 			return false
 		}()
 		if success {
@@ -57,8 +60,8 @@ func WaitForReady(ctx context.Context, logger log.Logger, promURL *url.URL) erro
 		}
 
 		select {
-		case <-ctx.Done():
-			return ctx.Err()
+		case <-inCtx.Done():
+			return inCtx.Err()
 		case <-tick.C:
 			continue
 		}
