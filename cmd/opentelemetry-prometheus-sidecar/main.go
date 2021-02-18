@@ -140,6 +140,7 @@ func Main() bool {
 		ctx,
 		log.With(logger, "component", "wal_reader"),
 		cfg.Prometheus.WAL,
+		promURL,
 	)
 	if err != nil {
 		level.Error(logger).Log("msg", "tailing WAL failed", "err", err)

@@ -1,6 +1,7 @@
 package prometheus
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -30,7 +31,8 @@ utilization{} 123
 
 	m := NewMonitor(tu)
 
-	res, err := m.Get()
+	ctx := context.Background()
+	res, err := m.Get(ctx)
 	require.NoError(t, err)
 
 	// Positive examples

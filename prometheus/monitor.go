@@ -2,6 +2,8 @@ package prometheus
 
 import (
 	"context"
+	"fmt"
+	"net/http"
 	"net/url"
 	"sync"
 
@@ -15,6 +17,9 @@ var monitorDuration = telemetry.NewTimer(
 	"sidecar.monitor.duration",
 	"duration of the /metrics scrape used to monitor Prometheus",
 )
+
+// copied from prom2json
+const acceptHeader = `application/vnd.google.protobuf;proto=io.prometheus.client.MetricFamily;encoding=delimited;q=0.7,text/plain;version=0.0.4;q=0.3`
 
 type (
 	Monitor struct {
@@ -36,7 +41,7 @@ func NewMonitor(target *url.URL) *Monitor {
 	}
 }
 
-func (m *Monitor) Get() (_ Result, retErr error) {
+func (m *Monitor) Get(ctx context.Context) (_ Result, retErr error) {
 	var (
 		wg  sync.WaitGroup
 		ch  = make(chan *dto.MetricFamily)
@@ -59,8 +64,25 @@ func (m *Monitor) Get() (_ Result, retErr error) {
 		}
 	}()
 
-	// Note: FetchMetricFamilies closes the channel.
-	return res, prom2json.FetchMetricFamilies(m.target.String(), ch, nil)
+	// Note: copied from FetchMetricFamilies, Context added; this code path closes `ch`.
+	target := m.target.String()
+	req, err := http.NewRequestWithContext(ctx, "GET", target, nil)
+	if err != nil {
+		close(ch)
+		return Result{}, fmt.Errorf("creating GET request for URL %q failed: %v", target, err)
+	}
+	req.Header.Add("Accept", acceptHeader)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		close(ch)
+		return Result{}, fmt.Errorf("executing GET request for URL %q failed: %v", target, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		close(ch)
+		return Result{}, fmt.Errorf("GET request for URL %q returned HTTP status %s", target, resp.Status)
+	}
+	return res, prom2json.ParseResponse(resp, ch)
 }
 
 func (r Result) Counter(name string) Family {
