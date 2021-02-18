@@ -122,7 +122,7 @@ func TestMetricEndpointDisabled(t *testing.T) {
 		t,
 		expectedMetricsDisabledMessage,
 		WithMetricsExporterEndpoint(""),
-		WithSpansExporterEndpoint("https://otlp"),
+		WithSpanExporterEndpoint("https://otlp"),
 	)
 }
 
@@ -147,7 +147,7 @@ func TestDebugEnabled(t *testing.T) {
 
 	lsOtel := ConfigureOpentelemetry(
 		WithLogger(logger),
-		WithExporterEndpoint("localhost:443"),
+		WithSpanExporterEndpoint("localhost:443"),
 		WithResourceAttributes(map[string]string{
 			"attr1":     "val1",
 			"host.name": "host456",
@@ -155,7 +155,7 @@ func TestDebugEnabled(t *testing.T) {
 	)
 	defer lsOtel.Shutdown(context.Background())
 	output := strings.Join(logger.Output(), ",")
-	assert.Contains(t, output, "debug logging enabled")
+	assert.Contains(t, output, "level=debug")
 	assert.Contains(t, output, "localhost:443")
 }
 
