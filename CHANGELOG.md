@@ -8,6 +8,19 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+### Added
+
+- The sidecar's health check period is now configurable via `--healthcheck.period`. The metrics reporting
+  period is automatically configured to half of the healthcheck period, since one depends on the other. (#117)
+- Adds support for gzip compression and `none` compression, because `""` can't be configured via YAML. (#117)
+
+### Changed
+- Improved liveness checking. The sidecar starts in a healthy state and if it passes its selftest it then begins
+  judging its own health after 5 healthcheck periods. After liveness fails, the supervisor will very rapidly report
+  a crash report and shutdown its span reporter to flush its diagnostics. There is a chance that k8s may kill the
+  process before the crash report is sent. (#117)
+- Numerous small consistency and style improvements for logs in general. (#117)
+
 ## [0.15.1](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.15.1) - 2021-02-12
 
 - Disabled target refresh and caching functionality (#115)

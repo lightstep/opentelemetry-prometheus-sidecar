@@ -37,8 +37,7 @@ type tester struct {
 	*controller.Controller
 	producedInst metric.Int64Counter
 	outcomeInst  metric.Int64Counter
-	healthServer *httptest.Server
-	readyServer  *httptest.Server
+	aliveServer  *httptest.Server
 }
 
 func testController(t *testing.T) *tester {
@@ -47,10 +46,9 @@ func testController(t *testing.T) *tester {
 	produced := metric.Must(provider.Meter("test")).NewInt64Counter(config.ProducedMetric)
 	outcome := metric.Must(provider.Meter("test")).NewInt64Counter(config.OutcomeMetric)
 
-	checker := NewChecker(cont)
+	checker := NewChecker(cont, 0 /* uncached */, telemetry.DefaultLogger())
 
-	healthServer := httptest.NewServer(checker.Health())
-	readyServer := httptest.NewServer(checker.Ready())
+	aliveServer := httptest.NewServer(checker.Alive())
 
 	return &tester{
 		T:            t,
@@ -58,8 +56,7 @@ func testController(t *testing.T) *tester {
 		Controller:   cont,
 		producedInst: produced,
 		outcomeInst:  outcome,
-		healthServer: healthServer,
-		readyServer:  readyServer,
+		aliveServer:  aliveServer,
 	}
 }
 
@@ -68,21 +65,9 @@ func (t *tester) Collect() {
 }
 
 func (t *tester) getHealth() (int, Response) {
-	return t.getHealthFrom(true)
-}
-
-func (t *tester) getHealthUnsupervised() (int, Response) {
-	return t.getHealthFrom(false)
-}
-
-func (t *tester) getHealthFrom(isSuper bool) (int, Response) {
 	require.NoError(t.T, t.Controller.Collect(context.Background()))
 
-	url := t.healthServer.URL
-
-	if isSuper {
-		url += "?supervisor=true"
-	}
+	url := t.aliveServer.URL
 
 	resp, err := http.Get(url)
 	require.NoError(t.T, err)
@@ -100,6 +85,7 @@ func TestProducedProgress(t *testing.T) {
 	for k := 1; k <= 3; k++ {
 		ctx := context.Background()
 		tester := testController(t)
+		tester.SetRunning()
 
 		// For the number of healthy periods, add one at a time
 		// and check for health.
@@ -130,6 +116,7 @@ func TestProducedProgress(t *testing.T) {
 func TestOutcomesProgress(t *testing.T) {
 	ctx := context.Background()
 	tester := testController(t)
+	tester.SetRunning()
 
 	for j := 0; j < numSamples; j++ {
 		tester.outcomeInst.Add(ctx, 10, label.String("outcome", "success"))
@@ -139,13 +126,6 @@ func TestOutcomesProgress(t *testing.T) {
 
 		require.Equal(t, http.StatusOK, code)
 		require.Equal(t, "healthy", result.Status)
-	}
-
-	for i := 0; i < 10; i++ {
-		// These do not change results
-		code, result := tester.getHealthUnsupervised()
-		require.Equal(t, "healthy", result.Status)
-		require.Equal(t, http.StatusOK, code)
 	}
 
 	for j := 0; j < numSamples/2; j++ {
@@ -166,18 +146,12 @@ func TestOutcomesProgress(t *testing.T) {
 			config.OutcomeMetric,
 		),
 	)
-
-	for i := 0; i < 10; i++ {
-		// These do not change results or dump stacks.
-		code, result := tester.getHealthUnsupervised()
-		require.Equal(t, http.StatusServiceUnavailable, code)
-		require.Equal(t, "", result.Stackdump)
-	}
 }
 
 func TestOutcomes4951(t *testing.T) {
 	ctx := context.Background()
 	tester := testController(t)
+	tester.SetRunning()
 
 	for j := 0; j < 100; j++ {
 		tester.outcomeInst.Add(ctx, 51, label.String("outcome", "success"))
@@ -194,6 +168,7 @@ func TestOutcomes4951(t *testing.T) {
 func TestOutcomesNoSuccess(t *testing.T) {
 	ctx := context.Background()
 	tester := testController(t)
+	tester.SetRunning()
 
 	for j := 0; j < numSamples-1; j++ {
 		tester.outcomeInst.Add(ctx, 10, label.String("outcome", "failed"))
@@ -219,6 +194,7 @@ func TestOutcomesNoSuccess(t *testing.T) {
 
 func TestSuperStackdump(t *testing.T) {
 	tester := testController(t)
+	tester.SetRunning()
 
 	for i := 0; i < numSamples-1; i++ {
 		code, result := tester.getHealth()
@@ -228,22 +204,14 @@ func TestSuperStackdump(t *testing.T) {
 		require.Equal(t, "", result.Stackdump)
 	}
 
-	for i := 0; i < stackdumpAfter-1; i++ {
-		code, result := tester.getHealth()
-
-		require.Equal(t, http.StatusServiceUnavailable, code)
-		require.Equal(t, "", result.Stackdump)
-	}
-
 	code, result := tester.getHealth()
 
 	require.Equal(t, http.StatusServiceUnavailable, code)
 	require.Contains(t, result.Stackdump, "goroutine")
 	oldStack := result.Stackdump
 
-	// The next result still has a stackdump, identical
 	code, result = tester.getHealth()
 
 	require.Equal(t, http.StatusServiceUnavailable, code)
-	require.Equal(t, oldStack, result.Stackdump)
+	require.NotEqual(t, oldStack, result.Stackdump)
 }

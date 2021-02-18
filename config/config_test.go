@@ -175,8 +175,9 @@ startup_timeout: 1777s
 					},
 				},
 				Admin: AdminConfig{
-					ListenIP: config.DefaultAdminListenIP,
-					Port:     config.DefaultAdminPort,
+					ListenIP:          config.DefaultAdminListenIP,
+					Port:              config.DefaultAdminPort,
+					HealthCheckPeriod: DurationConfig{config.DefaultHealthCheckPeriod},
 				},
 				Destination: OTLPConfig{
 					Endpoint: "http://womp.womp",
@@ -265,6 +266,7 @@ log_config:
 				"--destination.compression", "compression_fmt",
 				"--prometheus.wal", "wal-eeee",
 				"--log.level=warning",
+				"--healthcheck.period=17s",
 				"--diagnostics.endpoint", "https://look.here",
 				"--disable-diagnostics",
 				`--filter=l1{l2="v3"}`,
@@ -279,8 +281,9 @@ log_config:
 					},
 				},
 				Admin: AdminConfig{
-					ListenIP: config.DefaultAdminListenIP,
-					Port:     config.DefaultAdminPort,
+					ListenIP:          config.DefaultAdminListenIP,
+					Port:              config.DefaultAdminPort,
+					HealthCheckPeriod: DurationConfig{17 * time.Second},
 				},
 				Destination: OTLPConfig{
 					Endpoint: "http://womp.womp",
@@ -363,6 +366,7 @@ log_config:
 admin:
   listen_ip: 0.0.0.0
   port: 9999
+  health_check_period: 10s
 
 security:
   root_certificates:
@@ -399,8 +403,9 @@ static_metadata:
 					},
 				},
 				Admin: AdminConfig{
-					ListenIP: config.DefaultAdminListenIP,
-					Port:     9999,
+					ListenIP:          config.DefaultAdminListenIP,
+					Port:              9999,
+					HealthCheckPeriod: DurationConfig{10 * time.Second},
 				},
 				StartupDelay: DurationConfig{
 					30 * time.Second,
