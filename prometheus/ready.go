@@ -32,7 +32,11 @@ func WaitForReady(ctx context.Context, logger log.Logger, promURL *url.URL) erro
 
 		success := func() bool {
 			resp, err := http.DefaultClient.Do(req)
-			defer resp.Body.Close()
+
+			if resp != nil && resp.Body != nil {
+				defer resp.Body.Close()
+			}
+
 			if err == nil && resp.StatusCode/100 == 2 {
 				return true
 			}

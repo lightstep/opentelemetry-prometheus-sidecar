@@ -65,6 +65,12 @@ var (
 			"The number of attempts to read a WAL segment",
 		),
 	)
+	segmentByteCounter = sidecar.OTelMeterMust.NewInt64Counter(
+		"sidecar.segment.bytes",
+		metric.WithDescription(
+			"The number of bytes read from WAL segments",
+		),
+	)
 	segmentRestartCounter = sidecar.OTelMeterMust.NewInt64Counter(
 		"sidecar.segment.restarts",
 		metric.WithDescription(
@@ -88,6 +94,8 @@ type Tailer struct {
 	mtx         sync.Mutex
 	nextSegment int
 	offset      int // Bytes read within the current reader.
+
+	scratch int
 }
 
 // Tail the prometheus/tsdb write ahead log in the given directory. Checkpoints
@@ -106,6 +114,9 @@ func Tail(ctx context.Context, logger log.Logger, dir string, promURL *url.URL) 
 	}
 	cpdir, k, err := wal.LastCheckpoint(dir)
 	if errors.Cause(err) == record.ErrNotFound {
+		// TODO: Test this code path, where the sidecar starts before
+		// Prometheus ever begins recording a WAL.  This can lead to
+		// an indefinite wait if misconfigured.
 		t.cur = ioutil.NopCloser(bytes.NewReader(nil))
 		t.nextSegment = 0
 	} else if err != nil {
@@ -113,11 +124,15 @@ func Tail(ctx context.Context, logger log.Logger, dir string, promURL *url.URL) 
 	} else {
 		// Open the entire checkpoint first. It has to be consumed before
 		// the tailer proceeds to any segments.
-		t.cur, err = wal.NewSegmentsReader(cpdir)
+		_, err = wal.NewSegmentsReader(cpdir)
 		if err != nil {
 			return nil, errors.Wrap(err, "open checkpoint")
 		}
-		t.nextSegment = k + 1
+		t.cur, err = openSegment(t.dir, k+1)
+		if err != nil {
+			return nil, errors.Wrapf(err, "open first WAL segment %d", k+1)
+		}
+		t.nextSegment = k + 2
 	}
 	return t, nil
 }
@@ -272,8 +287,12 @@ func (t *Tailer) Read(b []byte) (int, error) {
 	for {
 		// Any Read result other than io.EOF is simply returned.  If any
 		// data was read, return it before considering the EOF cases.
+		n, err := t.cur.Read(b)
 		segmentReadCounter.Add(t.ctx, 1)
-		if n, err := t.cur.Read(b); err != io.EOF {
+		segmentByteCounter.Add(t.ctx, int64(n))
+		t.scratch += n
+
+		if err != io.EOF {
 			t.incOffset(n)
 			return n, err
 		} else if n != 0 {
@@ -427,6 +446,12 @@ func (t *Tailer) Read(b []byte) (int, error) {
 			return 0, errors.Wrap(err, "open next segment")
 		}
 
+		level.Info(t.logger).Log(
+			"msg", "transition WAL to segment",
+			"segment", nextSegment,
+		)
+
+		t.incNextSegment()
 		t.cur = next
 	}
 }
@@ -444,7 +469,8 @@ func openSegment(dir string, n int) (io.ReadCloser, error) {
 		if err != nil || k != n {
 			continue
 		}
-		return wal.OpenReadSegment(filepath.Join(dir, entry.Name()))
+		path := filepath.Join(dir, entry.Name())
+		return wal.OpenReadSegment(path)
 	}
 	return nil, record.ErrNotFound
 }
