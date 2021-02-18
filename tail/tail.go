@@ -123,16 +123,15 @@ func Tail(ctx context.Context, logger log.Logger, dir string, promURL *url.URL) 
 		return nil, errors.Wrap(err, "retrieve last checkpoint")
 	} else {
 		// Open the entire checkpoint first. It has to be consumed before
-		// the tailer proceeds to any segments.
-		_, err = wal.NewSegmentsReader(cpdir)
+		// the tailer proceeds to any segments.  During this initial
+		// segment the segment number equals the checkpoint and the
+		// offset relates to the concatenation of checkpoint segments.
+		t.cur, err = wal.NewSegmentsReader(cpdir)
 		if err != nil {
 			return nil, errors.Wrap(err, "open checkpoint")
 		}
-		t.cur, err = openSegment(t.dir, k+1)
-		if err != nil {
-			return nil, errors.Wrapf(err, "open first WAL segment %d", k+1)
-		}
-		t.nextSegment = k + 2
+		// We will resume reading ordinary segments at k+1.
+		t.nextSegment = k + 1
 	}
 	return t, nil
 }
@@ -362,7 +361,7 @@ func (t *Tailer) Read(b []byte) (int, error) {
 			// segment, now try again.  (If block size aligned,
 			// possibly the server is shutting down.)
 			doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
-				level.Info(t.logger).Log(
+				level.Debug(t.logger).Log(
 					"msg", "WAL reader is up-to-date",
 					"segment", promSeg,
 					"offset", currentOffset,
@@ -446,12 +445,11 @@ func (t *Tailer) Read(b []byte) (int, error) {
 			return 0, errors.Wrap(err, "open next segment")
 		}
 
-		level.Info(t.logger).Log(
-			"msg", "transition WAL to segment",
-			"segment", nextSegment,
-		)
-
 		t.incNextSegment()
+		level.Info(t.logger).Log(
+			"msg", "transition to WAL segment",
+			"segment", t.CurrentSegment(),
+		)
 		t.cur = next
 	}
 }

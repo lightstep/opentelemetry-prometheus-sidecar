@@ -227,7 +227,7 @@ func Main() bool {
 		return true
 	}
 
-	level.Debug(logger).Log("msg", "starting now")
+	level.Debug(logger).Log("msg", "entering run state")
 	healthChecker.SetRunning()
 
 	// Run two inter-depdendent components:

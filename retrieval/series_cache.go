@@ -15,6 +15,7 @@ package retrieval
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"sync"
 	"time"
@@ -237,6 +238,7 @@ func (c *seriesCache) get(ctx context.Context, ref uint64) (*seriesCacheEntry, b
 	c.mtx.Unlock()
 
 	if !ok {
+		fmt.Println("Series not found with number of entries", len(c.entries))
 		return nil, false, nil
 	}
 	if e.shouldRefresh() {
@@ -308,6 +310,8 @@ func (c *seriesCache) getResetAdjusted(ref uint64, t int64, v float64) (int64, f
 // set the label set for the given reference.
 // maxSegment indicates the the highest segment at which the series was possibly defined.
 func (c *seriesCache) set(ctx context.Context, ref uint64, lset labels.Labels, maxSegment int) error {
+	fmt.Println("SET series cache", ref, lset, maxSegment)
+
 	exported := c.filters == nil || matchFilters(lset, c.filters)
 
 	if !exported {
