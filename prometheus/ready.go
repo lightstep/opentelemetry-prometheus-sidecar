@@ -10,6 +10,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
+	"github.com/pkg/errors"
 )
 
 func WaitForReady(ctx context.Context, logger log.Logger, promURL *url.URL) error {
@@ -24,20 +25,23 @@ func WaitForReady(ctx context.Context, logger log.Logger, promURL *url.URL) erro
 	defer tick.Stop()
 
 	for {
-		resp, err := http.Get(u.String())
+		req, err := http.NewRequestWithContext(ctx, "GET", u.String(), nil)
 		if err != nil {
-			if warnCount != 0 {
-				level.Warn(logger).Log("msg", "Prometheus readiness check", "err", err)
-			}
-			warnCount++
-			continue
+			return errors.Wrap(err, "build request")
 		}
-		if resp.StatusCode/100 == 2 {
+
+		resp, err := http.DefaultClient.Do(req)
+		if err == nil && resp.StatusCode/100 == 2 {
 			return nil
 		}
 
 		if warnCount != 0 {
-			level.Warn(logger).Log("msg", "Prometheus is not ready", "status", resp.Status)
+			if err != nil {
+				level.Warn(logger).Log("msg", "Prometheus readiness check", "err", err)
+			} else {
+				level.Warn(logger).Log("msg", "Prometheus is not ready", "status", resp.Status)
+			}
+			warnCount++
 		}
 
 		select {
