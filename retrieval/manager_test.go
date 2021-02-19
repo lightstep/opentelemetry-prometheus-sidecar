@@ -24,6 +24,7 @@ import (
 	metric_pb "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
 	resource_pb "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/resource/v1"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/internal/otlptest"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/internal/promtest"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
@@ -66,7 +67,10 @@ func TestReader_Progress(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tailer, err := tail.Tail(ctx, telemetry.DefaultLogger(), dir)
+
+	prom := promtest.NewFakePrometheus()
+
+	tailer, err := tail.Tail(ctx, telemetry.DefaultLogger(), dir, prom.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,6 +119,11 @@ func TestReader_Progress(t *testing.T) {
 			samples := make([]record.RefSample, 1000)
 			samples[0] = record.RefSample{Ref: 1, T: int64(sz) * 1000}
 
+			// Note: This uses the default segment size, independent of
+			// the actual segment size, because that's what the sidecar
+			// uses to calculate Size(), so this expression is consistent.
+			prom.SetSegment(sz / wal.DefaultSegmentSize)
+
 			if err := w.Log(enc.Samples(samples, nil)); err != nil {
 				t.Error(err)
 				break
@@ -141,7 +150,7 @@ func TestReader_Progress(t *testing.T) {
 	ctx, cancel = context.WithCancel(context.Background())
 	defer cancel()
 
-	tailer, err = tail.Tail(ctx, telemetry.DefaultLogger(), dir)
+	tailer, err = tail.Tail(ctx, telemetry.DefaultLogger(), dir, prom.URL)
 	if err != nil {
 		t.Fatal(err)
 	}

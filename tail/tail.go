@@ -17,6 +17,7 @@ package tail
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net/url"
@@ -246,9 +247,6 @@ func (t *Tailer) waitForReadiness() error {
 }
 
 func (t *Tailer) getPrometheusSegment() (int, error) {
-	// This is a gauge with no labels.
-	const name = "prometheus_tsdb_wal_segment_current"
-
 	ctx, cancel := context.WithTimeout(t.ctx, config.DefaultHealthCheckTimeout)
 	defer cancel()
 
@@ -257,13 +255,20 @@ func (t *Tailer) getPrometheusSegment() (int, error) {
 		return 0, errors.Wrap(err, "prometheus /metrics")
 	}
 
-	seg := int(res.Gauge(name).For(nil))
+	seg := int(res.Gauge(config.PrometheusCurrentSegmentMetricName).For(nil))
 
-	if seg <= 0 {
-		return 0, errors.New("cannot get current WAL segment")
+	if seg > 0 {
+		return seg, nil
 	}
 
-	return seg, nil
+	// Prometheus does not set this metric until it advances to a new
+	// segment.  If it's segment 0, we will not see the metric yet.
+	srs, err := listSegments(t.dir)
+	if err == nil && len(srs) == 1 && srs[0].index == 0 {
+		return 0, nil
+	}
+
+	return 0, errors.New("cannot determine current segment from /metrics")
 }
 
 func (t *Tailer) Read(b []byte) (int, error) {
@@ -348,6 +353,7 @@ func (t *Tailer) Read(b []byte) (int, error) {
 				level.Warn(t.logger).Log(
 					"msg", "scraping for current WAL segment",
 					"err", err,
+					"wal_contents", fmt.Sprint(dirContents(t.dir)),
 				)
 			})
 			continue
@@ -363,7 +369,7 @@ func (t *Tailer) Read(b []byte) (int, error) {
 			doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
 				level.Debug(t.logger).Log(
 					"msg", "WAL reader is up-to-date",
-					"segment", promSeg,
+					"segment", currentSegment,
 					"offset", currentOffset,
 				)
 			})
@@ -382,7 +388,7 @@ func (t *Tailer) Read(b []byte) (int, error) {
 			doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
 				level.Info(t.logger).Log(
 					"msg", "WAL reader waiting for fsync",
-					"segment", promSeg,
+					"segment", currentSegment,
 					"offset", currentOffset,
 				)
 			})
@@ -396,13 +402,13 @@ func (t *Tailer) Read(b []byte) (int, error) {
 			doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
 				level.Error(t.logger).Log(
 					"msg", "truncated WAL segment",
-					"segment", promSeg,
+					"segment", currentSegment,
 					"offset", currentOffset,
 				)
 			})
 			return 0, errors.Errorf(
 				"truncated WAL segment %d @ %d",
-				promSeg,
+				currentSegment,
 				currentOffset,
 			)
 		}
@@ -411,8 +417,8 @@ func (t *Tailer) Read(b []byte) (int, error) {
 			doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
 				level.Error(t.logger).Log(
 					"msg", "WAL segment in the future",
-					"segment", promSeg,
-					"current", currentSegment,
+					"prometheus_current", promSeg,
+					"sidecar_current", currentSegment,
 				)
 			})
 			return 0, errors.Errorf(
@@ -471,4 +477,16 @@ func openSegment(dir string, n int) (io.ReadCloser, error) {
 		return wal.OpenReadSegment(path)
 	}
 	return nil, record.ErrNotFound
+}
+
+func dirContents(dir string) []string {
+	var r []string
+	files, err := ioutil.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	for _, entry := range files {
+		r = append(r, entry.Name())
+	}
+	return r
 }

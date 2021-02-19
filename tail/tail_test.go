@@ -27,6 +27,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/internal/promtest"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/tsdb/wal"
@@ -64,7 +65,9 @@ func TestCorruption(t *testing.T) {
 	dir := "./testdata/corruption"
 	ctx, cancel := context.WithCancel(context.Background())
 
-	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir)
+	prom := promtest.NewFakePrometheus()
+
+	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir, prom.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +100,10 @@ func TestInvalidSegment(t *testing.T) {
 	dir := "./testdata/invalid-segment"
 	ctx, cancel := context.WithCancel(context.Background())
 
-	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir)
+	prom := promtest.NewFakePrometheus()
+	prom.SetSegment(2)
+
+	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir, prom.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +128,7 @@ func TestInvalidSegment(t *testing.T) {
 	if wr.Err() == nil {
 		t.Fatal(errors.New("expected segment transition error"))
 	}
-	assert.Contains(t, wr.Err().Error(), "segment 0 transition at unexpected")
+	assert.Contains(t, wr.Err().Error(), "read first header byte: truncated WAL segment")
 }
 
 func TestTailFuzz(t *testing.T) {
@@ -133,16 +139,20 @@ func TestTailFuzz(t *testing.T) {
 	defer os.RemoveAll(dir)
 	ctx, cancel := context.WithCancel(context.Background())
 
-	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir)
+	prom := promtest.NewFakePrometheus()
+
+	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir, prom.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer rc.Close()
 
 	var wg sync.WaitGroup
-	wg.Add(1)
+	wg.Add(2)
 
-	w, err := wal.NewSize(nil, nil, dir, 2*1024*1024, false)
+	const segmentSize = 2 * 1024 * 1024
+
+	w, err := wal.NewSize(nil, nil, dir, segmentSize, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,6 +165,7 @@ func TestTailFuzz(t *testing.T) {
 	const count = 50000
 	var asyncErr atomic.Value
 	go func() {
+		defer wg.Done()
 		for i := 0; i < count; i++ {
 			if i%100 == 0 {
 				time.Sleep(time.Duration(rand.Intn(10 * int(time.Millisecond))))
@@ -168,9 +179,29 @@ func TestTailFuzz(t *testing.T) {
 				asyncErr.Store(err)
 				break
 			}
+
 			written = append(written, rec)
 		}
-		wg.Done()
+	}()
+
+	stopCh := make(chan struct{})
+	go func() {
+		defer wg.Done()
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-stopCh:
+				return
+			case <-ticker.C:
+				ss, err := listSegments(dir)
+				require.NoError(t, err)
+				if len(ss) > 0 {
+					prom.SetSegment(ss[len(ss)-1].index)
+				}
+			}
+		}
 	}()
 
 	wr := wal.NewReader(rc)
@@ -183,6 +214,7 @@ func TestTailFuzz(t *testing.T) {
 	if wr.Err() != nil {
 		t.Fatal(wr.Err())
 	}
+	close(stopCh)
 	wg.Wait()
 	if err := asyncErr.Load(); err != nil {
 		t.Fatal("async error: ", err)
@@ -210,51 +242,5 @@ func TestTailFuzz(t *testing.T) {
 	}
 	if wr.Err() != nil {
 		t.Fatal(wr.Err())
-	}
-}
-
-func BenchmarkTailFuzz(t *testing.B) {
-	dir, err := ioutil.TempDir("", "test_tail")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(dir)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rc.Close()
-
-	w, err := wal.NewSize(nil, nil, dir, 32*1024*1024, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer w.Close()
-
-	t.SetBytes(4 * 2000) // Average record size times worker count.
-	t.ResetTimer()
-
-	var rec [4000]byte
-	count := t.N * 4
-	for k := 0; k < 4; k++ {
-		go func() {
-			for i := 0; i < count/4; i++ {
-				if err := w.Log(rec[:rand.Intn(4000)]); err != nil {
-					panic(err)
-				}
-			}
-		}()
-	}
-
-	wr := wal.NewReader(rc)
-
-	for i := 1; wr.Next(); i++ {
-		if i == t.N*4 {
-			break
-		}
 	}
 }

@@ -38,6 +38,7 @@ func TestMain(m *testing.M) {
 	main()
 }
 
+// TODO: Use the new text fixture
 func runPrometheusService(ts *testServer) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/-/ready", func(w http.ResponseWriter, r *http.Request) {
@@ -122,7 +123,7 @@ Loop:
 	if err := cmd.Process.Kill(); err == nil {
 		t.Errorf("opentelemetry-prometheus-sidecar didn't shutdown after sending the Interrupt signal")
 	}
-	const expected = "source is not ready: context canceled"
+	const expected = "Prometheus is not ready: context canceled"
 	require.Error(t, stoppedErr)
 	require.Contains(t, stoppedErr.Error(), "exit status 1")
 
