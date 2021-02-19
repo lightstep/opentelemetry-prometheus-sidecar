@@ -375,7 +375,6 @@ security:
 
 opentelemetry:
   metrics_prefix: prefix.
-  use_meta_labels: true
 
 filters:
 - metric{label=value}
@@ -422,7 +421,6 @@ static_metadata:
 				},
 				OpenTelemetry: OTelConfig{
 					MetricsPrefix: "prefix.",
-					UseMetaLabels: true,
 				},
 				Destination: OTLPConfig{
 					Endpoint: "https://ingest.staging.lightstep.com:443",
