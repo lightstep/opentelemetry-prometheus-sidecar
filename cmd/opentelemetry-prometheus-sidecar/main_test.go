@@ -38,8 +38,9 @@ func TestMain(m *testing.M) {
 	main()
 }
 
-// TODO: Use the new text fixture
 func runPrometheusService(ts *testServer) {
+	// Note: This does not expose the necessary metric needed to start the WAL
+	// tailer, it only exposes the readiness handler needed to test startup.
 	mux := http.NewServeMux()
 	mux.HandleFunc("/-/ready", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
