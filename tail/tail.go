@@ -95,8 +95,6 @@ type Tailer struct {
 	mtx         sync.Mutex
 	nextSegment int
 	offset      int // Bytes read within the current reader.
-
-	scratch int
 }
 
 // Tail the prometheus/tsdb write ahead log in the given directory. Checkpoints
@@ -294,7 +292,6 @@ func (t *Tailer) Read(b []byte) (int, error) {
 		n, err := t.cur.Read(b)
 		segmentReadCounter.Add(t.ctx, 1)
 		segmentByteCounter.Add(t.ctx, int64(n))
-		t.scratch += n
 
 		if err != io.EOF {
 			t.incOffset(n)
