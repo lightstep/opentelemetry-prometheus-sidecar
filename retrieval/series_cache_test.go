@@ -31,14 +31,6 @@ import (
 	"github.com/prometheus/prometheus/tsdb/wal"
 )
 
-// metadataMap implements a MetadataGetter for exact matches of job/instance/metric inputs.
-// TODO: Move me back to transform_test.go once it is restored.
-type metadataMap map[string]*metadata.Entry
-
-func (m metadataMap) Get(ctx context.Context, job, instance, metric string) (*metadata.Entry, error) {
-	      return m[job+"/"+instance+"/"+metric], nil
-}
-
 // This test primarily verifies the garbage collection logic of the cache.
 // The getters are verified integrated into the sample builder in transform_test.go
 func TestScrapeCache_GarbageCollect(t *testing.T) {
