@@ -119,6 +119,9 @@ func TestReader_Progress(t *testing.T) {
 			samples := make([]record.RefSample, 1000)
 			samples[0] = record.RefSample{Ref: 1, T: int64(sz) * 1000}
 
+			// Note: We must update the segment number in order for
+			// the Tail reader to make progress.
+			//
 			// Note: This uses the default segment size, independent of
 			// the actual segment size, because that's what the sidecar
 			// uses to calculate Size(), so this expression is consistent.

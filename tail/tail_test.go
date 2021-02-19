@@ -185,6 +185,9 @@ func TestTailFuzz(t *testing.T) {
 		}
 	}()
 
+	// Asynchronously udate the segment number in order for the
+	// Tail reader to make progress, since we are testing a real
+	// WAL with a fake Prometheus.
 	stopCh := make(chan struct{})
 	go func() {
 		defer wg.Done()
