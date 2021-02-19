@@ -66,3 +66,10 @@ func (fp *FakePrometheus) SetSegment(s int) {
 
 	fp.segment = s
 }
+
+func (fp *FakePrometheus) SetReady(r bool) {
+	fp.lock.Lock()
+	defer fp.lock.Unlock()
+
+	fp.ready = r
+}

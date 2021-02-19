@@ -27,6 +27,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/internal/promtest"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/pkg/errors"
@@ -243,4 +244,59 @@ func TestTailFuzz(t *testing.T) {
 	if wr.Err() != nil {
 		t.Fatal(wr.Err())
 	}
+}
+
+func TestSlowFsync(t *testing.T) {
+	dir, err := ioutil.TempDir("", "test_tail")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	prom := promtest.NewFakePrometheus()
+
+	const (
+		segmentSize = 2 * 1024 * 1024
+		recSize     = 1024 * 1024
+	)
+
+	rec := make([]byte, recSize)
+
+	w, err := wal.NewSize(nil, nil, dir, segmentSize, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+
+	w.Log(rec)
+
+	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir, prom.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rc.Close()
+	wr := wal.NewReader(rc)
+
+	// Read one record.
+	require.True(t, wr.Next())
+	require.Equal(t, recSize, len(wr.Record()))
+
+	// The next record will start a new segment, but set
+	// Prometheus unready first.
+	prom.SetReady(false)
+
+	go func() {
+		time.Sleep(config.DefaultHealthCheckTimeout)
+		prom.SetReady(true)
+		w.Log(rec)
+		time.Sleep(config.DefaultHealthCheckTimeout)
+		prom.SetSegment(1)
+	}()
+
+	// Reading this second record has to wait for both readiness
+	// and the updated segment.
+	require.True(t, wr.Next())
+	require.Equal(t, recSize, len(wr.Record()))
 }
