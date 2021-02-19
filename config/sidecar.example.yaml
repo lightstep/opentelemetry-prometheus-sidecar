@@ -40,11 +40,6 @@ opentelemetry:
   # Metrics prefix is prepended to all exported metric names:
   metrics_prefix: prefix.
 
-  # This option tells the sidecar to apply all "__meta_"-prefixed
-  # target labels returned by Prometheus discovered as resource
-  # attributes in the exported metric data:
-  use_meta_labels: true
-
 # Administrative settings:
 admin:
   # Listen address of the sidecar's http server (e.g., for healtchecks)

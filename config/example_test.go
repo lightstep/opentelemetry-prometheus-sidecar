@@ -43,8 +43,7 @@ func Example() {
         //     "max_point_age": "72h0m0s"
         //   },
         //   "opentelemetry": {
-        //     "metrics_prefix": "prefix.",
-        //     "use_meta_labels": true
+        //     "metrics_prefix": "prefix."
         //   },
         //   "admin": {
         //     "listen_ip": "0.0.0.0",
