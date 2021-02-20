@@ -88,6 +88,10 @@ an OpenTelemetry (https://opentelemetry.io) Protocol endpoint.
 	OutcomeSuccessValue = "success"
 
 	HealthCheckURI = "/-/health"
+
+	// PrometheusCurrentSegmentMetricName names an internal gauge
+	// exposed by Prometheus (having no labels).
+	PrometheusCurrentSegmentMetricName = "prometheus_tsdb_wal_segment_current"
 )
 
 var (

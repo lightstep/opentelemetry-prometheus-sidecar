@@ -23,7 +23,6 @@ import (
 	_ "net/http/pprof" // Comment this line to disable pprof endpoint.
 	"net/url"
 	"os"
-	"path"
 	"runtime"
 	"time"
 
@@ -34,6 +33,7 @@ import (
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/health"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/otlp"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/prometheus"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/retrieval"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/supervisor"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
@@ -140,6 +140,7 @@ func Main() bool {
 		ctx,
 		log.With(logger, "component", "wal_reader"),
 		cfg.Prometheus.WAL,
+		promURL,
 	)
 	if err != nil {
 		level.Error(logger).Log("msg", "tailing WAL failed", "err", err)
@@ -226,7 +227,7 @@ func Main() bool {
 		return true
 	}
 
-	level.Debug(logger).Log("msg", "starting now")
+	level.Debug(logger).Log("msg", "entering run state")
 	healthChecker.SetRunning()
 
 	// Run two inter-depdendent components:
@@ -291,38 +292,6 @@ func usage(err error) {
 	)
 }
 
-func waitForPrometheus(ctx context.Context, logger log.Logger, promURL *url.URL) error {
-	tick := time.NewTicker(3 * time.Second)
-	defer tick.Stop()
-
-	u := *promURL
-	u.Path = path.Join(promURL.Path, "/-/ready")
-
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-tick.C:
-			resp, err := http.Get(u.String())
-			if err != nil {
-				level.Warn(logger).Log(
-					"msg", "Prometheus readiness check",
-					"err", err,
-				)
-				continue
-			}
-			if resp.StatusCode/100 == 2 {
-				return nil
-			}
-
-			level.Warn(logger).Log(
-				"msg", "Prometheus is not ready",
-				"status", resp.Status,
-			)
-		}
-	}
-}
-
 // parseFilters parses two flags that contain PromQL-style metric/label selectors and
 // returns a list of the resulting matchers.
 func parseFilters(logger log.Logger, filters []string) ([][]*labels.Matcher, error) {
@@ -348,8 +317,8 @@ func selfTest(ctx context.Context, promURL *url.URL, scf otlp.StorageClientFacto
 	// These tests are performed sequentially, to keep the logs simple.
 	// Note waitForPrometheus has no unrecoverable error conditions, so
 	// loops until success or the context is canceled.
-	if err := waitForPrometheus(ctx, logger, promURL); err != nil {
-		return errors.Wrap(err, "source is not ready")
+	if err := prometheus.WaitForReady(ctx, logger, promURL); err != nil {
+		return errors.Wrap(err, "Prometheus is not ready")
 	}
 
 	level.Debug(logger).Log("msg", "checking OpenTelemetry endpoint")
