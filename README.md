@@ -217,6 +217,8 @@ Flags:
                                  http://127.0.0.1:9090/
       --prometheus.max-point-age=PROMETHEUS.MAX-POINT-AGE  
                                  Skip points older than this, to assist recovery. Default: 25h0m0s
+      --prometheus.max-timeseries-per-request=PROMETHEUS.MAX-TIMESERIES-PER-REQUEST  
+                                 Send at most this number of timeseries per request. Default: 2000
       --admin.port=ADMIN.PORT    Administrative port this process listens on. Default: 9091
       --admin.listen-ip=ADMIN.LISTEN-IP  
                                  Administrative IP address this process listens on. Default: 0.0.0.0
