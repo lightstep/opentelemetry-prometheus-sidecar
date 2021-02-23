@@ -183,7 +183,7 @@ type MainConfig struct {
 	Filters        []string               `json:"filters"`
 	MetricRenames  []MetricRenamesConfig  `json:"metric_renames"`
 	StaticMetadata []StaticMetadataConfig `json:"static_metadata"`
-	LogConfig      LogConfig              `json:"log_config"`
+	LogConfig      LogConfig              `json:"log"`
 
 	DisableSupervisor  bool `json:"disable_supervisor"`
 	DisableDiagnostics bool `json:"disable_diagnostics"`

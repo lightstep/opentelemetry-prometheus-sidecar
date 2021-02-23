@@ -256,7 +256,7 @@ filters:
 prometheus:
   wal: bad-guy
 
-log_config:
+log:
   format: json
   level: error
 `,
@@ -368,7 +368,7 @@ prometheus:
 startup_delay: 30s
 startup_timeout: 33s
 
-log_config:
+log:
   level: warn
   format: json
 
