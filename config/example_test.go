@@ -41,7 +41,8 @@ func Example() {
 	//     "endpoint": "http://127.0.0.1:19090",
 	//     "wal": "/volume/wal",
 	//     "max_point_age": "72h0m0s",
-	//     "max_timeseries_per_request": 2000
+	//     "max_timeseries_per_request": 2000,
+	//     "max_shards": 2000
 	//   },
 	//   "opentelemetry": {
 	//     "metrics_prefix": "prefix."
