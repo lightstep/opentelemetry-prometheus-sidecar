@@ -55,10 +55,10 @@ const (
 	DefaultSupervisorBufferSize  = 16384
 	DefaultSupervisorLogsHistory = 16
 
-	// TODO: The two settings below are not configurable, they should be.
-
 	// How many points per request.
-	MaxTimeseriesPerRequest = 200
+	DefaultMaxTimeseriesPerRequest = 2000
+
+	// TODO: The setting below is not configurable, it should be.
 
 	// DefaultMaxExportAttempts sets a maximum on the number of
 	// attempts to export a request.  This is not RPC requests,
@@ -145,9 +145,10 @@ type LogConfig struct {
 }
 
 type PromConfig struct {
-	Endpoint    string         `json:"endpoint"`
-	WAL         string         `json:"wal"`
-	MaxPointAge DurationConfig `json:"max_point_age"`
+	Endpoint                string         `json:"endpoint"`
+	WAL                     string         `json:"wal"`
+	MaxPointAge             DurationConfig `json:"max_point_age"`
+	MaxTimeseriesPerRequest int            `json:"max_timeseries_per_request"`
 }
 
 type OTelConfig struct {
@@ -186,14 +187,32 @@ type MainConfig struct {
 	ConfigFilename string `json:"-" yaml:"-"`
 }
 
+// TODO Move this config object into MainConfig (or at least the
+// fields we use, which is most) and add command-line flags.
+func (c MainConfig) QueueConfig() promconfig.QueueConfig {
+	cfg := promconfig.DefaultQueueConfig
+
+	cfg.MaxBackoff = model.Duration(2 * time.Second)
+	cfg.MaxSamplesPerSend = c.Prometheus.MaxTimeseriesPerRequest
+
+	// We want the queues to have enough buffer to ensure consistent flow with full batches
+	// being available for every new request.
+	// Testing with different latencies and shard numbers have shown that 3x of the batch size
+	// works well.
+	cfg.Capacity = 3 * cfg.MaxSamplesPerSend
+
+	return cfg
+}
+
 type FileReadFunc func(filename string) ([]byte, error)
 
 func DefaultMainConfig() MainConfig {
 	return MainConfig{
 		Prometheus: PromConfig{
-			WAL:         DefaultWALDirectory,
-			Endpoint:    DefaultPrometheusEndpoint,
-			MaxPointAge: DurationConfig{DefaultMaxPointAge},
+			WAL:                     DefaultWALDirectory,
+			Endpoint:                DefaultPrometheusEndpoint,
+			MaxPointAge:             DurationConfig{DefaultMaxPointAge},
+			MaxTimeseriesPerRequest: DefaultMaxTimeseriesPerRequest,
 		},
 		Admin: AdminConfig{
 			Port:              DefaultAdminPort,
@@ -272,6 +291,9 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 
 	a.Flag("prometheus.max-point-age", "Skip points older than this, to assist recovery. Default: "+DefaultMaxPointAge.String()).
 		DurationVar(&cfg.Prometheus.MaxPointAge.Duration)
+
+	a.Flag("prometheus.max-timeseries-per-request", fmt.Sprintf("Send at most this number of timeseries per request. Default: %d", DefaultMaxTimeseriesPerRequest)).
+		IntVar(&cfg.Prometheus.MaxTimeseriesPerRequest)
 
 	a.Flag("admin.port", "Administrative port this process listens on. Default: "+fmt.Sprint(DefaultAdminPort)).
 		IntVar(&cfg.Admin.Port)
@@ -499,21 +521,4 @@ func (d *DurationConfig) UnmarshalJSON(data []byte) error {
 
 func (d DurationConfig) MarshalJSON() ([]byte, error) {
 	return json.Marshal(d.Duration.String())
-}
-
-// TODO Move this config object into MainConfig (or at least the
-// fields we use, which is most) and add command-line flags.
-func DefaultQueueConfig() promconfig.QueueConfig {
-	cfg := promconfig.DefaultQueueConfig
-
-	cfg.MaxBackoff = model.Duration(2 * time.Second)
-	cfg.MaxSamplesPerSend = MaxTimeseriesPerRequest
-
-	// We want the queues to have enough buffer to ensure consistent flow with full batches
-	// being available for every new request.
-	// Testing with different latencies and shard numbers have shown that 3x of the batch size
-	// works well.
-	cfg.Capacity = 3 * MaxTimeseriesPerRequest
-
-	return cfg
 }

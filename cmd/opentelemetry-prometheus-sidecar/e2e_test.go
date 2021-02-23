@@ -196,6 +196,8 @@ func TestE2E(t *testing.T) {
 			"--prometheus.wal", path.Join(dataDir, "wal"),
 			"--destination.attribute=service.name=Service",
 			"--startup.delay=1s",
+			// TODO: check this value is set correctly
+			"--prometheus.max-timeseries-per-request=10",
 		)...,
 	)
 	sideCmd.Env = append(os.Environ(), "RUN_MAIN=1")

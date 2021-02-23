@@ -247,10 +247,11 @@ func (c *Client) Store(req *metricsService.ExportMetricsServiceRequest) error {
 
 	service := metricsService.NewMetricsServiceClient(conn)
 
-	errors := make(chan error, len(tss)/config.MaxTimeseriesPerRequest+1)
+	// TODO: this should be using main config's c.Prometheus.MaxTimeseriesPerRequest
+	errors := make(chan error, len(tss)/config.DefaultMaxTimeseriesPerRequest+1)
 	var wg sync.WaitGroup
-	for i := 0; i < len(tss); i += config.MaxTimeseriesPerRequest {
-		end := i + config.MaxTimeseriesPerRequest
+	for i := 0; i < len(tss); i += config.DefaultMaxTimeseriesPerRequest {
+		end := i + config.DefaultMaxTimeseriesPerRequest
 		if end > len(tss) {
 			end = len(tss)
 		}
