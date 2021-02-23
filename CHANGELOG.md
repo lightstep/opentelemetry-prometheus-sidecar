@@ -9,6 +9,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## Unreleased
 
 ### Added
+- Automatically set (the same) `service.instance.id` for Destination/Diagnostics
+  Resources. (#127)
 - The sidecar's max timeseries per requests is now configurable
   via `prometheus.max-timeseries-per-request`. There is also a matching yaml configuration
   option: `max_timeseries_per_request`. (#128)
@@ -18,11 +20,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - The sidecar's WAL-reader addresses several race conditions by monitoring
   Prometheus for readiness and the current segment number during WAL segment
   transitions. (#118)
-
 ### Removed
 - Remove the use_meta_labels parameter. (#125)
-- Automatically set (the same) `service.instance.id` for Destination/Diagnostics
-  Resources. (#127)
 
 ## [0.16.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.16.0) - 2021-02-18
 
