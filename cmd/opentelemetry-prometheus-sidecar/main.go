@@ -90,6 +90,9 @@ func Main() bool {
 	// environment variable to avoid recursion.
 	isSupervisor := !cfg.DisableSupervisor && os.Getenv(supervisorEnv) == ""
 
+	// Unique identifer for this process.
+	svcInstanceId := uuid.New().String()
+
 	// Configure logging and diagnostics.
 	logger := internal.NewLogger(cfg, isSupervisor)
 
@@ -98,6 +101,7 @@ func Main() bool {
 	telem := internal.StartTelemetry(
 		cfg,
 		"opentelemetry-prometheus-sidecar",
+		svcInstanceId,
 		isSupervisor,
 		logger,
 	)
@@ -184,7 +188,7 @@ func Main() bool {
 		queueManager,
 		cfg.OpenTelemetry.MetricsPrefix,
 		cfg.Prometheus.MaxPointAge.Duration,
-		createResourceLabels(cfg.Destination.Attributes),
+		createResourceLabels(svcInstanceId, cfg.Destination.Attributes),
 	)
 
 	// Start the admin server.
@@ -308,8 +312,8 @@ func parseFilters(logger log.Logger, filters []string) ([][]*labels.Matcher, err
 	return matchers, nil
 }
 
-func createResourceLabels(extraLabels map[string]string) labels.Labels {
-	extraLabels[string(semconv.ServiceInstanceIDKey)] = uuid.New().String()
+func createResourceLabels(svcInstanceId string, extraLabels map[string]string) labels.Labels {
+	extraLabels[string(semconv.ServiceInstanceIDKey)] = svcInstanceId
 	return labels.FromMap(extraLabels)
 }
 
