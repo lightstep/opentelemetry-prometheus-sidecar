@@ -35,6 +35,9 @@ prometheus:
   # Skip points older than this
   max_point_age: 72h
 
+  # Send at most this number of timeseries per request
+  max_timeseries_per_request: 2000
+
 # OpenTelemetry settings:
 opentelemetry:
   # Metrics prefix is prepended to all exported metric names:

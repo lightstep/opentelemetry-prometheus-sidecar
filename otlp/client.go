@@ -86,6 +86,7 @@ type Client struct {
 	rootCertificates []string
 	headers          grpcMetadata.MD
 	compressor       string
+	prometheus       config.PromConfig
 
 	conn *grpc.ClientConn
 }
@@ -98,6 +99,7 @@ type ClientConfig struct {
 	RootCertificates []string
 	Headers          grpcMetadata.MD
 	Compressor       string
+	Prometheus       config.PromConfig
 }
 
 // NewClient creates a new Client.
@@ -113,6 +115,7 @@ func NewClient(conf ClientConfig) *Client {
 		rootCertificates: conf.RootCertificates,
 		headers:          conf.Headers,
 		compressor:       conf.Compressor,
+		prometheus:       conf.Prometheus,
 	}
 }
 
@@ -247,10 +250,10 @@ func (c *Client) Store(req *metricsService.ExportMetricsServiceRequest) error {
 
 	service := metricsService.NewMetricsServiceClient(conn)
 
-	errors := make(chan error, len(tss)/config.MaxTimeseriesPerRequest+1)
+	errors := make(chan error, len(tss)/c.prometheus.MaxTimeseriesPerRequest+1)
 	var wg sync.WaitGroup
-	for i := 0; i < len(tss); i += config.MaxTimeseriesPerRequest {
-		end := i + config.MaxTimeseriesPerRequest
+	for i := 0; i < len(tss); i += c.prometheus.MaxTimeseriesPerRequest {
+		end := i + c.prometheus.MaxTimeseriesPerRequest
 		if end > len(tss) {
 			end = len(tss)
 		}
