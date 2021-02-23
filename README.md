@@ -174,9 +174,10 @@ deployment or deploy the sidecar without using Helm.
 ### Configuration
 
 Most sidecar configuration settings can be set through flags or a yaml
-configuration file. To see all available flags, run
-`opentelemetry-prometheus-sidecar --help`.  The printed usage is shown
-below:
+configuration file.  [See the example configuration yaml file
+here](./config/sidecar.example.yaml).  To see all available
+command-line flags, run `opentelemetry-prometheus-sidecar --help`.
+The printed usage is shown below:
 
 ```
 usage: opentelemetry-prometheus-sidecar [<flags>]
