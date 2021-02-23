@@ -21,6 +21,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Removed
 - Remove the use_meta_labels parameter. (#125)
+- Automatically set (the same) `service.instance.id` for Destination/Diagnostics
+  Resources. (#127)
 
 ## [0.16.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.16.0) - 2021-02-18
 

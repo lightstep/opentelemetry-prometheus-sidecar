@@ -73,6 +73,7 @@ func Main() bool {
 	telem := internal.StartTelemetry(
 		cfg,
 		"stresstest-prometheus-sidecar",
+		"stresstest-prometheus-sidecar-001",
 		false,
 		logger,
 	)
