@@ -55,8 +55,10 @@ const (
 	DefaultSupervisorBufferSize  = 16384
 	DefaultSupervisorLogsHistory = 16
 
-	// How many points per request.
+	// How many points per request
 	DefaultMaxTimeseriesPerRequest = 2000
+	// Max number of shards, i.e. amount of concurrency
+	DefaultMaxShards = 2000
 
 	// TODO: The setting below is not configurable, it should be.
 
@@ -153,6 +155,7 @@ type PromConfig struct {
 	WAL                     string         `json:"wal"`
 	MaxPointAge             DurationConfig `json:"max_point_age"`
 	MaxTimeseriesPerRequest int            `json:"max_timeseries_per_request"`
+	MaxShards               int            `json:"max_shards"`
 }
 
 type OTelConfig struct {
@@ -197,6 +200,7 @@ func (c MainConfig) QueueConfig() promconfig.QueueConfig {
 
 	cfg.MaxBackoff = model.Duration(2 * time.Second)
 	cfg.MaxSamplesPerSend = c.Prometheus.MaxTimeseriesPerRequest
+	cfg.MaxShards = c.Prometheus.MaxShards
 
 	// We want the queues to have enough buffer to ensure consistent flow with full batches
 	// being available for every new request.
@@ -216,6 +220,7 @@ func DefaultMainConfig() MainConfig {
 			Endpoint:                DefaultPrometheusEndpoint,
 			MaxPointAge:             DurationConfig{DefaultMaxPointAge},
 			MaxTimeseriesPerRequest: DefaultMaxTimeseriesPerRequest,
+			MaxShards:               DefaultMaxShards,
 		},
 		Admin: AdminConfig{
 			Port:              DefaultAdminPort,
@@ -297,6 +302,9 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 
 	a.Flag("prometheus.max-timeseries-per-request", fmt.Sprintf("Send at most this number of timeseries per request. Default: %d", DefaultMaxTimeseriesPerRequest)).
 		IntVar(&cfg.Prometheus.MaxTimeseriesPerRequest)
+
+	a.Flag("prometheus.max-shards", fmt.Sprintf("Max number of shards, i.e. amount of concurrency. Default: %d", DefaultMaxShards)).
+		IntVar(&cfg.Prometheus.MaxShards)
 
 	a.Flag("admin.port", "Administrative port this process listens on. Default: "+fmt.Sprint(DefaultAdminPort)).
 		IntVar(&cfg.Admin.Port)

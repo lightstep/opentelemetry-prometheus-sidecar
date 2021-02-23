@@ -174,6 +174,7 @@ startup_timeout: 1777s
 						25 * time.Hour,
 					},
 					MaxTimeseriesPerRequest: 2000,
+					MaxShards:               2000,
 				},
 				Admin: AdminConfig{
 					ListenIP:          config.DefaultAdminListenIP,
@@ -268,6 +269,7 @@ log_config:
 				"--prometheus.wal", "wal-eeee",
 				"--prometheus.max-point-age", "10h",
 				"--prometheus.max-timeseries-per-request", "5",
+				"--prometheus.max-shards", "10",
 				"--log.level=warning",
 				"--healthcheck.period=17s",
 				"--diagnostics.endpoint", "https://look.here",
@@ -283,6 +285,7 @@ log_config:
 						10 * time.Hour,
 					},
 					MaxTimeseriesPerRequest: 5,
+					MaxShards:               10,
 				},
 				Admin: AdminConfig{
 					ListenIP:          config.DefaultAdminListenIP,
@@ -360,6 +363,7 @@ prometheus:
   endpoint: http://127.0.0.1:19090/
   max_point_age: 72h
   max_timeseries_per_request: 10
+  max_shards: 20
 
 startup_delay: 30s
 startup_timeout: 33s
@@ -424,6 +428,7 @@ static_metadata:
 						72 * time.Hour,
 					},
 					MaxTimeseriesPerRequest: 10,
+					MaxShards:               20,
 				},
 				OpenTelemetry: OTelConfig{
 					MetricsPrefix: "prefix.",
