@@ -284,7 +284,7 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 		a.Flag(lowerPrefix+".timeout", upperPrefix+" timeout used for OTLP Export() requests").
 			DurationVar(&op.Timeout.Duration)
 
-		a.Flag(lowerPrefix+".compression", upperPrefix+" compression used for OTLP requests (e.g., snappy).").
+		a.Flag(lowerPrefix+".compression", upperPrefix+" compression used for OTLP requests (e.g., snappy, gzip, none).").
 			StringVar(&op.Compression)
 	}
 

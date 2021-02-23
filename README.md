@@ -181,69 +181,105 @@ below:
 ```
 usage: opentelemetry-prometheus-sidecar [<flags>]
 
-The OpenTelemetry Prometheus sidecar runs alongside the Prometheus (https://prometheus.io/) Server and sends metrics
-data to an OpenTelemetry (https://opentelemetry.io) Protocol endpoint.
+The OpenTelemetry Prometheus sidecar runs alongside the Prometheus
+(https://prometheus.io/) Server and sends metrics data to an OpenTelemetry
+(https://opentelemetry.io) Protocol endpoint.
 
 Flags:
-  -h, --help                     Show context-sensitive help (also try --help-long and --help-man).
+  -h, --help                     Show context-sensitive help (also try
+                                 --help-long and --help-man).
       --version                  Show application version.
       --config-file=CONFIG-FILE  A configuration file.
       --destination.endpoint=DESTINATION.ENDPOINT  
-                                 Destination address of a OpenTelemetry Metrics protocol gRPC endpoint (e.g.,
-                                 https://host:port). Use "http" (not "https") for an insecure connection.
+                                 Destination address of a OpenTelemetry Metrics
+                                 protocol gRPC endpoint (e.g.,
+                                 https://host:port). Use "http" (not "https")
+                                 for an insecure connection.
       --destination.attribute=DESTINATION.ATTRIBUTE ...  
-                                 Destination resource attributes attached to OTLP data (e.g., MyResource=Value1).
-                                 May be repeated.
+                                 Destination resource attributes attached to
+                                 OTLP data (e.g., MyResource=Value1). May be
+                                 repeated.
       --destination.header=DESTINATION.HEADER ...  
-                                 Destination headers used for OTLP requests (e.g., MyHeader=Value1). May be
-                                 repeated.
+                                 Destination headers used for OTLP requests
+                                 (e.g., MyHeader=Value1). May be repeated.
       --destination.timeout=DESTINATION.TIMEOUT  
-                                 Destination timeout used for OTLP Export() requests
+                                 Destination timeout used for OTLP Export()
+                                 requests
+      --destination.compression=DESTINATION.COMPRESSION  
+                                 Destination compression used for OTLP requests
+                                 (e.g., snappy, gzip, none).
       --diagnostics.endpoint=DIAGNOSTICS.ENDPOINT  
-                                 Diagnostics address of a OpenTelemetry Metrics protocol gRPC endpoint (e.g.,
-                                 https://host:port). Use "http" (not "https") for an insecure connection.
+                                 Diagnostics address of a OpenTelemetry Metrics
+                                 protocol gRPC endpoint (e.g.,
+                                 https://host:port). Use "http" (not "https")
+                                 for an insecure connection.
       --diagnostics.attribute=DIAGNOSTICS.ATTRIBUTE ...  
-                                 Diagnostics resource attributes attached to OTLP data (e.g., MyResource=Value1).
-                                 May be repeated.
-      --diagnostics.header=DIAGNOSTICS.HEADER ...  
-                                 Diagnostics headers used for OTLP requests (e.g., MyHeader=Value1). May be
+                                 Diagnostics resource attributes attached to
+                                 OTLP data (e.g., MyResource=Value1). May be
                                  repeated.
+      --diagnostics.header=DIAGNOSTICS.HEADER ...  
+                                 Diagnostics headers used for OTLP requests
+                                 (e.g., MyHeader=Value1). May be repeated.
       --diagnostics.timeout=DIAGNOSTICS.TIMEOUT  
-                                 Diagnostics timeout used for OTLP Export() requests
+                                 Diagnostics timeout used for OTLP Export()
+                                 requests
+      --diagnostics.compression=DIAGNOSTICS.COMPRESSION  
+                                 Diagnostics compression used for OTLP requests
+                                 (e.g., snappy, gzip, none).
       --prometheus.wal=PROMETHEUS.WAL  
-                                 Directory from where to read the Prometheus TSDB WAL. Default: data/wal
+                                 Directory from where to read the Prometheus
+                                 TSDB WAL. Default: data/wal
       --prometheus.endpoint=PROMETHEUS.ENDPOINT  
-                                 Endpoint where Prometheus hosts its UI, API, and serves its own metrics. Default:
+                                 Endpoint where Prometheus hosts its UI, API,
+                                 and serves its own metrics. Default:
                                  http://127.0.0.1:9090/
       --prometheus.max-point-age=PROMETHEUS.MAX-POINT-AGE  
-                                 Skip points older than this, to assist recovery. Default: 25h0m0s
+                                 Skip points older than this, to assist
+                                 recovery. Default: 25h0m0s
       --prometheus.max-timeseries-per-request=PROMETHEUS.MAX-TIMESERIES-PER-REQUEST  
-                                 Send at most this number of timeseries per request. Default: 2000
-      --admin.port=ADMIN.PORT    Administrative port this process listens on. Default: 9091
+                                 Send at most this number of timeseries per
+                                 request. Default: 2000
+      --prometheus.max-shards=PROMETHEUS.MAX-SHARDS  
+                                 Max number of shards, i.e. amount of
+                                 concurrency. Default: 2000
+      --admin.port=ADMIN.PORT    Administrative port this process listens on.
+                                 Default: 9091
       --admin.listen-ip=ADMIN.LISTEN-IP  
-                                 Administrative IP address this process listens on. Default: 0.0.0.0
+                                 Administrative IP address this process listens
+                                 on. Default: 0.0.0.0
       --security.root-certificate=SECURITY.ROOT-CERTIFICATE ...  
-                                 Root CA certificate to use for TLS connections, in PEM format (e.g., root.crt). May
-                                 be repeated.
+                                 Root CA certificate to use for TLS connections,
+                                 in PEM format (e.g., root.crt). May be
+                                 repeated.
       --opentelemetry.metrics-prefix=OPENTELEMETRY.METRICS-PREFIX  
-                                 Customized prefix for exporter metrics. If not set, none will be used
-      --opentelemetry.use-meta-labels  
-                                 Prometheus target labels prefixed with __meta_ map into labels.
-      --filter=FILTER ...        PromQL metric and label matcher which must pass for a series to be forwarded to
-                                 OpenTelemetry. If repeated, the series must pass any of the filter sets to be
-                                 forwarded.
+                                 Customized prefix for exporter metrics. If not
+                                 set, none will be used
+      --filter=FILTER ...        PromQL metric and label matcher which must pass
+                                 for a series to be forwarded to OpenTelemetry.
+                                 If repeated, the series must pass any of the
+                                 filter sets to be forwarded.
       --startup.delay=STARTUP.DELAY  
-                                 Delay at startup to allow Prometheus its initial scrape. Default: 1m0s
+                                 Delay at startup to allow Prometheus its
+                                 initial scrape. Default: 1m0s
       --startup.timeout=STARTUP.TIMEOUT  
-                                 Timeout at startup to allow the endpoint to become available. Default: 5m0s
-      --log.level=LOG.LEVEL      Only log messages with the given severity or above. One of: [debug, info, warn,
-                                 error]
-      --log.format=LOG.FORMAT    Output format of log messages. One of: [logfmt, json]
-      --log.verbose=LOG.VERBOSE  Verbose logging level: 0 = off, 1 = some, 2 = more; 1 is automatically added when
-                                 log.level is 'debug'; impacts logging from the gRPC library in particular
+                                 Timeout at startup to allow the endpoint to
+                                 become available. Default: 5m0s
+      --healthcheck.period=HEALTHCHECK.PERIOD  
+                                 Period for internal health checking; set at a
+                                 minimum to the shortest Promethues scrape
+                                 period
+      --log.level=LOG.LEVEL      Only log messages with the given severity or
+                                 above. One of: [debug, info, warn, error]
+      --log.format=LOG.FORMAT    Output format of log messages. One of: [logfmt,
+                                 json]
+      --log.verbose=LOG.VERBOSE  Verbose logging level: 0 = off, 1 = some, 2 =
+                                 more; 1 is automatically added when log.level
+                                 is 'debug'; impacts logging from the gRPC
+                                 library in particular
       --disable-supervisor       Disable the supervisor.
-      --disable-diagnostics      Disable diagnostics by default; if unset, diagnostics will be auto-configured to
-                                 the primary destination
+      --disable-diagnostics      Disable diagnostics by default; if unset,
+                                 diagnostics will be auto-configured to the
+                                 primary destination
 
 ```
 
