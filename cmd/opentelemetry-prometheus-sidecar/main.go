@@ -158,6 +158,7 @@ func Main() bool {
 		RootCertificates: cfg.Security.RootCertificates,
 		Headers:          grpcMetadata.New(cfg.Destination.Headers),
 		Compressor:       cfg.Destination.Compression,
+		Prometheus:       cfg.Prometheus,
 	})
 
 	queueManager, err := otlp.NewQueueManager(
