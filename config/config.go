@@ -88,6 +88,10 @@ an OpenTelemetry (https://opentelemetry.io) Protocol endpoint.
 	OutcomeSuccessValue = "success"
 
 	HealthCheckURI = "/-/health"
+
+	// PrometheusCurrentSegmentMetricName names an internal gauge
+	// exposed by Prometheus (having no labels).
+	PrometheusCurrentSegmentMetricName = "prometheus_tsdb_wal_segment_current"
 )
 
 var (
@@ -153,7 +157,6 @@ type PromConfig struct {
 
 type OTelConfig struct {
 	MetricsPrefix string `json:"metrics_prefix"`
-	UseMetaLabels bool   `json:"use_meta_labels"`
 }
 
 type AdminConfig struct {
@@ -305,9 +308,6 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 
 	a.Flag("opentelemetry.metrics-prefix", "Customized prefix for exporter metrics. If not set, none will be used").
 		StringVar(&cfg.OpenTelemetry.MetricsPrefix)
-
-	a.Flag("opentelemetry.use-meta-labels", "Prometheus target labels prefixed with __meta_ map into labels.").
-		BoolVar(&cfg.OpenTelemetry.UseMetaLabels)
 
 	a.Flag("filter", "PromQL metric and label matcher which must pass for a series to be forwarded to OpenTelemetry. If repeated, the series must pass any of the filter sets to be forwarded.").
 		StringsVar(&cfg.Filters)

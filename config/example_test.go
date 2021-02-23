@@ -44,8 +44,7 @@ func Example() {
 	//     "max_timeseries_per_request": 2000
 	//   },
 	//   "opentelemetry": {
-	//     "metrics_prefix": "prefix.",
-	//     "use_meta_labels": true
+	//     "metrics_prefix": "prefix."
 	//   },
 	//   "admin": {
 	//     "listen_ip": "0.0.0.0",

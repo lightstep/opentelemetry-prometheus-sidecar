@@ -8,6 +8,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+- The sidecar's WAL-reader addresses several race conditions by monitoring
+  Prometheus for readiness and the current segment number during WAL segment
+  transitions. (#118)
+- Remove the use_meta_labels parameter. (#125)
+
 ## [0.16.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.16.0) - 2021-02-18
 
 ### Added

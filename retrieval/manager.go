@@ -204,6 +204,7 @@ Outer:
 					continue
 				}
 				if outputSample == nil {
+					// Note: This case is poorly monitored (LS-22396)
 					continue
 				}
 				r.appender.Append(ctx, hash, outputSample)
