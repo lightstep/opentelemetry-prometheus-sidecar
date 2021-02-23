@@ -28,6 +28,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/google/uuid"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/cmd/internal"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/health"
@@ -39,6 +40,7 @@ import (
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/oklog/run"
+	"go.opentelemetry.io/otel/semconv"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/version"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -182,7 +184,7 @@ func Main() bool {
 		queueManager,
 		cfg.OpenTelemetry.MetricsPrefix,
 		cfg.Prometheus.MaxPointAge.Duration,
-		labels.FromMap(cfg.Destination.Attributes),
+		createResourceLabels(cfg.Destination.Attributes),
 	)
 
 	// Start the admin server.
@@ -304,6 +306,11 @@ func parseFilters(logger log.Logger, filters []string) ([][]*labels.Matcher, err
 		matchers = append(matchers, m)
 	}
 	return matchers, nil
+}
+
+func createResourceLabels(extraLabels map[string]string) labels.Labels {
+	extraLabels[string(semconv.ServiceInstanceIDKey)] = uuid.New().String()
+	return labels.FromMap(extraLabels)
 }
 
 func selfTest(ctx context.Context, promURL *url.URL, scf otlp.StorageClientFactory, timeout time.Duration, logger log.Logger) error {
