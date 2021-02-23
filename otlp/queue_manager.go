@@ -100,6 +100,8 @@ type QueueManager struct {
 	queueRunningCounter metric.Int64UpDownCounter
 	queueCapacityObs    metric.Int64UpDownSumObserver
 	numShardsObs        metric.Int64UpDownSumObserver
+	walSizeObs          metric.Int64UpDownSumObserver
+	walOffsetObs        metric.Int64UpDownSumObserver
 }
 
 // NewQueueManager builds a new QueueManager.
@@ -177,6 +179,18 @@ func NewQueueManager(logger log.Logger, cfg promconfig.QueueConfig, timeout time
 		metric.WithDescription(
 			"The number of shards used for parallel sending to the remote storage.",
 		),
+	)
+	t.walSizeObs = sidecar.OTelMeterMust.NewInt64UpDownSumObserver(
+		"sidecar.wal.size",
+		func(ctx context.Context, result metric.Int64ObserverResult) {
+			result.Observe(int64(t.lastSize))
+		},
+	)
+	t.walOffsetObs = sidecar.OTelMeterMust.NewInt64UpDownSumObserver(
+		"sidecar.wal.offset",
+		func(ctx context.Context, result metric.Int64ObserverResult) {
+			result.Observe(int64(t.lastOffset))
+		},
 	)
 
 	if unsafe.Sizeof(int(0)) != 8 {

@@ -16,6 +16,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   option: `max_timeseries_per_request`. (#128)
 - The sidecar's max shards is now configurable via `--prometheus.max-shards`. There
   is also a matching yaml configuration option: `max_shards`. (#128)
+- Adding metrcs to capture WAL size and the current offset. (#130)
 
 ### Changed
 - The sidecar's WAL-reader addresses several race conditions by monitoring
