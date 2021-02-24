@@ -111,7 +111,7 @@ startup_delay: 30s
 startup_timeout: 300s
 
 # Control the format and level of console-logging output:
-log_config:
+log:
   level: debug
   format: json
   verbose: 1

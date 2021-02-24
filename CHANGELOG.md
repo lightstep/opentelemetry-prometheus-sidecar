@@ -22,6 +22,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - The sidecar's WAL-reader addresses several race conditions by monitoring
   Prometheus for readiness and the current segment number during WAL segment
   transitions. (#118)
+- The yaml section named "log_config" was inconsistent, has been renamed "log". ()  
 
 ### Removed
 - Remove the use_meta_labels parameter. (#125)

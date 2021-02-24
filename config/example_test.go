@@ -93,7 +93,7 @@ func Example() {
 	//       "help": "Number of bits transferred by this process."
 	//     }
 	//   ],
-	//   "log_config": {
+	//   "log": {
 	//     "level": "debug",
 	//     "format": "json",
 	//     "verbose": 1
