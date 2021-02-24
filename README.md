@@ -363,10 +363,10 @@ Metrics from the subordinate process can help identify issues once the first met
 
 | Metric Name | Metric Type | Description | Additional Tags |
 | --- | --- | --- | ---|
-| sidecar.connect.duration{.count} | histogram/counter | how many attempts to connect (and how long) | (error:true/false) |
-| sidecar.export.duration{.count} | histogram/counter | how many attempts to export (and how long) | (error:true/false) |
-| sidecar.monitor.duration{.count} | histogram/counter | how many attempts to scrape Prometheus /metrics (and how long) | (error:true/false) |
-| sidecar.metadata.fetch.duration{.count} | histogram/counter | how many attempts to fetch metadata from Prometheus (and how long) | (error:true/false) |
+| sidecar.connect.duration | histogram | how many attempts to connect (and how long) | (error:true/false) |
+| sidecar.export.duration | histogram | how many attempts to export (and how long) | (error:true/false) |
+| sidecar.monitor.duration | histogram | how many attempts to scrape Prometheus /metrics (and how long) | (error:true/false) |
+| sidecar.metadata.fetch.duration | histogram | how many attempts to fetch metadata from Prometheus (and how long) | (error:true/false) |
 | sidecar.queue.outcome | counter | outcome of the sample in the queue | (outcome: success, failed, retry, aborted) |
 | sidecar.queue.capacity | gauge | number of available slots for samples (i.e., points) in the queue, counts buffer size times current number of shards | |
 | sidecar.queue.running | gauge | number of running shards, those which have not exited | |
