@@ -127,6 +127,15 @@ server:
     volumeMounts:
     - name: storage-volume
       mountPath: /data
+    ports:
+    - name: admin-port
+      containerPort: 9091 
+    livenessProbe:
+      httpGet:
+        path: /-/health
+        port: admin-port
+      periodSeconds: 30
+      failureThreshold: 2
 ```
 
 The [upstream Stackdriver Prometheus sidecar Kubernetes
@@ -306,6 +315,22 @@ Note:
 
 * All `static_metadata` entries must have `type` specified.
 * If `value_type` is specified, it will override the default value type for counters and gauges. All Prometheus metrics have a default type of double.
+
+## Monitoring
+
+When run in the default configuration, the sidecar will self-monitor for liveness and kill the process when it becomes unhealthy.  Sidecar liveness can be monitored directly using the `/-/health` endpoint.  We recommend a period of 30 seconds and `failureThreshold: 2`, for example in your Kubernetes deployment:
+
+```
+    ports:
+    - name: admin-port
+      containerPort: 9091 
+    livenessProbe:
+      httpGet:
+        path: /-/health
+        port: admin-port
+      periodSeconds: 30
+      failureThreshold: 2
+```
 
 ## Diagnostics
 
