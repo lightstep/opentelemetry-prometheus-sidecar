@@ -72,12 +72,6 @@ var (
 			"The number of bytes read from WAL segments",
 		),
 	)
-	segmentRestartCounter = sidecar.OTelMeterMust.NewInt64Counter(
-		"sidecar.segment.restarts",
-		metric.WithDescription(
-			"The number of attempts to restart reading the WAL",
-		),
-	)
 
 	ErrRestartReader = errors.New("sidecar fell behind, restarting reader")
 )

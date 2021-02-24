@@ -8,82 +8,42 @@ Sidecar](https://github.com/Stackdriver/stackdriver-prometheus-sidecar).
 
 ![OpenTelemetry Prometheus Sidecar Diagram](docs/img/opentelemetry-prometheus-sidecar.png)
 
-## Repository Status (11/18/2020)
+## Repository Status (2/21/2021)
 
-This repository will be archived after the 0.2 release.  [We are
-moving this
+This repository is being maintained by Lightstep and will be donated
+to OpenTelemetry.  [We are moving this
 repository](https://github.com/open-telemetry/community/issues/575)
 into the [OpenTelemetry](https://opentelemetry.io/)
 [organization](http://github.com/open-telemetry) and [will continue
-development on a public fork](https://github.com/open-telemetry/prometheus-sidecar) of the [upstream Stackdriver Prometheus
+development on a public
+fork](https://github.com/open-telemetry/prometheus-sidecar) of the
+[upstream Stackdriver Prometheus
 sidecar](https://github.com/Stackdriver/stackdriver-prometheus-sidecar)
 repository.
 
-This code base is 100% OpenTelemetry and Prometheus, not a Lightstep
-project.
+This code base is 100% OpenTelemetry and Prometheus, not a
+Lightstep-specific sidecar, functioning to read data collected and
+written by Prometheus, convert into the OpenTelemetry data model, and
+write to an OpenTelemetry endpoint.
 
-## OpenTelemetry Design
-
-A key difference between the OpenTelemetry Metrics data model and the
-Prometheus or OpenMetrics data models is the introduction of a
-[Resource concept](https://github.com/open-telemetry/opentelemetry-specification/blob/master/specification/resource/sdk.md)
-to describe the unit of computation or the entity responsible for
-producing a batch of metric data.
-
-The function of this sidecar is to read data collected and written by
-Prometheus, convert into the OpenTelemetry data model, attach Resource
-attributes, and write to an OpenTelemetry endpoint.
-
-This sidecar sends [OpenTelemetry Protocol](https://github.com/open-telemetry/opentelemetry-specification/blob/master/specification/protocol/otlp.md) [version 0.5](https://github.com/open-telemetry/opentelemetry-proto/releases/tag/v0.5.0) (or later versions) over gRPC.
-
-## Prometheus Design
-
-The Prometheus server consists of a number of interacting parts that
-relate to the sidecar.
-
-1. Service discovery. Prometheus has over 15 builtin service discovery strategies, which serve to fetch and dynamically update the set of targets.
-2. Job configuration. A Prometheus job is identified by the name of its confuration, which includes service dicovery, followed by [_target relabeling_](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#relabel_config), followed by [_general relabeling_](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#metric_relabel_configs).
-3. Label discovery and relabeling.  Service discovery-specific labels, prefixed by `__meta_`, are made available for use during relabeling rules.  Prometheus relabeling configurations must choose which meta-labels to output through relabeling, otherwise no `__`-prefixed keys are kept.  All timeseries have `job` and `instance` labels.
-4. In-memory metadata database.  The Prometheus server maintains metadata about both active targets and active metric instruments in memory, including the "discovered" meta-labels.
-5. Write-ahead log.  After targets discovered, their meta-labels are synthesized, and relabeling steps are taken, the output following each collection is written to a write-ahead log.  Other Prometheus components consume this log.
-
-Critically, the Prometheus write-ahead log does not include timeseries metadata that the Prometheus server expects will be collected again soon, including whether the timeseries represents a counter or a gauge.  Prometheus can be configured to write its write-ahead-log to a remote destination, but systems built on this mechanism must refer back to Prometheus servers or otherwise obtain metadata about the kind of data that is in the log.  Note that Prometheus [_is taking efforts to add metadata to its write-ahead-log_](https://github.com/prometheus/prometheus/pull/6815), though it [appears unlikely to make it into the 2.23 release](https://github.com/prometheus/prometheus/pull/7771#issuecomment-707639237).
+This sidecar sends [OpenTelemetry Protocol](https://github.com/open-telemetry/opentelemetry-specification/blob/master/specification/protocol/otlp.md) [version 0.7](https://github.com/open-telemetry/opentelemetry-proto/releases/tag/v0.7.0) (or later versions) over gRPC.
 
 ## Sidecar design
 
 The sidecar includes:
 
-1. Prometheus write-ahead log reader
-2. Target cache that tracks active targets by their identifying labels
-3. Metadata cache that tracks active instruments, by target
-4. Configured settings:
-* Extra resource labels to apply to all metric timeseries
+1. Prometheus write-ahead log (WAL) reader
+2. Metadata cache that tracks active instruments
+3. Configured settings:
+* Additional resource attributes to apply to all metric timeseries
 * Renaming and prefixing to change the name of metric timeseries
 * Filters to avoid reporting specific metric timeseries
 * Specify whether to use use int64 (optional) vs. double (default) protocol encoding
-* Whether to include all meta-labels as resource labels.
 
 The sidecar operates by continually (and concurrently) reading the
-log, refreshing its view of targets and instrument metadata,
+log, refreshing its view of the instrument metadata,
 transforming the data into OpenTelemetry Protocol metrics, and sending
 over gRPC to an OpenTelemetry metrics service.
-
-### Target label discovery
-
-The sidecar uses Prometheus server HTTP `api/v1/targets/metadata` API
-to obtain metadata about active collection targets and metric
-instruments.  The result of target metadata retrieval includes:
-
-1. The set of identifying target labels, which include the application
-metric labels plus those applied during Prometheus relabeling rules; this always includes `job` and `instance`
-2. The set of "discovered" target labels, which includes Prometheus metadata (e.g., `__scheme__`, `__address__`) and the service-discovery meta-labels (e.g., `__meta_kubernetes_pod_name`).
-
-When reporting timeseries to output destination, the identifying
-target labels are included as OpenTelemetry resource attributes.  The
-`--destination.attribute` flag can be used to add addional constant
-labels as resource attributes.  The `--opentelemetry.use-meta-labels` flag
-can be used to add all meta labels as resource attribuets.  Otherwise,
-labels beginning with `__` are dropped.
 
 ## Installation
 
@@ -126,7 +86,9 @@ where:
 * `WAL`: Prometheus' WAL directory, defaults to `data/wal`
 * `PROMETHEUS`: URL of the Prometheus UI.
 
-Settings can also be passed through a configuration file, for example:
+[See the list of command-line flags below](#configuration).
+
+Settings can also be passed through a configuration file.  For example:
 
 ```
 destination:
@@ -140,12 +102,14 @@ prometheus:
   endpoint: http://192.168.10.10:9191
 ```
 
+[See an example configuration yaml file here](./config/sidecar.example.yaml)
+
 The sidecar requires write access to the directory to store its progress between restarts.
 
 ### Kubernetes and Helm setup
 
 To configure the sidecar for a Prometheus server installed using the
-[Prometheus Community Helm Charts](https://github.com/prometheus-community/helm-charts). 
+[Prometheus Community Helm Charts](https://github.com/prometheus-community/helm-charts).
 
 #### Sidecar Setup
 To configure the core compoents of the Prometheus sidecar, add the following definition to your custom `values.yaml`:
@@ -159,13 +123,12 @@ server:
     args:
     - --prometheus.wal=/data/wal
     - --destination.endpoint=$(DESTINATION)
-    - --destination.header=Access-Token=AAAAAAAAAAAAAAAA
-    - --diagnostics.endpoint=$(DIAGNOSTICS_DESTINATION)
-    - --diagnostics.header=Access-Token=BBBBBBBBBBBBBBBB
+    - --destination.header=access-token=AAAAAAAAAAAAAAAA
     volumeMounts:
     - name: storage-volume
       mountPath: /data
 ```
+
 The [upstream Stackdriver Prometheus sidecar Kubernetes
 README](https://github.com/Stackdriver/stackdriver-prometheus-sidecar/blob/master/kube/README.md)
 contains more examples of how to patch an existing Prometheus
@@ -173,11 +136,11 @@ deployment or deploy the sidecar without using Helm.
 
 ### Configuration
 
-Most sidecar configuration settings can be set through flags or a yaml
-configuration file.  [See the example configuration yaml file
-here](./config/sidecar.example.yaml).  To see all available
-command-line flags, run `opentelemetry-prometheus-sidecar --help`.
-The printed usage is shown below:
+Most sidecar configuration settings can be set through command-line
+flags, while a few more rarely-used options are only settable through
+a yaml configuration file.  To see all available command-line flags,
+run `opentelemetry-prometheus-sidecar --help`.  The printed usage is
+shown below:
 
 ```
 usage: opentelemetry-prometheus-sidecar [<flags>]
@@ -191,81 +154,81 @@ Flags:
                                  --help-long and --help-man).
       --version                  Show application version.
       --config-file=CONFIG-FILE  A configuration file.
-      --destination.endpoint=DESTINATION.ENDPOINT  
+      --destination.endpoint=DESTINATION.ENDPOINT
                                  Destination address of a OpenTelemetry Metrics
                                  protocol gRPC endpoint (e.g.,
                                  https://host:port). Use "http" (not "https")
                                  for an insecure connection.
-      --destination.attribute=DESTINATION.ATTRIBUTE ...  
+      --destination.attribute=DESTINATION.ATTRIBUTE ...
                                  Destination resource attributes attached to
                                  OTLP data (e.g., MyResource=Value1). May be
                                  repeated.
-      --destination.header=DESTINATION.HEADER ...  
+      --destination.header=DESTINATION.HEADER ...
                                  Destination headers used for OTLP requests
                                  (e.g., MyHeader=Value1). May be repeated.
-      --destination.timeout=DESTINATION.TIMEOUT  
+      --destination.timeout=DESTINATION.TIMEOUT
                                  Destination timeout used for OTLP Export()
                                  requests
-      --destination.compression=DESTINATION.COMPRESSION  
+      --destination.compression=DESTINATION.COMPRESSION
                                  Destination compression used for OTLP requests
                                  (e.g., snappy, gzip, none).
-      --diagnostics.endpoint=DIAGNOSTICS.ENDPOINT  
+      --diagnostics.endpoint=DIAGNOSTICS.ENDPOINT
                                  Diagnostics address of a OpenTelemetry Metrics
                                  protocol gRPC endpoint (e.g.,
                                  https://host:port). Use "http" (not "https")
                                  for an insecure connection.
-      --diagnostics.attribute=DIAGNOSTICS.ATTRIBUTE ...  
+      --diagnostics.attribute=DIAGNOSTICS.ATTRIBUTE ...
                                  Diagnostics resource attributes attached to
                                  OTLP data (e.g., MyResource=Value1). May be
                                  repeated.
-      --diagnostics.header=DIAGNOSTICS.HEADER ...  
+      --diagnostics.header=DIAGNOSTICS.HEADER ...
                                  Diagnostics headers used for OTLP requests
                                  (e.g., MyHeader=Value1). May be repeated.
-      --diagnostics.timeout=DIAGNOSTICS.TIMEOUT  
+      --diagnostics.timeout=DIAGNOSTICS.TIMEOUT
                                  Diagnostics timeout used for OTLP Export()
                                  requests
-      --diagnostics.compression=DIAGNOSTICS.COMPRESSION  
+      --diagnostics.compression=DIAGNOSTICS.COMPRESSION
                                  Diagnostics compression used for OTLP requests
                                  (e.g., snappy, gzip, none).
-      --prometheus.wal=PROMETHEUS.WAL  
+      --prometheus.wal=PROMETHEUS.WAL
                                  Directory from where to read the Prometheus
                                  TSDB WAL. Default: data/wal
-      --prometheus.endpoint=PROMETHEUS.ENDPOINT  
+      --prometheus.endpoint=PROMETHEUS.ENDPOINT
                                  Endpoint where Prometheus hosts its UI, API,
                                  and serves its own metrics. Default:
                                  http://127.0.0.1:9090/
-      --prometheus.max-point-age=PROMETHEUS.MAX-POINT-AGE  
+      --prometheus.max-point-age=PROMETHEUS.MAX-POINT-AGE
                                  Skip points older than this, to assist
                                  recovery. Default: 25h0m0s
-      --prometheus.max-timeseries-per-request=PROMETHEUS.MAX-TIMESERIES-PER-REQUEST  
+      --prometheus.max-timeseries-per-request=PROMETHEUS.MAX-TIMESERIES-PER-REQUEST
                                  Send at most this number of timeseries per
                                  request. Default: 2000
-      --prometheus.max-shards=PROMETHEUS.MAX-SHARDS  
+      --prometheus.max-shards=PROMETHEUS.MAX-SHARDS
                                  Max number of shards, i.e. amount of
                                  concurrency. Default: 2000
       --admin.port=ADMIN.PORT    Administrative port this process listens on.
                                  Default: 9091
-      --admin.listen-ip=ADMIN.LISTEN-IP  
+      --admin.listen-ip=ADMIN.LISTEN-IP
                                  Administrative IP address this process listens
                                  on. Default: 0.0.0.0
-      --security.root-certificate=SECURITY.ROOT-CERTIFICATE ...  
+      --security.root-certificate=SECURITY.ROOT-CERTIFICATE ...
                                  Root CA certificate to use for TLS connections,
                                  in PEM format (e.g., root.crt). May be
                                  repeated.
-      --opentelemetry.metrics-prefix=OPENTELEMETRY.METRICS-PREFIX  
+      --opentelemetry.metrics-prefix=OPENTELEMETRY.METRICS-PREFIX
                                  Customized prefix for exporter metrics. If not
                                  set, none will be used
       --filter=FILTER ...        PromQL metric and label matcher which must pass
                                  for a series to be forwarded to OpenTelemetry.
                                  If repeated, the series must pass any of the
                                  filter sets to be forwarded.
-      --startup.delay=STARTUP.DELAY  
+      --startup.delay=STARTUP.DELAY
                                  Delay at startup to allow Prometheus its
                                  initial scrape. Default: 1m0s
-      --startup.timeout=STARTUP.TIMEOUT  
+      --startup.timeout=STARTUP.TIMEOUT
                                  Timeout at startup to allow the endpoint to
                                  become available. Default: 5m0s
-      --healthcheck.period=HEALTHCHECK.PERIOD  
+      --healthcheck.period=HEALTHCHECK.PERIOD
                                  Period for internal health checking; set at a
                                  minimum to the shortest Promethues scrape
                                  period
@@ -298,11 +261,8 @@ resource attributes, are combined from both sources.
 
 Use the `--destination.attribute=KEY=VALUE` flag to add additional resource attributes to all exported timeseries.
 
-Use the `--opentelemetry.use-meta-labels` flag to add discovery meta-labels to all exported timeseries.
-
-
 #### Filters
-	
+
 The `--filter` flag allows to provide filters which all series have to pass before being sent to the destination. Filters use the same syntax as [Prometheus instant vector selectors](https://prometheus.io/docs/prometheus/latest/querying/basics/#instant-vector-selectors), e.g.:
 
 ```
@@ -349,9 +309,9 @@ Note:
 
 ## Diagnostics
 
-The sidecar is instrumented with the OpenTelemetry-Go SDK and runs with standard instrumentation packages, including runtime and host metrics and gRPC and HTTP tracing.  
+The sidecar is instrumented with the OpenTelemetry-Go SDK and runs with standard instrumentation packages, including runtime and host metrics.
 
-By default, diagnostics are autoconfigured tot he primary destination.  Configuration options are available to disable or configure alternative destinations and options.  
+By default, diagnostics are autoconfigured to the primary destination.  Configuration options are available to disable or configure alternative destinations and options.
 
 ### Configuration Options
 
@@ -370,27 +330,29 @@ diagnostics:
 Likewise, these fields can be accessed using `--diagnostics.endpoint`,
 `--diagnostics.header`, `--diagnostics.timeout`, and `--diagnostics.attribute`.
 
-#### Log levels 
+#### Log levels
 
-The Prometheus sidecar provides options for logging in the case of diagnoising an issue.  
-* We recommend starting with setting the `--log.level` to be `debug`, `info`, `warn`, `error`.  
+The Prometheus sidecar provides options for logging in the case of diagnoising an issue.
+* We recommend starting with setting the `--log.level` to be `debug`, `info`, `warn`, `error`.
 * Additional options are available to set the output format of the logs (`--log.format` to be `logfmt` or `json`), and the number of logs to recorded (`--log.verbose` to be `0` for off, `1` for some, `2` for more)
 
 #### Disabling Diagnostics
 
-To disable diagnostics there are two flags to set.  To disable supervisor diagnostics which sends traces, set `--disable-supervisor` to `true` and to disable subordinate diagnostics which sends metrics `--disable-diagnostics` to `true`.
+To disable diagnostics, set `--disable-diagnostics` to `true`.
 
 ### Diagnostic Outputs
 
-The Prometheus Sidecar has two main processes, the supervisor and a subordinate process.  Diagnostic traces are sent from the supervisor process and diagnostic metrics are sent from the subordinate process.  
+The Prometheus Sidecar has two main processes, the supervisor and a subordinate process.  Diagnostic traces are sent from the supervisor process to monitor lifecycle events and diagnostic metrics are sent from the subordinate process.
 
 #### Sidecar Supervisor Tracing
-Traces from the supervisor process are most helpful for diagnosing unknown problems.  It signals lifecycle events and captures the stderr, attaching it to the trace.  
 
-The sidecar will output spans from its supervisor process with service.name=`opentelemetry-prometheus-sidecar-supervisor`.  There are two kinds of spans: operation=`health-client` and operation=`shutdown-report`.  These spans are also tagged with the attribute `sidecar-health` with values `ok`, `not yet ready` or `first time ready`.  
+Traces from the supervisor process are most helpful for diagnosing unknown problems.  It signals lifecycle events and captures the stderr, attaching it to the trace.
 
-#### Sidecar Subordinate Metrics
-Metrics from the subordinate process can help identify issues once the first metrics are successfully written.  There are 3 host/runtime metrics and 9 internal metrics.  
+The sidecar will output spans from its supervisor process with service.name=`opentelemetry-prometheus-sidecar-supervisor`.  There are two kinds of spans: operation=`health-client` and operation=`shutdown-report`.  These spans are also tagged with the attribute `sidecar-health` with values `ok`, `not yet ready` or `first time ready`.
+
+#### Sidecar Metrics
+
+Metrics from the subordinate process can help identify issues once the first metrics are successfully written.  There are three standard host and runtime metrics to monitor:
 
 **Host and Runtime Metrics**
 1. process.cpu.time, with tag (state:user,sys)
@@ -401,33 +363,27 @@ Metrics from the subordinate process can help identify issues once the first met
 
 | Metric Name | Metric Type | Description | Additional Tags |
 | --- | --- | --- | ---|
-| sidecar.connect.duration.count | histogram | how many attempts to connect (and how long) | (error:true/false) |
-| sidecar.export.duration.count | histogram | how many attempts to export (and how long) | (error:true/false) |
+| sidecar.connect.duration{.count} | histogram/counter | how many attempts to connect (and how long) | (error:true/false) |
+| sidecar.export.duration{.count} | histogram/counter | how many attempts to export (and how long) | (error:true/false) |
+| sidecar.monitor.duration{.count} | histogram/counter | how many attempts to scrape Prometheus /metrics (and how long) | (error:true/false) |
+| sidecar.metadata.fetch.duration{.count} | histogram/counter | how many attempts to fetch metadata from Prometheus (and how long) | (error:true/false) |
 | sidecar.queue.outcome | counter | outcome of the sample in the queue | (outcome: success, failed, retry, aborted) |
 | sidecar.queue.capacity | gauge | number of available slots for samples (i.e., points) in the queue, counts buffer size times current number of shards | |
 | sidecar.queue.running | gauge | number of running shards, those which have not exited | |
 | sidecar.queue.shards | gauge | number of current shards, as set by the queue manager | |
-| sidecar.samples.produced | counter | number of samples (i.e., points) read from the prometheus WAL | |
 | sidecar.queue.size | gauge | number of samples (i.e., points) standing in a queue waiting to export | |
-| sidecar.series.dropped | counter | number of points dropped because of missing metadata | (key_reason:target_not_found/metadata_not_found)|
+| sidecar.samples.processed | histogram | number of samples (i.e., points) read in a prometheus WAL batch | |
+| sidecar.samples.produced | counter | number of samples (i.e., points) read from the prometheus WAL | |
+| sidecar.series.dropped | counter | number of points dropped because of missing metadata | |
 | sidecar.wal.size | gauge | size of the prometheus WAL | |
 | sidecar.wal.offset | gauge | current offset in the prometheus WAL | |
-
+| sidecar.segment.opens | counter | number of WAL segment open() calls | |
+| sidecar.segment.reads | counter | number of WAL segment read() calls | |
+| sidecar.segment.bytes | counter | number of WAL segment bytes read | |
 
 ## Upstream
 
 This repository was copied into a private reposotitory from [this upstream fork](https://github.com/Stackdriver/stackdriver-prometheus-sidecar/tree/1361301230bcfc978864a8f4c718aba98bc07a3d) of `stackdriver-prometheus-sidecar`, dated July 31, 2020.
-
-### Changes relative to Stackdriver
-
-Changes relative to `stackdriver-prometheus-sidecar` included in the initial release of `opentelemetry-prometheus-sidecar`:
-
-* Replace Stackdriver monitoring protocol with OTLP v0.5; this was straightforward since these are similar protocols
-* Add `--destination.header` support for adding gRPC metadata
-* Remove "Resource Map" code, used for generating "Monitored Resource" concept in Stackdriver; OpenTelemetry is less restrictive, this code is replaced by `--destination.attribute` and `--opentelemetry.use-meta-labels` support
-* Remove GCP/GKE-specific automatic resources; these can be applied using `--destination.attribute`
-* Remove "Counter Aggregator" support, which pre-aggregates labels; there are other ways this could be implemented, if the OpenTelemetry-Go SDK were used to generate OTLP instead of the dedicated code in this repository
-* Add `--security.root-certificate` support for supplying the root certificate used in TLS connection setup.
 
 ## Compatibility
 
@@ -435,4 +391,4 @@ The matrix below lists the versions of Prometheus Server and other dependencies 
 
 | Sidecar Version | Compatible Prometheus Server Version(s)   | Incompatible Prometheus Server Version(s) |
 | -- | -- | -- |
-| **0.1.x**       | 2.10, 2.11, 2.13, 2.15, 2.16, 2.18, 2.19, 2.21, 2.22 | 2.5                                       |
+| **0.1.x**       | 2.10, 2.11, 2.13, 2.15, 2.16, 2.18, 2.19, 2.21, 2.22, 2.23 | 2.5                                       |

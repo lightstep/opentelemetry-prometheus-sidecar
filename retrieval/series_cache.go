@@ -41,9 +41,6 @@ var (
 	)
 	keyReason = label.Key("key_reason")
 
-	droppedSeriesTargetNotFound = droppedSeries.Bind(
-		keyReason.String("target_not_found"),
-	)
 	droppedSeriesMetadataNotFound = droppedSeries.Bind(
 		keyReason.String("metadata_not_found"),
 	)
