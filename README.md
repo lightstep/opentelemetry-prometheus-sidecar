@@ -410,6 +410,8 @@ Metrics from the subordinate process can help identify issues once the first met
 | sidecar.samples.produced | counter | number of samples (i.e., points) read from the prometheus WAL | |
 | sidecar.queue.size | gauge | number of samples (i.e., points) standing in a queue waiting to export | |
 | sidecar.series.dropped | counter | number of points dropped because of missing metadata | (key_reason:target_not_found/metadata_not_found)|
+| sidecar.wal.size | gauge | size of the prometheus WAL | |
+| sidecar.wal.offset | gauge | current offset in the prometheus WAL | |
 
 
 ## Upstream
