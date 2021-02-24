@@ -8,6 +8,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+## [0.17.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.17.0) - 2021-02-23
 ### Added
 - Automatically set (the same) `service.instance.id` for Destination/Diagnostics
   Resources. (#127)
