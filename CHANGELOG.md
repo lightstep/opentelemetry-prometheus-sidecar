@@ -10,7 +10,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 - Added support for the Prometheus reader to be restarted when an invalid segment
-  is encountered (#133)
+  is encountered to safely mitigate a race with WAL-segment removal (#133)
 
 ## [0.17.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.17.0) - 2021-02-23
 ### Added
