@@ -161,8 +161,8 @@ destination:
 
 prometheus:
   wal: wal-eeee
+  longest_interval: 1333s
 
-startup_delay: 1333s
 startup_timeout: 1777s
 `,
 			nil,
@@ -175,6 +175,9 @@ startup_timeout: 1777s
 					},
 					MaxTimeseriesPerRequest: 2000,
 					MaxShards:               2000,
+					LongestInterval: DurationConfig{
+						1333 * time.Second,
+					},
 				},
 				Admin: AdminConfig{
 					ListenIP:          config.DefaultAdminListenIP,
@@ -207,9 +210,6 @@ startup_timeout: 1777s
 				LogConfig: LogConfig{
 					Level:  "info",
 					Format: "logfmt",
-				},
-				StartupDelay: DurationConfig{
-					1333 * time.Second,
 				},
 				StartupTimeout: DurationConfig{
 					1777 * time.Second,
@@ -261,7 +261,6 @@ log:
   level: error
 `,
 			[]string{
-				"--startup.delay=1333s",
 				"--startup.timeout=1777s",
 				"--destination.attribute", "c=d",
 				"--destination.header", "g=h",
@@ -270,6 +269,7 @@ log:
 				"--prometheus.max-point-age", "10h",
 				"--prometheus.max-timeseries-per-request", "5",
 				"--prometheus.max-shards", "10",
+				"--prometheus.longest-interval=1333s",
 				"--log.level=warning",
 				"--healthcheck.period=17s",
 				"--diagnostics.endpoint", "https://look.here",
@@ -286,6 +286,9 @@ log:
 					},
 					MaxTimeseriesPerRequest: 5,
 					MaxShards:               10,
+					LongestInterval: DurationConfig{
+						1333 * time.Second,
+					},
 				},
 				Admin: AdminConfig{
 					ListenIP:          config.DefaultAdminListenIP,
@@ -327,9 +330,6 @@ log:
 					Level:  "warning",
 					Format: "json",
 				},
-				StartupDelay: DurationConfig{
-					1333 * time.Second,
-				},
 				StartupTimeout: DurationConfig{
 					1777 * time.Second,
 				},
@@ -364,8 +364,8 @@ prometheus:
   max_point_age: 72h
   max_timeseries_per_request: 10
   max_shards: 20
+  longest_interval: 30s
 
-startup_delay: 30s
 startup_timeout: 33s
 
 log:
@@ -415,9 +415,6 @@ static_metadata:
 					Port:              9999,
 					HealthCheckPeriod: DurationConfig{10 * time.Second},
 				},
-				StartupDelay: DurationConfig{
-					30 * time.Second,
-				},
 				StartupTimeout: DurationConfig{
 					33 * time.Second,
 				},
@@ -429,6 +426,9 @@ static_metadata:
 					},
 					MaxTimeseriesPerRequest: 10,
 					MaxShards:               20,
+					LongestInterval: DurationConfig{
+						30 * time.Second,
+					},
 				},
 				OpenTelemetry: OTelConfig{
 					MetricsPrefix: "prefix.",
