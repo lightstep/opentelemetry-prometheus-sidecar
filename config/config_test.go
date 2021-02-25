@@ -161,7 +161,7 @@ destination:
 
 prometheus:
   wal: wal-eeee
-  longest_interval: 1333s
+  scrape_intervals: [22m13s]
 
 startup_timeout: 1777s
 `,
@@ -175,8 +175,8 @@ startup_timeout: 1777s
 					},
 					MaxTimeseriesPerRequest: 2000,
 					MaxShards:               2000,
-					LongestInterval: DurationConfig{
-						1333 * time.Second,
+					ScrapeIntervals: []string{
+						(1333 * time.Second).String(),
 					},
 				},
 				Admin: AdminConfig{
@@ -269,7 +269,7 @@ log:
 				"--prometheus.max-point-age", "10h",
 				"--prometheus.max-timeseries-per-request", "5",
 				"--prometheus.max-shards", "10",
-				"--prometheus.longest-interval=1333s",
+				"--prometheus.scrape-interval=22m13s",
 				"--log.level=warning",
 				"--healthcheck.period=17s",
 				"--diagnostics.endpoint", "https://look.here",
@@ -286,8 +286,8 @@ log:
 					},
 					MaxTimeseriesPerRequest: 5,
 					MaxShards:               10,
-					LongestInterval: DurationConfig{
-						1333 * time.Second,
+					ScrapeIntervals: []string{
+						(1333 * time.Second).String(),
 					},
 				},
 				Admin: AdminConfig{
@@ -364,7 +364,7 @@ prometheus:
   max_point_age: 72h
   max_timeseries_per_request: 10
   max_shards: 20
-  longest_interval: 30s
+  scrape_intervals: [30s]
 
 startup_timeout: 33s
 
@@ -426,8 +426,8 @@ static_metadata:
 					},
 					MaxTimeseriesPerRequest: 10,
 					MaxShards:               20,
-					LongestInterval: DurationConfig{
-						30 * time.Second,
+					ScrapeIntervals: []string{
+						(30 * time.Second).String(),
 					},
 				},
 				OpenTelemetry: OTelConfig{

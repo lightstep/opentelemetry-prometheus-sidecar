@@ -133,15 +133,19 @@ func Main() bool {
 		return false
 	}
 
+	intervals, err := parseIntervals(cfg.Prometheus.ScrapeIntervals)
+	if err != nil {
+		level.Error(logger).Log("msg", "error parsing --prometheus.scrape-interval", "err", err)
+		return false
+	}
+
 	// Parse was validated already, ignore error.
 	promURL, _ := url.Parse(cfg.Prometheus.Endpoint)
 
 	readyCfg := config.PromReady{
-		Logger:  log.With(logger, "component", "prom_ready"),
-		PromURL: promURL,
-
-		// This may be unset.
-		LongestInterval: cfg.Prometheus.LongestInterval.Duration,
+		Logger:          log.With(logger, "component", "prom_ready"),
+		PromURL:         promURL,
+		ScrapeIntervals: intervals,
 	}
 
 	metadataURL, err := promURL.Parse(metadata.DefaultEndpointPath)
@@ -404,4 +408,15 @@ func readWriteStartOffset(cfg config.MainConfig, logger log.Logger) (int, error)
 
 	err = retrieval.SaveProgressFile(cfg.Prometheus.WAL, startOffset)
 	return startOffset, err
+}
+
+func parseIntervals(ss []string) (dd []time.Duration, _ error) {
+	for _, s := range ss {
+		d, err := time.ParseDuration(s)
+		if err != nil {
+			return nil, errors.Wrap(err, "parse duration "+s)
+		}
+		dd = append(dd, d)
+	}
+	return
 }

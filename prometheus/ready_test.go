@@ -90,7 +90,7 @@ func TestReadySpecificInterval(t *testing.T) {
 	const interval = 79 * time.Second
 
 	rc := fs.ReadyConfig()
-	rc.LongestInterval = interval
+	rc.ScrapeIntervals = []time.Duration{time.Minute, interval}
 
 	go func() {
 		time.Sleep(1 * time.Second)
@@ -121,7 +121,7 @@ func TestReadySpecificIntervalWait(t *testing.T) {
 	const interval = 79 * time.Second
 
 	rc := fs.ReadyConfig()
-	rc.LongestInterval = interval
+	rc.ScrapeIntervals = []time.Duration{interval}
 
 	ctx, cancel := context.WithTimeout(context.Background(), config.DefaultHealthCheckTimeout*4/3)
 	defer cancel()

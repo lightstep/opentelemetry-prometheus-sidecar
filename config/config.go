@@ -160,7 +160,7 @@ type PromConfig struct {
 	MaxPointAge             DurationConfig `json:"max_point_age"`
 	MaxTimeseriesPerRequest int            `json:"max_timeseries_per_request"`
 	MaxShards               int            `json:"max_shards"`
-	LongestInterval         DurationConfig `json:"longest_interval"`
+	ScrapeIntervals         []string       `json:"scrape_intervals"`
 }
 
 type OTelConfig struct {
@@ -225,7 +225,7 @@ func DefaultMainConfig() MainConfig {
 			MaxPointAge:             DurationConfig{DefaultMaxPointAge},
 			MaxTimeseriesPerRequest: DefaultMaxTimeseriesPerRequest,
 			MaxShards:               DefaultMaxShards,
-			LongestInterval:         DurationConfig{0},
+			ScrapeIntervals:         nil,
 		},
 		Admin: AdminConfig{
 			Port:              DefaultAdminPort,
@@ -308,8 +308,8 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 	a.Flag("prometheus.max-shards", fmt.Sprintf("Max number of shards, i.e. amount of concurrency. Default: %d", DefaultMaxShards)).
 		IntVar(&cfg.Prometheus.MaxShards)
 
-	a.Flag("prometheus.longest-interval", "Delay at startup until Prometheus completes a scrape for this period. Default is unset, meaning wait for the first scrape to complete").
-		DurationVar(&cfg.Prometheus.LongestInterval.Duration)
+	a.Flag("prometheus.scrape-interval", "Delay at startup until Prometheus completes a scrape for this interval. Default waits for the first scrape to complete, multiple intervals can be set").
+		StringsVar(&cfg.Prometheus.ScrapeIntervals)
 
 	a.Flag("admin.port", "Administrative port this process listens on. Default: "+fmt.Sprint(DefaultAdminPort)).
 		IntVar(&cfg.Admin.Port)
@@ -539,5 +539,5 @@ func (d DurationConfig) MarshalJSON() ([]byte, error) {
 type PromReady struct {
 	Logger          log.Logger
 	PromURL         *url.URL
-	LongestInterval time.Duration
+	ScrapeIntervals []time.Duration
 }

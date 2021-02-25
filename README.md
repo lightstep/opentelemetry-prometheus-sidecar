@@ -267,6 +267,15 @@ parameter values, with one exception.  Configurations that support
 a map from string to string, including both request headers and
 resource attributes, are combined from both sources.
 
+#### Startup safety
+
+The sidecar waits until Prometheus finishes its first scrapes to begin
+processing the WAL, to ensure that target information is available
+before the sidecar tries loading its metadata cache.
+
+When multiple scrape intervals are in use, all intervals should be
+monitored.  @@@
+
 #### Resources
 
 Use the `--destination.attribute=KEY=VALUE` flag to add additional resource attributes to all exported timeseries.

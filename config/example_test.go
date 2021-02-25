@@ -43,7 +43,10 @@ func Example() {
 	//     "max_point_age": "72h0m0s",
 	//     "max_timeseries_per_request": 2000,
 	//     "max_shards": 2000,
-	//     "longest_interval": "33s"
+	//     "scrape_intervals": [
+	//       "30s",
+	//       "60s"
+	//     ]
 	//   },
 	//   "opentelemetry": {
 	//     "metrics_prefix": "prefix."

@@ -69,7 +69,6 @@ func TestStartupInterrupt(t *testing.T) {
 		append(e2eTestMainCommonFlags,
 			"--prometheus.wal=testdata/wal",
 			"--log.level=debug",
-			"--startup.delay=1s",
 		)...)
 
 	cmd.Env = append(os.Environ(), "RUN_MAIN=1")
@@ -240,7 +239,6 @@ func TestSuperStackDump(t *testing.T) {
 		append(e2eTestMainSupervisorFlags,
 			"--prometheus.wal=testdata/wal",
 			"--healthcheck.period=1s",
-			"--startup.delay=0s",
 			"--log.level=debug",
 		)...)
 

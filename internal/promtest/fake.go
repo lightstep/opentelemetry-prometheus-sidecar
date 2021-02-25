@@ -96,7 +96,7 @@ func (fp *FakePrometheus) ReadyConfig() config.PromReady {
 	return config.PromReady{
 		Logger:          telemetry.DefaultLogger(),
 		PromURL:         fp.Test(),
-		LongestInterval: 0,
+		ScrapeIntervals: nil,
 	}
 }
 

@@ -41,22 +41,26 @@ func completedFirstScrapes(inCtx context.Context, cfg config.PromReady) error {
 		}
 	}
 
-	if cfg.LongestInterval == 0 && foundAny {
-		// TODO: Print something about setting longest
-		// interval when there are more than one.
+	if len(cfg.ScrapeIntervals) == 0 && foundAny {
+		// TODO: After_some time passes, we can check again and if any
+		// new intervals are discovered, print a warning about configuring
+		// the --prometheus.scrape-interval setting.
 		return nil
 	}
 
-	ts := cfg.LongestInterval.String()
-	for _, ls := range foundLabelSets {
-		for _, l := range ls {
-			if l.Name == "interval" && l.Value == ts {
-				return nil
+	for _, si := range cfg.ScrapeIntervals {
+		ts := si.String()
+		for _, ls := range foundLabelSets {
+			for _, l := range ls {
+				if l.Name == "interval" && l.Value == ts {
+					return nil
+				}
 			}
 		}
+		return errors.Errorf("waiting for scrape interval %s", ts)
 	}
 
-	return errors.Errorf("waiting for longest interval: %s", ts)
+	return nil
 }
 
 func WaitForReady(inCtx context.Context, cfg config.PromReady) error {

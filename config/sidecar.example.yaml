@@ -41,10 +41,10 @@ prometheus:
   # Max number of shards, i.e. amount of concurrency
   max_shards: 2000
 
-  # Longest interval, when set, is used to delay startup.  If set, 
+  # Scrape intervals, when set, are used to delay startup.  If set, 
   # the sidecar will wait until the first scrape completes with
   # this interval
-  longest_interval: 33s
+  scrape_intervals: [30s, 60s]
 
 # OpenTelemetry settings:
 opentelemetry:
