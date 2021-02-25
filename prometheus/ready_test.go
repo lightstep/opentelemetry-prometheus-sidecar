@@ -17,7 +17,7 @@ var logger = telemetry.DefaultLogger()
 func TestReady(t *testing.T) {
 	fs := promtest.NewFakePrometheus()
 	fs.SetReady(true)
-	fs.SetIntervals(30)
+	fs.SetIntervals(30 * time.Second)
 
 	require.NoError(t, WaitForReady(context.Background(), fs.ReadyConfig()))
 }
@@ -78,4 +78,55 @@ func TestReadyCancel(t *testing.T) {
 
 	require.Error(t, err)
 	require.Equal(t, context.Canceled, err)
+}
+
+func TestReadySpecificInterval(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping test in short mode.")
+	}
+	fs := promtest.NewFakePrometheus()
+	fs.SetIntervals() // None set
+
+	const interval = 79 * time.Second
+
+	rc := fs.ReadyConfig()
+	rc.LongestInterval = interval
+
+	go func() {
+		time.Sleep(1 * time.Second)
+		fs.SetIntervals(20 * time.Second)
+
+		time.Sleep(1 * time.Second)
+		fs.SetIntervals(20*time.Second, 40*time.Second)
+
+		time.Sleep(1 * time.Second)
+		fs.SetIntervals(20*time.Second, 40*time.Second, 60*time.Second)
+
+		time.Sleep(1 * time.Second)
+		fs.SetIntervals(20*time.Second, 40*time.Second, 60*time.Second, interval)
+	}()
+
+	err := WaitForReady(context.Background(), rc)
+
+	require.NoError(t, err)
+}
+
+func TestReadySpecificIntervalWait(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping test in short mode.")
+	}
+	fs := promtest.NewFakePrometheus()
+	fs.SetIntervals(19 * time.Second) // Not the one we want
+
+	const interval = 79 * time.Second
+
+	rc := fs.ReadyConfig()
+	rc.LongestInterval = interval
+
+	ctx, cancel := context.WithTimeout(context.Background(), config.DefaultHealthCheckTimeout*4/3)
+	defer cancel()
+	err := WaitForReady(ctx, rc)
+
+	require.Error(t, err)
+	require.Equal(t, context.DeadlineExceeded, err)
 }

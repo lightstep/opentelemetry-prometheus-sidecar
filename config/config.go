@@ -537,7 +537,7 @@ func (d DurationConfig) MarshalJSON() ([]byte, error) {
 // places.  It is not parsed from the config file or command-line, it
 // is here to avoid a test package cycle, primarily.
 type PromReady struct {
-	Logger    log.Logger
-	PromURL   *url.URL
-	Intervals []time.Duration
+	Logger          log.Logger
+	PromURL         *url.URL
+	LongestInterval time.Duration
 }

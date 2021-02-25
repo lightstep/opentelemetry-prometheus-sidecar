@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"sync"
+	"time"
 
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
@@ -16,7 +17,7 @@ type FakePrometheus struct {
 	lock      sync.Mutex
 	ready     bool
 	segment   int
-	intervals []int
+	intervals []time.Duration
 	mux       *http.ServeMux
 }
 
@@ -29,7 +30,7 @@ func NewFakePrometheus() *FakePrometheus {
 	fp := &FakePrometheus{
 		ready:     true,
 		segment:   0,
-		intervals: []int{30},
+		intervals: []time.Duration{30 * time.Second},
 		mux:       http.NewServeMux(),
 	}
 
@@ -65,13 +66,13 @@ func NewFakePrometheus() *FakePrometheus {
 
 		for _, in := range fp.intervals {
 			cnt := 1 + rand.Intn(3)
-			mean := float64(in) + 0.000123
-			sum := float64(cnt) * mean
+			p99 := in.Seconds() + 0.000123
+			sum := float64(cnt) * p99
 			_, err = w.Write([]byte(fmt.Sprintf(`
-%s{interval="%ds",quantile="0.99"} %f
-%s{interval="%ds"} %f
-%s{interval="%ds"} %d
-`, scrapeIntervalName, in, mean, scrapeIntervalSum, in, sum, scrapeIntervalCount, in, cnt)))
+%s{interval="%s",quantile="0.99"} %f
+%s{interval="%s"} %f
+%s{interval="%s"} %d
+`, scrapeIntervalName, in, p99, scrapeIntervalSum, in, sum, scrapeIntervalCount, in, cnt)))
 			if err != nil {
 				panic(err)
 			}
@@ -93,8 +94,9 @@ func (fp *FakePrometheus) Test() *url.URL {
 
 func (fp *FakePrometheus) ReadyConfig() config.PromReady {
 	return config.PromReady{
-		Logger:  telemetry.DefaultLogger(),
-		PromURL: fp.Test(),
+		Logger:          telemetry.DefaultLogger(),
+		PromURL:         fp.Test(),
+		LongestInterval: 0,
 	}
 }
 
@@ -112,7 +114,7 @@ func (fp *FakePrometheus) SetReady(r bool) {
 	fp.ready = r
 }
 
-func (fp *FakePrometheus) SetIntervals(is ...int) {
+func (fp *FakePrometheus) SetIntervals(is ...time.Duration) {
 	fp.lock.Lock()
 	defer fp.lock.Unlock()
 

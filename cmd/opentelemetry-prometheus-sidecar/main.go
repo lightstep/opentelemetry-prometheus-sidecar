@@ -139,6 +139,9 @@ func Main() bool {
 	readyCfg := config.PromReady{
 		Logger:  log.With(logger, "component", "prom_ready"),
 		PromURL: promURL,
+
+		// This may be unset.
+		LongestInterval: cfg.Prometheus.LongestInterval.Duration,
 	}
 
 	metadataURL, err := promURL.Parse(metadata.DefaultEndpointPath)
