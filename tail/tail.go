@@ -396,19 +396,13 @@ func (t *Tailer) Read(b []byte) (int, error) {
 			// If the promSeg is more than 1 ahead of the reader but
 			// the block size is not aligned, we have a serious
 			// inconsistency.
-			doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
-				level.Error(t.logger).Log(
-					"msg", "truncated WAL segment",
-					"segment", currentSegment,
-					"offset", currentOffset,
-				)
-			})
-			segmentErrorCounter.Add(t.ctx, 1)
-			return 0, errors.Errorf(
-				"truncated WAL segment %d @ %d",
-				currentSegment,
-				currentOffset,
+			level.Error(t.logger).Log(
+				"msg", "truncated WAL segment",
+				"segment", currentSegment,
+				"offset", currentOffset,
 			)
+			segmentErrorCounter.Add(t.ctx, 1)
+			return 0, ErrRestartReader
 		}
 
 		if promSeg < currentSegment {

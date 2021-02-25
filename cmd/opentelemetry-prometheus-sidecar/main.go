@@ -24,7 +24,6 @@ import (
 	"net/url"
 	"os"
 	"runtime"
-	"strings"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -300,8 +299,7 @@ func Main() bool {
 
 	for {
 		if err := g.Run(); err != nil {
-			// TODO: don't use a string compare here
-			if strings.Contains(err.Error(), "truncated WAL segment") {
+			if err == tail.ErrRestartReader {
 				level.Error(logger).Log("msg", "restarting reader", "err", err)
 				startOffset, err = readWriteStartOffset(cfg, logger)
 				if err != nil {
