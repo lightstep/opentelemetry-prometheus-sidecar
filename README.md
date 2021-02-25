@@ -129,7 +129,7 @@ server:
       mountPath: /data
     ports:
     - name: admin-port
-      containerPort: 9091 
+      containerPort: 9091
     livenessProbe:
       httpGet:
         path: /-/health
@@ -215,6 +215,10 @@ Flags:
       --prometheus.max-shards=PROMETHEUS.MAX-SHARDS
                                  Max number of shards, i.e. amount of
                                  concurrency. Default: 2000
+      --prometheus.longest-interval=PROMETHEUS.LONGEST-INTERVAL
+                                 Delay at startup until Prometheus completes a
+                                 scrape for this period. Default is unset, meaning
+                                 wait for the first scrape to complete
       --admin.port=ADMIN.PORT    Administrative port this process listens on.
                                  Default: 9091
       --admin.listen-ip=ADMIN.LISTEN-IP
@@ -231,9 +235,6 @@ Flags:
                                  for a series to be forwarded to OpenTelemetry.
                                  If repeated, the series must pass any of the
                                  filter sets to be forwarded.
-      --startup.delay=STARTUP.DELAY
-                                 Delay at startup to allow Prometheus its
-                                 initial scrape. Default: 1m0s
       --startup.timeout=STARTUP.TIMEOUT
                                  Timeout at startup to allow the endpoint to
                                  become available. Default: 5m0s
@@ -323,7 +324,7 @@ When run in the default configuration, the sidecar will self-monitor for livenes
 ```
     ports:
     - name: admin-port
-      containerPort: 9091 
+      containerPort: 9091
     livenessProbe:
       httpGet:
         path: /-/health

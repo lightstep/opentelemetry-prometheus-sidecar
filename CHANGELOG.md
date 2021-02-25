@@ -8,6 +8,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+### Added
+- Sidecar waits for the first scrape to complete before entering its run state. ()
+- New setting `--prometheus.longest-interval` supports configuring the longest
+  interval to wait for at startup.
+  
+### Removed
+- The `--startup.delay` setting has been removed in favor of monitoring when 
+  Prometheus actually finishes its first scrapes.
+
 ## [0.17.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.17.0) - 2021-02-23
 ### Added
 - Automatically set (the same) `service.instance.id` for Destination/Diagnostics

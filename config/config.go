@@ -308,7 +308,7 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 	a.Flag("prometheus.max-shards", fmt.Sprintf("Max number of shards, i.e. amount of concurrency. Default: %d", DefaultMaxShards)).
 		IntVar(&cfg.Prometheus.MaxShards)
 
-	a.Flag("prometheus.longest-interval", "Delay at startup until Prometheus completes a scrape for this period. Default is unset, meaning wait for any scrape to complete").
+	a.Flag("prometheus.longest-interval", "Delay at startup until Prometheus completes a scrape for this period. Default is unset, meaning wait for the first scrape to complete").
 		DurationVar(&cfg.Prometheus.LongestInterval.Duration)
 
 	a.Flag("admin.port", "Administrative port this process listens on. Default: "+fmt.Sprint(DefaultAdminPort)).
