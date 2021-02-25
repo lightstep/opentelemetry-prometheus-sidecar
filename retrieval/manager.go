@@ -96,6 +96,10 @@ type PrometheusReader struct {
 	extraLabels          labels.Labels
 }
 
+func (r *PrometheusReader) Close() error {
+	return r.tailer.Close()
+}
+
 func (r *PrometheusReader) Run(ctx context.Context, startOffset int) error {
 	level.Info(r.logger).Log("msg", "starting Prometheus reader")
 

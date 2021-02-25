@@ -24,6 +24,7 @@ import (
 	"net/url"
 	"os"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -40,11 +41,11 @@ import (
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/oklog/run"
-	"go.opentelemetry.io/otel/semconv"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/version"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
+	"go.opentelemetry.io/otel/semconv"
 	grpcMetadata "google.golang.org/grpc/metadata"
 
 	// register grpc compressors
@@ -70,6 +71,101 @@ func main() {
 	if !Main() {
 		os.Exit(1)
 	}
+}
+
+func initReader(ctx context.Context, logger log.Logger, cfg config.MainConfig, scf otlp.StorageClientFactory, promURL *url.URL, metadataCache *metadata.Cache, metricRenames map[string]string, svcInstanceId string) (*retrieval.PrometheusReader, *otlp.QueueManager, error) {
+	filters, err := parseFilters(logger, cfg.Filters)
+	if err != nil {
+		level.Error(logger).Log("msg", "error parsing --filter", "err", err)
+		return &retrieval.PrometheusReader{}, &otlp.QueueManager{}, err
+	}
+
+	tailer, err := tail.Tail(
+		ctx,
+		log.With(logger, "component", "wal_reader"),
+		cfg.Prometheus.WAL,
+		promURL,
+	)
+	if err != nil {
+		level.Error(logger).Log("msg", "tailing WAL failed", "err", err)
+		return &retrieval.PrometheusReader{}, &otlp.QueueManager{}, err
+	}
+
+	queueManager, err := otlp.NewQueueManager(
+		log.With(logger, "component", "queue_manager"),
+		cfg.QueueConfig(),
+		cfg.Destination.Timeout.Duration,
+		scf,
+		tailer,
+	)
+	if err != nil {
+		level.Error(logger).Log("msg", "creating queue manager failed", "err", err)
+		return &retrieval.PrometheusReader{}, &otlp.QueueManager{}, err
+	}
+
+	prometheusReader := retrieval.NewPrometheusReader(
+		log.With(logger, "component", "prom_wal"),
+		cfg.Prometheus.WAL,
+		tailer,
+		filters,
+		metricRenames,
+		metadataCache,
+		queueManager,
+		cfg.OpenTelemetry.MetricsPrefix,
+		cfg.Prometheus.MaxPointAge.Duration,
+		createResourceLabels(svcInstanceId, cfg.Destination.Attributes),
+	)
+	return prometheusReader, queueManager, nil
+}
+
+func getRunGroup(ctx context.Context, cancel context.CancelFunc, logger log.Logger, startOffset int, prometheusReader *retrieval.PrometheusReader, queueManager *otlp.QueueManager) run.Group {
+	// Run two inter-depdendent components:
+	// (1) Prometheus reader
+	// (2) Queue manager
+	// TODO: Replace this with x/sync/errgroup
+	var g run.Group
+	{
+		g.Add(
+			func() error {
+				for {
+					level.Info(logger).Log("msg", "starting Prometheus reader")
+					err := prometheusReader.Run(ctx, startOffset)
+					return err
+				}
+
+			},
+			func(err error) {
+				// Prometheus reader needs to be stopped before closing the TSDB
+				// so that it doesn't try to write samples to a closed storage.
+				// See the use of `stopCh` below to explain how this works.
+				level.Info(logger).Log("msg", "stopping Prometheus reader")
+				cancel()
+			},
+		)
+	}
+	{
+		stopCh := make(chan struct{})
+		g.Add(
+			func() error {
+				if err := queueManager.Start(); err != nil {
+					return err
+				}
+				level.Info(logger).Log("msg", "starting OpenTelemetry writer")
+				<-stopCh
+				return nil
+			},
+			func(err error) {
+				if err := queueManager.Stop(); err != nil {
+					level.Error(logger).Log(
+						"msg", "stopping OpenTelemetry writer",
+						"err", err,
+					)
+				}
+				close(stopCh)
+			},
+		)
+	}
+	return g
 }
 
 func Main() bool {
@@ -127,12 +223,6 @@ func Main() bool {
 		// Transport: otelhttp.NewTransport(http.DefaultTransport),
 	}
 
-	filters, err := parseFilters(logger, cfg.Filters)
-	if err != nil {
-		level.Error(logger).Log("msg", "error parsing --filter", "err", err)
-		return false
-	}
-
 	// Parse was validated already, ignore error.
 	promURL, _ := url.Parse(cfg.Prometheus.Endpoint)
 
@@ -141,17 +231,6 @@ func Main() bool {
 		panic(err)
 	}
 	metadataCache := metadata.NewCache(httpClient, metadataURL, staticMetadata)
-
-	tailer, err := tail.Tail(
-		ctx,
-		log.With(logger, "component", "wal_reader"),
-		cfg.Prometheus.WAL,
-		promURL,
-	)
-	if err != nil {
-		level.Error(logger).Log("msg", "tailing WAL failed", "err", err)
-		return false
-	}
 
 	outputURL, _ := url.Parse(cfg.Destination.Endpoint)
 
@@ -167,30 +246,10 @@ func Main() bool {
 		Prometheus:       cfg.Prometheus,
 	})
 
-	queueManager, err := otlp.NewQueueManager(
-		log.With(logger, "component", "queue_manager"),
-		cfg.QueueConfig(),
-		cfg.Destination.Timeout.Duration,
-		scf,
-		tailer,
-	)
+	prometheusReader, queueManager, err := initReader(ctx, logger, cfg, scf, promURL, metadataCache, metricRenames, svcInstanceId)
 	if err != nil {
-		level.Error(logger).Log("msg", "creating queue manager failed", "err", err)
 		return false
 	}
-
-	prometheusReader := retrieval.NewPrometheusReader(
-		log.With(logger, "component", "prom_wal"),
-		cfg.Prometheus.WAL,
-		tailer,
-		filters,
-		metricRenames,
-		metadataCache,
-		queueManager,
-		cfg.OpenTelemetry.MetricsPrefix,
-		cfg.Prometheus.MaxPointAge.Duration,
-		createResourceLabels(svcInstanceId, cfg.Destination.Attributes),
-	)
 
 	// Start the admin server.
 	go func() {
@@ -237,52 +296,28 @@ func Main() bool {
 	level.Debug(logger).Log("msg", "entering run state")
 	healthChecker.SetRunning()
 
-	// Run two inter-depdendent components:
-	// (1) Prometheus reader
-	// (2) Queue manager
-	// TODO: Replace this with x/sync/errgroup
-	var g run.Group
-	{
-		g.Add(
-			func() error {
-				level.Info(logger).Log("msg", "starting Prometheus reader")
-				err = prometheusReader.Run(ctx, startOffset)
-				return err
-			},
-			func(err error) {
-				// Prometheus reader needs to be stopped before closing the TSDB
-				// so that it doesn't try to write samples to a closed storage.
-				// See the use of `stopCh` below to explain how this works.
-				level.Info(logger).Log("msg", "stopping Prometheus reader")
-				cancelMain()
-			},
-		)
-	}
-	{
-		stopCh := make(chan struct{})
-		g.Add(
-			func() error {
-				if err := queueManager.Start(); err != nil {
-					return err
+	g := getRunGroup(ctx, cancelMain, logger, startOffset, prometheusReader, queueManager)
+
+	for {
+		if err := g.Run(); err != nil {
+			// TODO: don't use a string compare here
+			if strings.Contains(err.Error(), "truncated WAL segment") {
+				startOffset, err = readWriteStartOffset(cfg, logger)
+				if err != nil {
+					return false
 				}
-				level.Info(logger).Log("msg", "starting OpenTelemetry writer")
-				<-stopCh
-				return nil
-			},
-			func(err error) {
-				if err := queueManager.Stop(); err != nil {
-					level.Error(logger).Log(
-						"msg", "stopping OpenTelemetry writer",
-						"err", err,
-					)
+				prometheusReader, queueManager, err = initReader(ctx, logger, cfg, scf, promURL, metadataCache, metricRenames, svcInstanceId)
+				if err != nil {
+					return false
 				}
-				close(stopCh)
-			},
-		)
-	}
-	if err := g.Run(); err != nil {
-		level.Error(logger).Log("msg", "run loop error", "err", err)
-		return false
+				// TODO: determine if we should add a max number of retry here
+				g = getRunGroup(ctx, cancelMain, logger, startOffset, prometheusReader, queueManager)
+				continue
+			}
+			level.Error(logger).Log("msg", "run loop error", "err", err)
+			return false
+		}
+		break
 	}
 
 	// SIGTERM causes graceful shutdown.
