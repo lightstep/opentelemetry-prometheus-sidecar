@@ -19,10 +19,7 @@ func TestReady(t *testing.T) {
 	fs.SetReady(true)
 	fs.SetIntervals(30)
 
-	require.NoError(t, WaitForReady(context.Background(), ReadyConfig{
-		Logger:  logger,
-		PromURL: fs.Test(),
-	}))
+	require.NoError(t, WaitForReady(context.Background(), fs.ReadyConfig()))
 }
 
 func TestSlowStart(t *testing.T) {
@@ -38,9 +35,7 @@ func TestSlowStart(t *testing.T) {
 		fs.SetIntervals(30)
 	}()
 
-	require.NoError(t, WaitForReady(context.Background(), ReadyConfig{
-		Logger: logger, PromURL: fs.Test(),
-	}))
+	require.NoError(t, WaitForReady(context.Background(), fs.ReadyConfig()))
 }
 
 func TestNotReady(t *testing.T) {
@@ -52,10 +47,7 @@ func TestNotReady(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*config.DefaultHealthCheckTimeout)
 	defer cancel()
-	err := WaitForReady(ctx, ReadyConfig{
-		Logger:  logger,
-		PromURL: fs.Test(),
-	})
+	err := WaitForReady(ctx, fs.ReadyConfig())
 	require.Error(t, err)
 	require.Equal(t, context.DeadlineExceeded, err)
 }
@@ -70,7 +62,7 @@ func TestReadyFail(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*config.DefaultHealthCheckTimeout)
 	defer cancel()
-	err = WaitForReady(ctx, ReadyConfig{
+	err = WaitForReady(ctx, config.PromReady{
 		Logger:  logger,
 		PromURL: tu,
 	})
@@ -82,10 +74,8 @@ func TestReadyCancel(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // immediate
-	err := WaitForReady(ctx, ReadyConfig{
-		Logger:  logger,
-		PromURL: fs.Test(),
-	})
+	err := WaitForReady(ctx, fs.ReadyConfig())
+
 	require.Error(t, err)
 	require.Equal(t, context.Canceled, err)
 }

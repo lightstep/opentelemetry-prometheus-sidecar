@@ -3,11 +3,9 @@ package prometheus
 import (
 	"context"
 	"net/http"
-	"net/url"
 	"path"
 	"time"
 
-	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/pkg/errors"
@@ -17,15 +15,7 @@ const (
 	scrapeIntervalName = config.PrometheusTargetIntervalLengthName
 )
 
-type (
-	ReadyConfig struct {
-		Logger    log.Logger
-		PromURL   *url.URL
-		Intervals []time.Duration
-	}
-)
-
-func completedFirstScrapes(inCtx context.Context, cfg ReadyConfig) error {
+func completedFirstScrapes(inCtx context.Context, cfg config.PromReady) error {
 	u := *cfg.PromURL
 	u.Path = path.Join(u.Path, "/metrics")
 
@@ -52,7 +42,7 @@ func completedFirstScrapes(inCtx context.Context, cfg ReadyConfig) error {
 	return nil
 }
 
-func WaitForReady(inCtx context.Context, cfg ReadyConfig) error {
+func WaitForReady(inCtx context.Context, cfg config.PromReady) error {
 	u := *cfg.PromURL
 	u.Path = path.Join(u.Path, "/-/ready")
 

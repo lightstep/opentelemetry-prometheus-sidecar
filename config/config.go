@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/ghodss/yaml"
+	"github.com/go-kit/kit/log"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/snappy"
 	"github.com/pkg/errors"
@@ -533,4 +534,13 @@ func (d *DurationConfig) UnmarshalJSON(data []byte) error {
 
 func (d DurationConfig) MarshalJSON() ([]byte, error) {
 	return json.Marshal(d.Duration.String())
+}
+
+// PromReady is used for prometheus.WaitForReady() in several
+// places.  It is not parsed from the config file or command-line, it
+// is here to avoid a test package cycle, primarily.
+type PromReady struct {
+	Logger    log.Logger
+	PromURL   *url.URL
+	Intervals []time.Duration
 }

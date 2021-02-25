@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 )
 
 type FakePrometheus struct {
@@ -17,8 +18,6 @@ type FakePrometheus struct {
 	segment   int
 	intervals []int
 	mux       *http.ServeMux
-	// server    *httptest.Server
-	// URL       *url.URL
 }
 
 func NewFakePrometheus() *FakePrometheus {
@@ -90,6 +89,13 @@ func (fp *FakePrometheus) Test() *url.URL {
 	}
 
 	return fpu
+}
+
+func (fp *FakePrometheus) ReadyConfig() config.PromReady {
+	return config.PromReady{
+		Logger:  telemetry.DefaultLogger(),
+		PromURL: fp.Test(),
+	}
 }
 
 func (fp *FakePrometheus) SetSegment(s int) {
