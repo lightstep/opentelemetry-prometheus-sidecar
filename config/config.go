@@ -94,6 +94,10 @@ an OpenTelemetry (https://opentelemetry.io) Protocol endpoint.
 	// PrometheusCurrentSegmentMetricName names an internal gauge
 	// exposed by Prometheus (having no labels).
 	PrometheusCurrentSegmentMetricName = "prometheus_tsdb_wal_segment_current"
+
+	// PrometheusTargetIntervalLengthName is an internal histogram
+	// indicating how long the interval between scrapes.
+	PrometheusTargetIntervalLengthName = "prometheus_target_interval_length_seconds"
 )
 
 var (

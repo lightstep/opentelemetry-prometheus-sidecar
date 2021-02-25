@@ -13,9 +13,48 @@ import (
 	"github.com/pkg/errors"
 )
 
-func WaitForReady(inCtx context.Context, logger log.Logger, promURL *url.URL) error {
-	u := *promURL
-	u.Path = path.Join(promURL.Path, "/-/ready")
+const (
+	scrapeIntervalName = config.PrometheusTargetIntervalLengthName
+)
+
+type (
+	ReadyConfig struct {
+		Logger    log.Logger
+		PromURL   *url.URL
+		Intervals []time.Duration
+	}
+)
+
+func completedFirstScrapes(inCtx context.Context, cfg ReadyConfig) error {
+	u := *cfg.PromURL
+	u.Path = path.Join(u.Path, "/metrics")
+
+	ctx, cancel := context.WithTimeout(inCtx, config.DefaultHealthCheckTimeout)
+	defer cancel()
+
+	mon := NewMonitor(&u)
+	res, err := mon.Get(ctx)
+	if err != nil {
+		return err
+	}
+	summary := res.Summary(scrapeIntervalName)
+	foundLabelSets := summary.AllLabels()
+	if len(foundLabelSets) == 0 {
+		return errors.New("waiting for the first scrape(s) to complete")
+	}
+
+	for _, ls := range foundLabelSets {
+		if summary.For(ls).Count() == 0 {
+			return errors.Errorf("waiting scrape %v to complete", ls)
+		}
+	}
+
+	return nil
+}
+
+func WaitForReady(inCtx context.Context, cfg ReadyConfig) error {
+	u := *cfg.PromURL
+	u.Path = path.Join(u.Path, "/-/ready")
 
 	// warnSkipped prevents logging on the first failure, since we
 	// will try again and this lets us avoid the first sleep
@@ -40,18 +79,27 @@ func WaitForReady(inCtx context.Context, logger log.Logger, promURL *url.URL) er
 				defer resp.Body.Close()
 			}
 
-			if err == nil && resp.StatusCode/100 == 2 {
-				return true
+			respOK := err == nil && resp.StatusCode/100 == 2
+
+			if respOK {
+				// Great! We also need it to have completed
+				// a full round of scrapes.
+				err = completedFirstScrapes(inCtx, cfg)
+				if err == nil {
+					return true
+				}
 			}
 
 			if !warnSkipped {
 				warnSkipped = true
 				return false
 			}
-			if err != nil {
-				level.Warn(logger).Log("msg", "Prometheus readiness check", "err", err)
+			if respOK {
+				level.Warn(cfg.Logger).Log("msg", "Prometheus /metrics scrape", "err", err)
+			} else if err != nil {
+				level.Warn(cfg.Logger).Log("msg", "Prometheus readiness check", "err", err)
 			} else {
-				level.Warn(logger).Log("msg", "Prometheus is not ready", "status", resp.Status)
+				level.Warn(cfg.Logger).Log("msg", "Prometheus is not ready", "status", resp.Status)
 			}
 			return false
 		}()

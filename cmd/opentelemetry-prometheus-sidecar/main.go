@@ -40,11 +40,11 @@ import (
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/oklog/run"
-	"go.opentelemetry.io/otel/semconv"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/version"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
+	"go.opentelemetry.io/otel/semconv"
 	grpcMetadata "google.golang.org/grpc/metadata"
 
 	// register grpc compressors
@@ -226,14 +226,6 @@ func Main() bool {
 		return false
 	}
 
-	// Sleep to allow the first scrapes to complete.
-	level.Debug(logger).Log("msg", "sleeping to allow Prometheus its first scrape")
-	select {
-	case <-time.After(cfg.StartupDelay.Duration):
-	case <-ctx.Done():
-		return true
-	}
-
 	level.Debug(logger).Log("msg", "entering run state")
 	healthChecker.SetRunning()
 
@@ -329,7 +321,10 @@ func selfTest(ctx context.Context, promURL *url.URL, scf otlp.StorageClientFacto
 	// These tests are performed sequentially, to keep the logs simple.
 	// Note waitForPrometheus has no unrecoverable error conditions, so
 	// loops until success or the context is canceled.
-	if err := prometheus.WaitForReady(ctx, logger, promURL); err != nil {
+	if err := prometheus.WaitForReady(ctx, prometheus.ReadyConfig{
+		Logger:  logger,
+		PromURL: promURL,
+	}); err != nil {
 		return errors.Wrap(err, "Prometheus is not ready")
 	}
 
