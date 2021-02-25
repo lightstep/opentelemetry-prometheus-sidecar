@@ -302,6 +302,7 @@ func Main() bool {
 		if err := g.Run(); err != nil {
 			// TODO: don't use a string compare here
 			if strings.Contains(err.Error(), "truncated WAL segment") {
+				level.Error(logger).Log("msg", "restarting reader", "err", err)
 				startOffset, err = readWriteStartOffset(cfg, logger)
 				if err != nil {
 					return false
