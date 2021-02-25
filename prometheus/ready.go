@@ -33,31 +33,43 @@ func completedFirstScrapes(inCtx context.Context, cfg config.PromReady) error {
 		return errors.New("waiting for the first scrape(s) to complete")
 	}
 
-	foundAny := false
-	for _, ls := range foundLabelSets {
-		if summary.For(ls).Count() != 0 {
-			foundAny = true
-			break
+	// Prometheus doesn't report zero counts. We expect absent
+	// timeseries, not zero counts, but we test for Count() != 0 on
+	// the retrieved metrics for added safety below.
+
+	if len(cfg.ScrapeIntervals) == 0 {
+		// If no intervals are configured, wait for the first one.
+		//
+		// TODO: We can't be sure there are only one interval.
+		// After time passes, we can check again--if any new
+		// intervals are discovered, print a warning about
+		// configuring intervals via --prometheus.scrape-interval
+		// to ensure safe startup.
+		for _, ls := range foundLabelSets {
+			if summary.For(ls).Count() != 0 {
+				return nil
+			}
 		}
+
+		return nil
 	}
 
-	if len(cfg.ScrapeIntervals) == 0 && foundAny {
-		// TODO: After_some time passes, we can check again and if any
-		// new intervals are discovered, print a warning about configuring
-		// the --prometheus.scrape-interval setting.
-		return nil
+	// Find all the known intervals.
+	foundWhich := map[string]bool{}
+	for _, ls := range foundLabelSets {
+		for _, l := range ls {
+			if l.Name == "interval" && summary.For(ls).Count() != 0 {
+				foundWhich[l.Value] = true
+				break
+			}
+		}
 	}
 
 	for _, si := range cfg.ScrapeIntervals {
 		ts := si.String()
-		for _, ls := range foundLabelSets {
-			for _, l := range ls {
-				if l.Name == "interval" && l.Value == ts {
-					return nil
-				}
-			}
+		if !foundWhich[ts] {
+			return errors.Errorf("waiting for scrape interval %s", ts)
 		}
-		return errors.Errorf("waiting for scrape interval %s", ts)
 	}
 
 	return nil

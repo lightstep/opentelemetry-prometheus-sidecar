@@ -118,10 +118,8 @@ func TestReadySpecificIntervalWait(t *testing.T) {
 	fs := promtest.NewFakePrometheus()
 	fs.SetIntervals(19 * time.Second) // Not the one we want
 
-	const interval = 79 * time.Second
-
 	rc := fs.ReadyConfig()
-	rc.ScrapeIntervals = []time.Duration{interval}
+	rc.ScrapeIntervals = []time.Duration{79 * time.Second, 19 * time.Second}
 
 	ctx, cancel := context.WithTimeout(context.Background(), config.DefaultHealthCheckTimeout*4/3)
 	defer cancel()
