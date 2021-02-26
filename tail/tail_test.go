@@ -68,7 +68,7 @@ func TestCorruption(t *testing.T) {
 
 	prom := promtest.NewFakePrometheus()
 
-	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir, prom.URL, -1)
+	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir, prom.ReadyConfig(), 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +104,7 @@ func TestInvalidSegment(t *testing.T) {
 	prom := promtest.NewFakePrometheus()
 	prom.SetSegment(2)
 
-	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir, prom.URL, -1)
+	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir, prom.ReadyConfig(), 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +142,7 @@ func TestTailFuzz(t *testing.T) {
 
 	prom := promtest.NewFakePrometheus()
 
-	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir, prom.URL, -1)
+	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir, prom.ReadyConfig(), 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -275,7 +275,7 @@ func TestSlowFsync(t *testing.T) {
 
 	w.Log(rec)
 
-	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir, prom.URL, -1)
+	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir, prom.ReadyConfig(), 1)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -30,8 +30,16 @@ type (
 		family *dto.MetricFamily
 	}
 
+	SummaryFamily struct {
+		family *dto.MetricFamily
+	}
+
 	Result struct {
-		values map[string]Family
+		values map[string]*dto.MetricFamily
+	}
+
+	Summary struct {
+		summary *dto.Summary
 	}
 )
 
@@ -46,7 +54,7 @@ func (m *Monitor) Get(ctx context.Context) (_ Result, retErr error) {
 		wg  sync.WaitGroup
 		ch  = make(chan *dto.MetricFamily)
 		res = Result{
-			values: map[string]Family{},
+			values: map[string]*dto.MetricFamily{},
 		}
 	)
 
@@ -58,9 +66,7 @@ func (m *Monitor) Get(ctx context.Context) (_ Result, retErr error) {
 	go func() {
 		defer wg.Done()
 		for mfam := range ch {
-			res.values[mfam.GetName()] = Family{
-				family: mfam,
-			}
+			res.values[mfam.GetName()] = mfam
 		}
 	}()
 
@@ -87,18 +93,26 @@ func (m *Monitor) Get(ctx context.Context) (_ Result, retErr error) {
 
 func (r Result) Counter(name string) Family {
 	f := r.values[name]
-	if f.family.GetType() != dto.MetricType_COUNTER {
+	if f.GetType() != dto.MetricType_COUNTER {
 		return Family{}
 	}
-	return f
+	return Family{f}
 }
 
 func (r Result) Gauge(name string) Family {
 	f := r.values[name]
-	if f.family.GetType() != dto.MetricType_GAUGE {
+	if f.GetType() != dto.MetricType_GAUGE {
 		return Family{}
 	}
-	return f
+	return Family{f}
+}
+
+func (r Result) Summary(name string) SummaryFamily {
+	f := r.values[name]
+	if f.GetType() != dto.MetricType_SUMMARY {
+		return SummaryFamily{}
+	}
+	return SummaryFamily{f}
 }
 
 func exactMatch(query map[string]string, ls []*dto.LabelPair) bool {
@@ -122,20 +136,62 @@ func (f Family) For(ls labels.Labels) float64 {
 	}
 	match := ls.Map()
 	for _, m := range f.family.Metric {
-		if !exactMatch(match, m.Label) {
-			continue
-		}
-
 		switch f.family.GetType() {
 		case dto.MetricType_COUNTER:
-			if m.Counter != nil && m.Counter.Value != nil {
+			if m.Counter != nil && m.Counter.Value != nil && exactMatch(match, m.Label) {
 				return *m.Counter.Value
 			}
 		case dto.MetricType_GAUGE:
-			if m.Gauge != nil && m.Gauge.Value != nil {
+			if m.Gauge != nil && m.Gauge.Value != nil && exactMatch(match, m.Label) {
 				return *m.Gauge.Value
 			}
 		}
 	}
 	return 0
+}
+
+// AllLabels returns the set of labels present for this family of
+// Summaries.
+func (f SummaryFamily) AllLabels() []labels.Labels {
+	if f.family == nil {
+		return nil
+	}
+	var res []labels.Labels
+	for _, m := range f.family.Metric {
+		var ll labels.Labels
+		for _, lp := range m.Label {
+			ll = append(ll, labels.Label{
+				Name:  *lp.Name,
+				Value: *lp.Value,
+			})
+		}
+		res = append(res, ll)
+	}
+	return res
+}
+
+func (f SummaryFamily) For(ls labels.Labels) Summary {
+	if f.family == nil {
+		return Summary{}
+	}
+	match := ls.Map()
+	for _, m := range f.family.Metric {
+		if f.family.GetType() != dto.MetricType_SUMMARY {
+			continue
+		}
+		if !exactMatch(match, m.Label) {
+			continue
+		}
+		return Summary{
+			summary: m.Summary,
+		}
+	}
+	return Summary{}
+}
+
+func (s Summary) Count() uint64 {
+	if s.summary == nil {
+		return 0
+	}
+	return *s.summary.SampleCount
 }

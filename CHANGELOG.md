@@ -8,11 +8,21 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+### Added
+- Sidecar waits for the first scrapes to complete before entering its 
+  run state. (#134)
+- New setting `--prometheus.scrape-interval` supports configuring scrape
+  interval(s) to wait for at startup. (#134)
+
 ### Changed
 - The sidecar's WAL reader could get stuck in a restart loop in the event
   that the WAL's first segment after a checkpoint was truncated. The reader will
   now record the `corrupt-segment` in the progress log and skip the recorded
   segment on next restart (#136)
+  
+### Removed
+- The `--startup.delay` setting has been removed in favor of monitoring when 
+  Prometheus actually finishes its first scrapes. (#134)
 
 ## [0.17.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.17.0) - 2021-02-23
 ### Added

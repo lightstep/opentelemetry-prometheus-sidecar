@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -82,9 +81,9 @@ type Tailer struct {
 	dir string
 	cur io.ReadCloser
 
-	logger  log.Logger
-	promURL *url.URL
-	monitor *prometheus.Monitor
+	logger   log.Logger
+	readyCfg config.PromReady
+	monitor  *prometheus.Monitor
 
 	mtx         sync.Mutex
 	nextSegment int
@@ -97,15 +96,15 @@ type Tailer struct {
 // are read before reading any WAL segments.
 // Tailing may fail if we are racing with the DB itself in deleting obsolete checkpoints
 // and segments. The caller should implement relevant logic to retry in those cases.
-func Tail(ctx context.Context, logger log.Logger, dir string, promURL *url.URL, corruptSegment int) (*Tailer, error) {
-	mu := *promURL
+func Tail(ctx context.Context, logger log.Logger, dir string, readyCfg config.PromReady, corruptSegment int) (*Tailer, error) {
+	mu := *readyCfg.PromURL
 	mu.Path = path.Join(mu.Path, "metrics")
 	t := &Tailer{
-		ctx:     ctx,
-		dir:     dir,
-		logger:  logger,
-		promURL: promURL,
-		monitor: prometheus.NewMonitor(&mu),
+		ctx:      ctx,
+		dir:      dir,
+		logger:   logger,
+		readyCfg: readyCfg,
+		monitor:  prometheus.NewMonitor(&mu),
 	}
 	cpdir, k, err := wal.LastCheckpoint(dir)
 	if errors.Cause(err) == record.ErrNotFound {
@@ -251,7 +250,7 @@ func (t *Tailer) CurrentSegment() int {
 
 func (t *Tailer) waitForReadiness() error {
 	// Note: no timeout on the context, we're really waiting.
-	return prometheus.WaitForReady(t.ctx, t.logger, t.promURL)
+	return prometheus.WaitForReady(t.ctx, t.readyCfg)
 }
 
 func (t *Tailer) getPrometheusSegment() (int, error) {

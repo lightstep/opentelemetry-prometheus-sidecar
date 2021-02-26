@@ -225,7 +225,7 @@ func TestSampleDeliverySimple(t *testing.T) {
 
 	prom := promtest.NewFakePrometheus()
 
-	tailer, err := tail.Tail(context.Background(), telemetry.DefaultLogger(), dir, prom.URL, -1)
+	tailer, err := tail.Tail(context.Background(), telemetry.DefaultLogger(), dir, prom.ReadyConfig(), -1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -274,7 +274,7 @@ func TestSampleDeliveryMultiShard(t *testing.T) {
 
 	prom := promtest.NewFakePrometheus()
 
-	tailer, err := tail.Tail(context.Background(), telemetry.DefaultLogger(), dir, prom.URL, -1)
+	tailer, err := tail.Tail(context.Background(), telemetry.DefaultLogger(), dir, prom.ReadyConfig(), 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -330,7 +330,7 @@ func TestSampleDeliveryTimeout(t *testing.T) {
 
 	prom := promtest.NewFakePrometheus()
 
-	tailer, err := tail.Tail(context.Background(), telemetry.DefaultLogger(), dir, prom.URL, -1)
+	tailer, err := tail.Tail(context.Background(), telemetry.DefaultLogger(), dir, prom.ReadyConfig(), 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -385,7 +385,7 @@ func TestSampleDeliveryOrder(t *testing.T) {
 
 	prom := promtest.NewFakePrometheus()
 
-	tailer, err := tail.Tail(context.Background(), telemetry.DefaultLogger(), dir, prom.URL, -1)
+	tailer, err := tail.Tail(context.Background(), telemetry.DefaultLogger(), dir, prom.ReadyConfig(), 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -500,7 +500,7 @@ func TestSpawnNotMoreThanMaxConcurrentSendsGoroutines(t *testing.T) {
 
 	prom := promtest.NewFakePrometheus()
 
-	tailer, err := tail.Tail(context.Background(), telemetry.DefaultLogger(), dir, prom.URL, -1)
+	tailer, err := tail.Tail(context.Background(), telemetry.DefaultLogger(), dir, prom.ReadyConfig(), 1)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -70,7 +70,7 @@ func TestReader_Progress(t *testing.T) {
 
 	prom := promtest.NewFakePrometheus()
 
-	tailer, err := tail.Tail(ctx, telemetry.DefaultLogger(), dir, prom.URL, -1)
+	tailer, err := tail.Tail(ctx, telemetry.DefaultLogger(), dir, prom.ReadyConfig(), 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +153,7 @@ func TestReader_Progress(t *testing.T) {
 	ctx, cancel = context.WithCancel(context.Background())
 	defer cancel()
 
-	tailer, err = tail.Tail(ctx, telemetry.DefaultLogger(), dir, prom.URL, -1)
+	tailer, err = tail.Tail(ctx, telemetry.DefaultLogger(), dir, prom.ReadyConfig(), 1)
 	if err != nil {
 		t.Fatal(err)
 	}
