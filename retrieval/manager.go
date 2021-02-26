@@ -96,7 +96,7 @@ type PrometheusReader struct {
 	extraLabels          labels.Labels
 }
 
-func (r *PrometheusReader) Run(ctx context.Context, startOffset int) error {
+func (r *PrometheusReader) Run(ctx context.Context, startOffset int, corruptSegment int) error {
 	level.Info(r.logger).Log("msg", "starting Prometheus reader")
 
 	seriesCache := newSeriesCache(
@@ -134,7 +134,7 @@ Outer:
 		rec := reader.Record()
 
 		if offset > startOffset && time.Since(lastSave) > r.progressSaveInterval {
-			if err := SaveProgressFile(r.walDirectory, offset); err != nil {
+			if err := SaveProgressFile(r.walDirectory, offset, corruptSegment); err != nil {
 				level.Error(r.logger).Log("msg", "saving progress failed", "err", err)
 			} else {
 				lastSave = time.Now()
@@ -236,30 +236,32 @@ const (
 type progress struct {
 	// Approximate WAL offset of last synchronized records in bytes.
 	Offset int `json:"offset"`
+	//
+	CorruptSegment int `json:"corrupt-segment"`
 }
 
-// ReadPRogressFile reads the progress file in the given directory and returns
+// ReadProgressFile reads the progress file in the given directory and returns
 // the saved offset.
-func ReadProgressFile(dir string) (offset int, err error) {
+func ReadProgressFile(dir string) (offset int, corruptSegment int, err error) {
 	b, err := ioutil.ReadFile(filepath.Join(dir, progressFilename))
 	if os.IsNotExist(err) {
-		return 0, nil
+		return 0, -1, nil
 	}
 	if err != nil {
-		return 0, err
+		return 0, -1, err
 	}
 	var p progress
 	if err := json.Unmarshal(b, &p); err != nil {
-		return 0, err
+		return 0, -1, err
 	}
-	return p.Offset, nil
+	return p.Offset, p.CorruptSegment, nil
 }
 
 // SaveProgressFile saves a progress file with the given offset in directory.
-func SaveProgressFile(dir string, offset int) error {
+func SaveProgressFile(dir string, offset int, corruptSegment int) error {
 	// Adjust offset to account for buffered records that possibly haven't been
 	// written yet.
-	b, err := json.Marshal(progress{Offset: offset - progressBufferMargin})
+	b, err := json.Marshal(progress{Offset: offset - progressBufferMargin, CorruptSegment: corruptSegment})
 	if err != nil {
 		return err
 	}

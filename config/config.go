@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/ghodss/yaml"
+	"github.com/go-kit/kit/log"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/snappy"
 	"github.com/pkg/errors"
@@ -46,7 +47,6 @@ const (
 	DefaultHealthCheckPeriod  = time.Second * 60
 	DefaultReadinessPeriod    = time.Second * 5
 	DefaultMaxPointAge        = time.Hour * 25
-	DefaultStartupDelay       = time.Minute
 	DefaultShutdownDelay      = time.Minute
 	DefaultStartupTimeout     = time.Minute * 5
 	DefaultNoisyLogPeriod     = time.Second * 5
@@ -94,6 +94,10 @@ an OpenTelemetry (https://opentelemetry.io) Protocol endpoint.
 	// PrometheusCurrentSegmentMetricName names an internal gauge
 	// exposed by Prometheus (having no labels).
 	PrometheusCurrentSegmentMetricName = "prometheus_tsdb_wal_segment_current"
+
+	// PrometheusTargetIntervalLengthName is an internal histogram
+	// indicating how long the interval between scrapes.
+	PrometheusTargetIntervalLengthName = "prometheus_target_interval_length_seconds"
 )
 
 var (
@@ -156,6 +160,7 @@ type PromConfig struct {
 	MaxPointAge             DurationConfig `json:"max_point_age"`
 	MaxTimeseriesPerRequest int            `json:"max_timeseries_per_request"`
 	MaxShards               int            `json:"max_shards"`
+	ScrapeIntervals         []string       `json:"scrape_intervals"`
 }
 
 type OTelConfig struct {
@@ -178,7 +183,6 @@ type MainConfig struct {
 	Admin          AdminConfig            `json:"admin"`
 	Security       SecurityConfig         `json:"security"`
 	Diagnostics    OTLPConfig             `json:"diagnostics"`
-	StartupDelay   DurationConfig         `json:"startup_delay"`
 	StartupTimeout DurationConfig         `json:"startup_timeout"`
 	Filters        []string               `json:"filters"`
 	MetricRenames  []MetricRenamesConfig  `json:"metric_renames"`
@@ -221,6 +225,7 @@ func DefaultMainConfig() MainConfig {
 			MaxPointAge:             DurationConfig{DefaultMaxPointAge},
 			MaxTimeseriesPerRequest: DefaultMaxTimeseriesPerRequest,
 			MaxShards:               DefaultMaxShards,
+			ScrapeIntervals:         nil,
 		},
 		Admin: AdminConfig{
 			Port:              DefaultAdminPort,
@@ -243,9 +248,6 @@ func DefaultMainConfig() MainConfig {
 			Level:   "info",
 			Format:  "logfmt",
 			Verbose: 0,
-		},
-		StartupDelay: DurationConfig{
-			DefaultStartupDelay,
 		},
 		StartupTimeout: DurationConfig{
 			DefaultStartupTimeout,
@@ -306,6 +308,9 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 	a.Flag("prometheus.max-shards", fmt.Sprintf("Max number of shards, i.e. amount of concurrency. Default: %d", DefaultMaxShards)).
 		IntVar(&cfg.Prometheus.MaxShards)
 
+	a.Flag("prometheus.scrape-interval", "Delay at startup until Prometheus completes a scrape for this interval. Default waits for the first scrape to complete, multiple intervals can be set").
+		StringsVar(&cfg.Prometheus.ScrapeIntervals)
+
 	a.Flag("admin.port", "Administrative port this process listens on. Default: "+fmt.Sprint(DefaultAdminPort)).
 		IntVar(&cfg.Admin.Port)
 	a.Flag("admin.listen-ip", "Administrative IP address this process listens on. Default: "+DefaultAdminListenIP).
@@ -319,9 +324,6 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 
 	a.Flag("filter", "PromQL metric and label matcher which must pass for a series to be forwarded to OpenTelemetry. If repeated, the series must pass any of the filter sets to be forwarded.").
 		StringsVar(&cfg.Filters)
-
-	a.Flag("startup.delay", "Delay at startup to allow Prometheus its initial scrape. Default: "+DefaultStartupDelay.String()).
-		DurationVar(&cfg.StartupDelay.Duration)
 
 	a.Flag("startup.timeout", "Timeout at startup to allow the endpoint to become available. Default: "+DefaultStartupTimeout.String()).
 		DurationVar(&cfg.StartupTimeout.Duration)
@@ -529,4 +531,13 @@ func (d *DurationConfig) UnmarshalJSON(data []byte) error {
 
 func (d DurationConfig) MarshalJSON() ([]byte, error) {
 	return json.Marshal(d.Duration.String())
+}
+
+// PromReady is used for prometheus.WaitForReady() in several
+// places.  It is not parsed from the config file or command-line, it
+// is here to avoid a test package cycle, primarily.
+type PromReady struct {
+	Logger          log.Logger
+	PromURL         *url.URL
+	ScrapeIntervals []time.Duration
 }
