@@ -41,6 +41,11 @@ prometheus:
   # Max number of shards, i.e. amount of concurrency
   max_shards: 2000
 
+  # Scrape intervals, when set, are used to delay startup.  If set, 
+  # the sidecar will wait until the first scrape completes with
+  # this interval
+  scrape_intervals: [30s, 60s]
+
 # OpenTelemetry settings:
 opentelemetry:
   # Metrics prefix is prepended to all exported metric names:
@@ -101,10 +106,6 @@ static_metadata:
   type:       counter
   value_type: int64
   help:       Number of bits transferred by this process.
-
-# Startup delay determines how long to wait before processing new
-# write-ahead-log entries after startup:
-startup_delay: 30s
 
 # Startup timeout determines how long to wait for the endpoint to
 # become available once before entering the initial run state.
