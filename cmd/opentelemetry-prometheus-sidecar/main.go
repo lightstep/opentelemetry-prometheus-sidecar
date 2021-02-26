@@ -40,11 +40,11 @@ import (
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/oklog/run"
-	"go.opentelemetry.io/otel/semconv"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/version"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
+	"go.opentelemetry.io/otel/semconv"
 	grpcMetadata "google.golang.org/grpc/metadata"
 
 	// register grpc compressors
@@ -133,8 +133,20 @@ func Main() bool {
 		return false
 	}
 
+	intervals, err := parseIntervals(cfg.Prometheus.ScrapeIntervals)
+	if err != nil {
+		level.Error(logger).Log("msg", "error parsing --prometheus.scrape-interval", "err", err)
+		return false
+	}
+
 	// Parse was validated already, ignore error.
 	promURL, _ := url.Parse(cfg.Prometheus.Endpoint)
+
+	readyCfg := config.PromReady{
+		Logger:          log.With(logger, "component", "prom_ready"),
+		PromURL:         promURL,
+		ScrapeIntervals: intervals,
+	}
 
 	metadataURL, err := promURL.Parse(metadata.DefaultEndpointPath)
 	if err != nil {
@@ -146,7 +158,7 @@ func Main() bool {
 		ctx,
 		log.With(logger, "component", "wal_reader"),
 		cfg.Prometheus.WAL,
-		promURL,
+		readyCfg,
 	)
 	if err != nil {
 		level.Error(logger).Log("msg", "tailing WAL failed", "err", err)
@@ -221,17 +233,9 @@ func Main() bool {
 	logStartup(cfg, logger)
 
 	// Test for Prometheus and Outbound dependencies before starting.
-	if err := selfTest(ctx, promURL, scf, cfg.StartupTimeout.Duration, logger); err != nil {
+	if err := selfTest(ctx, scf, cfg.StartupTimeout.Duration, logger, readyCfg); err != nil {
 		level.Error(logger).Log("msg", "selftest failed, not starting", "err", err)
 		return false
-	}
-
-	// Sleep to allow the first scrapes to complete.
-	level.Debug(logger).Log("msg", "sleeping to allow Prometheus its first scrape")
-	select {
-	case <-time.After(cfg.StartupDelay.Duration):
-	case <-ctx.Done():
-		return true
 	}
 
 	level.Debug(logger).Log("msg", "entering run state")
@@ -318,7 +322,7 @@ func createResourceLabels(svcInstanceId string, extraLabels map[string]string) l
 	return labels.FromMap(extraLabels)
 }
 
-func selfTest(ctx context.Context, promURL *url.URL, scf otlp.StorageClientFactory, timeout time.Duration, logger log.Logger) error {
+func selfTest(ctx context.Context, scf otlp.StorageClientFactory, timeout time.Duration, logger log.Logger, readyCfg config.PromReady) error {
 	client := scf.New()
 
 	ctx, cancel := context.WithTimeout(ctx, timeout)
@@ -329,7 +333,7 @@ func selfTest(ctx context.Context, promURL *url.URL, scf otlp.StorageClientFacto
 	// These tests are performed sequentially, to keep the logs simple.
 	// Note waitForPrometheus has no unrecoverable error conditions, so
 	// loops until success or the context is canceled.
-	if err := prometheus.WaitForReady(ctx, logger, promURL); err != nil {
+	if err := prometheus.WaitForReady(ctx, readyCfg); err != nil {
 		return errors.Wrap(err, "Prometheus is not ready")
 	}
 
@@ -404,4 +408,15 @@ func readWriteStartOffset(cfg config.MainConfig, logger log.Logger) (int, error)
 
 	err = retrieval.SaveProgressFile(cfg.Prometheus.WAL, startOffset)
 	return startOffset, err
+}
+
+func parseIntervals(ss []string) (dd []time.Duration, _ error) {
+	for _, s := range ss {
+		d, err := time.ParseDuration(s)
+		if err != nil {
+			return nil, errors.Wrap(err, "parse duration "+s)
+		}
+		dd = append(dd, d)
+	}
+	return
 }
