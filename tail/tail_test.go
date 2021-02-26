@@ -303,3 +303,38 @@ func TestSlowFsync(t *testing.T) {
 	require.True(t, wr.Next())
 	require.Equal(t, recSize, len(wr.Record()))
 }
+
+func TestCorruptSegment(t *testing.T) {
+	dir, err := ioutil.TempDir("", "test_tail")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	os.Mkdir(path.Join(dir, "checkpoint.00004043"), 0777)
+	defer os.RemoveAll(dir)
+
+	require.NoError(t, ioutil.WriteFile(path.Join(dir, "checkpoint.00004043/000000000000000000000"), []byte("1"), 0777))
+
+	defer cancel()
+
+	prom := promtest.NewFakePrometheus()
+
+	const (
+		segmentSize = 2 * 1024 * 1024
+		recSize     = 1024 * 1024
+	)
+
+	rec := make([]byte, recSize)
+
+	w, err := wal.NewSize(nil, nil, dir, segmentSize, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+
+	w.Log(rec)
+
+	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir, prom.URL, 4044)
+	require.Nil(t, err)
+	require.Equal(t, 4045, rc.nextSegment)
+}

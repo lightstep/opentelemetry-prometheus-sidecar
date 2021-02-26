@@ -127,7 +127,7 @@ func Tail(ctx context.Context, logger log.Logger, dir string, promURL *url.URL, 
 		}
 		// We will resume reading ordinary segments at k+1.
 		k += 1
-		if k == corruptSegment-1 {
+		if k == corruptSegment {
 			// check if k is known as corrupt
 			// if so, skip it
 			level.Warn(t.logger).Log(
@@ -136,7 +136,7 @@ func Tail(ctx context.Context, logger log.Logger, dir string, promURL *url.URL, 
 			)
 			k += 1
 		}
-		t.nextSegment = k + 1
+		t.nextSegment = k
 	}
 	return t, nil
 }

@@ -230,7 +230,7 @@ func TestReader_ProgressFile(t *testing.T) {
 	if offset != 12345 {
 		t.Fatalf("expected progress offset %d but got %d", 12345, offset)
 	}
-	if corruptSegment != 9 {
+	if corruptSegment != 10 {
 		t.Fatalf("expected corrupt-segment %d but got %d", 9, corruptSegment)
 	}
 }
