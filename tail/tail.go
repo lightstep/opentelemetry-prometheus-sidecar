@@ -88,8 +88,6 @@ type Tailer struct {
 	mtx         sync.Mutex
 	nextSegment int
 	offset      int // Bytes read within the current reader.
-
-	corruptSegment int
 }
 
 // Tail the prometheus/tsdb write ahead log in the given directory. Checkpoints
@@ -409,7 +407,6 @@ func (t *Tailer) Read(b []byte) (int, error) {
 					"offset", currentOffset,
 				)
 			})
-			t.corruptSegment = t.CurrentSegment()
 			return 0, errors.Errorf(
 				"truncated WAL segment %d @ %d",
 				currentSegment,
