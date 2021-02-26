@@ -94,7 +94,7 @@ type Tailer struct {
 // are read before reading any WAL segments.
 // Tailing may fail if we are racing with the DB itself in deleting obsolete checkpoints
 // and segments. The caller should implement relevant logic to retry in those cases.
-func Tail(ctx context.Context, logger log.Logger, dir string, readyCfg config.PromReady) (*Tailer, error) {
+func Tail(ctx context.Context, logger log.Logger, dir string, readyCfg config.PromReady, corruptSegment int) (*Tailer, error) {
 	mu := *readyCfg.PromURL
 	mu.Path = path.Join(mu.Path, "metrics")
 	t := &Tailer{
@@ -123,7 +123,17 @@ func Tail(ctx context.Context, logger log.Logger, dir string, readyCfg config.Pr
 			return nil, errors.Wrap(err, "open checkpoint")
 		}
 		// We will resume reading ordinary segments at k+1.
-		t.nextSegment = k + 1
+		k += 1
+		if k == corruptSegment {
+			// check if k is known as corrupt
+			// if so, skip it
+			level.Warn(t.logger).Log(
+				"msg", "skipping corrupt segment",
+				"segment", k,
+			)
+			k += 1
+		}
+		t.nextSegment = k
 	}
 	return t, nil
 }
@@ -382,6 +392,7 @@ func (t *Tailer) Read(b []byte) (int, error) {
 					"offset", currentOffset,
 				)
 			})
+
 			continue
 		}
 
