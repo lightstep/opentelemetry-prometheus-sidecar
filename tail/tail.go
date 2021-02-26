@@ -193,10 +193,6 @@ func (t *Tailer) incOffset(v int) {
 	t.offset += v
 }
 
-func (t *Tailer) CurrentOffset() int {
-	return t.currentOffset()
-}
-
 func (t *Tailer) currentOffset() int {
 	t.mtx.Lock()
 	defer t.mtx.Unlock()
