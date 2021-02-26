@@ -334,7 +334,7 @@ func TestCorruptSegment(t *testing.T) {
 
 	w.Log(rec)
 
-	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir, prom.URL, 4044)
+	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir, prom.ReadyConfig(), 4044)
 	require.Nil(t, err)
 	require.Equal(t, 4045, rc.nextSegment)
 }
