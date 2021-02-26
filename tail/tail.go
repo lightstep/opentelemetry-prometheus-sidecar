@@ -89,13 +89,15 @@ type Tailer struct {
 	mtx         sync.Mutex
 	nextSegment int
 	offset      int // Bytes read within the current reader.
+
+	corruptSegment int
 }
 
 // Tail the prometheus/tsdb write ahead log in the given directory. Checkpoints
 // are read before reading any WAL segments.
 // Tailing may fail if we are racing with the DB itself in deleting obsolete checkpoints
 // and segments. The caller should implement relevant logic to retry in those cases.
-func Tail(ctx context.Context, logger log.Logger, dir string, promURL *url.URL) (*Tailer, error) {
+func Tail(ctx context.Context, logger log.Logger, dir string, promURL *url.URL, corruptSegment int) (*Tailer, error) {
 	mu := *promURL
 	mu.Path = path.Join(mu.Path, "metrics")
 	t := &Tailer{
@@ -124,6 +126,16 @@ func Tail(ctx context.Context, logger log.Logger, dir string, promURL *url.URL) 
 			return nil, errors.Wrap(err, "open checkpoint")
 		}
 		// We will resume reading ordinary segments at k+1.
+		k += 1
+		if k == corruptSegment-1 {
+			// check if k is known as corrupt
+			// if so, skip it
+			level.Warn(t.logger).Log(
+				"msg", "skipping corrupt segment",
+				"segment", k,
+			)
+			k += 1
+		}
 		t.nextSegment = k + 1
 	}
 	return t, nil
@@ -180,6 +192,10 @@ func (t *Tailer) incOffset(v int) {
 	t.mtx.Lock()
 	defer t.mtx.Unlock()
 	t.offset += v
+}
+
+func (t *Tailer) CurrentOffset() int {
+	return t.currentOffset()
 }
 
 func (t *Tailer) currentOffset() int {
@@ -383,6 +399,7 @@ func (t *Tailer) Read(b []byte) (int, error) {
 					"offset", currentOffset,
 				)
 			})
+
 			continue
 		}
 
@@ -397,6 +414,7 @@ func (t *Tailer) Read(b []byte) (int, error) {
 					"offset", currentOffset,
 				)
 			})
+			t.corruptSegment = t.CurrentSegment()
 			return 0, errors.Errorf(
 				"truncated WAL segment %d @ %d",
 				currentSegment,

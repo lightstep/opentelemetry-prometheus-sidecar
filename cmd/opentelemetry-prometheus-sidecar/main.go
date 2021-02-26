@@ -24,6 +24,7 @@ import (
 	"net/url"
 	"os"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -40,11 +41,11 @@ import (
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/oklog/run"
-	"go.opentelemetry.io/otel/semconv"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/version"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
+	"go.opentelemetry.io/otel/semconv"
 	grpcMetadata "google.golang.org/grpc/metadata"
 
 	// register grpc compressors
@@ -142,11 +143,19 @@ func Main() bool {
 	}
 	metadataCache := metadata.NewCache(httpClient, metadataURL, staticMetadata)
 
+	// Check the progress file, ensure we can write this file.
+	startOffset, corruptSegment, err := readWriteStartOffset(cfg, logger)
+	if err != nil {
+		level.Error(logger).Log("msg", "cannot write progress file", "err", err)
+		return false
+	}
+
 	tailer, err := tail.Tail(
 		ctx,
 		log.With(logger, "component", "wal_reader"),
 		cfg.Prometheus.WAL,
 		promURL,
+		corruptSegment,
 	)
 	if err != nil {
 		level.Error(logger).Log("msg", "tailing WAL failed", "err", err)
@@ -211,13 +220,6 @@ func Main() bool {
 		}
 	}()
 
-	// Check the progress file, ensure we can write this file.
-	startOffset, err := readWriteStartOffset(cfg, logger)
-	if err != nil {
-		level.Error(logger).Log("msg", "cannot write progress file", "err", err)
-		return false
-	}
-
 	logStartup(cfg, logger)
 
 	// Test for Prometheus and Outbound dependencies before starting.
@@ -246,7 +248,10 @@ func Main() bool {
 		g.Add(
 			func() error {
 				level.Info(logger).Log("msg", "starting Prometheus reader")
-				err = prometheusReader.Run(ctx, startOffset)
+				err = prometheusReader.Run(ctx, startOffset, corruptSegment)
+				if strings.Contains(err.Error(), "truncated WAL segment") {
+					_ = retrieval.SaveProgressFile(cfg.Prometheus.WAL, startOffset, tailer.CurrentSegment())
+				}
 				return err
 			},
 			func(err error) {
@@ -395,13 +400,13 @@ func newAdminServer(hc *health.Checker, acfg config.AdminConfig, logger log.Logg
 
 // readWriteStartOffset reads the last (approxiate) progress position and re-writes
 // the progress file, to ensure we have write permission on startup.
-func readWriteStartOffset(cfg config.MainConfig, logger log.Logger) (int, error) {
-	startOffset, err := retrieval.ReadProgressFile(cfg.Prometheus.WAL)
+func readWriteStartOffset(cfg config.MainConfig, logger log.Logger) (int, int, error) {
+	startOffset, corruptSegment, err := retrieval.ReadProgressFile(cfg.Prometheus.WAL)
 	if err != nil {
 		level.Warn(logger).Log("msg", "reading progress file failed", "err", err)
 		startOffset = 0
 	}
 
-	err = retrieval.SaveProgressFile(cfg.Prometheus.WAL, startOffset)
-	return startOffset, err
+	err = retrieval.SaveProgressFile(cfg.Prometheus.WAL, startOffset, corruptSegment)
+	return startOffset, corruptSegment, err
 }
