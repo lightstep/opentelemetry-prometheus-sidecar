@@ -58,7 +58,7 @@ const (
 	// How many points per request
 	DefaultMaxTimeseriesPerRequest = 2000
 	// Max number of shards, i.e. amount of concurrency
-	DefaultMaxShards = 2000
+	DefaultMaxShards = 200
 
 	// TODO: The setting below is not configurable, it should be.
 

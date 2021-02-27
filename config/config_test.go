@@ -174,7 +174,7 @@ startup_timeout: 1777s
 						25 * time.Hour,
 					},
 					MaxTimeseriesPerRequest: 2000,
-					MaxShards:               2000,
+					MaxShards:               200,
 					ScrapeIntervals: []string{
 						(1333 * time.Second).String(),
 					},

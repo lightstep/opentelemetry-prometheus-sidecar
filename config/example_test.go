@@ -42,7 +42,7 @@ func Example() {
 	//     "wal": "/volume/wal",
 	//     "max_point_age": "72h0m0s",
 	//     "max_timeseries_per_request": 2000,
-	//     "max_shards": 2000,
+	//     "max_shards": 200,
 	//     "scrape_intervals": [
 	//       "30s",
 	//       "60s"
