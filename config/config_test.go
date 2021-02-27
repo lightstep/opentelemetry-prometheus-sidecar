@@ -173,7 +173,7 @@ startup_timeout: 1777s
 					MaxPointAge: DurationConfig{
 						25 * time.Hour,
 					},
-					MaxTimeseriesPerRequest: 2000,
+					MaxTimeseriesPerRequest: 500,
 					MaxShards:               200,
 					ScrapeIntervals: []string{
 						(1333 * time.Second).String(),

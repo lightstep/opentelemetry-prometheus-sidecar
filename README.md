@@ -211,10 +211,10 @@ Flags:
                                  recovery. Default: 25h0m0s
       --prometheus.max-timeseries-per-request=PROMETHEUS.MAX-TIMESERIES-PER-REQUEST
                                  Send at most this number of timeseries per
-                                 request. Default: 2000
+                                 request. Default: 500
       --prometheus.max-shards=PROMETHEUS.MAX-SHARDS
                                  Max number of shards, i.e. amount of
-                                 concurrency. Default: 2000
+                                 concurrency. Default: 200
       --prometheus.scrape-interval=PROMETHEUS.SCRAPE-INTERVAL ...  
                                  Delay at startup until Prometheus completes a
                                  scrape for this interval. Default waits for the

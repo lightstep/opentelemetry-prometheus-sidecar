@@ -56,7 +56,7 @@ const (
 	DefaultSupervisorLogsHistory = 16
 
 	// How many points per request
-	DefaultMaxTimeseriesPerRequest = 2000
+	DefaultMaxTimeseriesPerRequest = 500
 	// Max number of shards, i.e. amount of concurrency
 	DefaultMaxShards = 200
 
