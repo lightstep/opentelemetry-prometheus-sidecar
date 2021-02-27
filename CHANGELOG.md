@@ -8,6 +8,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+## [0.18.1](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.18.1) - 2021-02-26
+
 ### Changed
 - Reduce the default value for max shards to 200. (#139)
 
