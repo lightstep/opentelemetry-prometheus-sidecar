@@ -591,13 +591,12 @@ func TestSampleBuilder(t *testing.T) {
 			name: "interval overlap handling",
 			series: seriesMap{
 				1: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1"),
-				2: labels.FromStrings("job", "job1", "instance", "instance2", "__name__", "metric1"),
+				2: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1"),
 			},
 			// Both instances map to the same monitored resource and will thus produce the same series.
 			resourceLabels: labels.FromStrings("resource_a", "abc"),
 			metadata: metadataMap{
 				"job1/instance1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeCounter, ValueType: metadata.DOUBLE},
-				"job1/instance2/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeCounter, ValueType: metadata.DOUBLE},
 			},
 			input: []record.RefSample{
 				// First sample for both series will define the reset timestamp.
@@ -617,7 +616,7 @@ func TestSampleBuilder(t *testing.T) {
 				DoubleCounterPoint(
 					testResource,
 					Labels(
-						Label("instance", "instance2"),
+						Label("instance", "instance1"),
 						Label("job", "job1"),
 					),
 					"metric1",
@@ -629,7 +628,7 @@ func TestSampleBuilder(t *testing.T) {
 				DoubleCounterPoint(
 					testResource,
 					Labels(
-						Label("instance", "instance2"),
+						Label("instance", "instance1"),
 						Label("job", "job1"),
 					),
 					"metric1",
