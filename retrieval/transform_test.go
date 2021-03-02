@@ -25,7 +25,6 @@ import (
 	metric_pb "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/internal/otlptest"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
-	"github.com/lightstep/opentelemetry-prometheus-sidecar/targets"
 	"github.com/prometheus/common/version"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/textparse"
@@ -68,10 +67,6 @@ func TestSampleBuilder(t *testing.T) {
 
 		testResource = ResourceLabels(
 			KeyValue("resource_a", "abc"),
-		)
-		otherTestResource = ResourceLabels(
-			KeyValue("resource_a", "def"),
-			KeyValue("unused", "xxx"),
 		)
 
 		DoubleCounterPoint = func(
@@ -195,15 +190,18 @@ func TestSampleBuilder(t *testing.T) {
 			)
 		}
 	)
+
+	// Note: Be aware that the *resulting* points' labels will be arranged
+	// *alphabetically*.
 	cases := []struct {
-		name          string
-		series        seriesMap
-		targets       TargetGetter
-		metadata      MetadataGetter
-		metricsPrefix string
-		input         []record.RefSample
-		result        []*metric_pb.ResourceMetrics
-		fail          bool
+		name           string
+		series         seriesMap
+		resourceLabels labels.Labels
+		metadata       MetadataGetter
+		metricsPrefix  string
+		input          []record.RefSample
+		result         []*metric_pb.ResourceMetrics
+		fail           bool
 	}{
 		{
 			name: "basics",
@@ -220,16 +218,7 @@ func TestSampleBuilder(t *testing.T) {
 				8: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric5"),
 				9: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric6"),
 			},
-			targets: targetMap{
-				"job1/instance1": &targets.Target{
-					Labels:           labels.FromStrings("job", "job1", "instance", "instance1"),
-					DiscoveredLabels: labels.FromStrings("resource_a", "abc"),
-				},
-				"job2/instance1": &targets.Target{
-					Labels:           labels.FromStrings("job", "job2", "instance", "instance1"),
-					DiscoveredLabels: labels.FromStrings("unused", "xxx", "resource_a", "def"),
-				},
-			},
+			resourceLabels: labels.FromStrings("resource_a", "abc"),
 			metadata: metadataMap{
 				// Gauge as double.
 				"job1/instance1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
@@ -267,15 +256,21 @@ func TestSampleBuilder(t *testing.T) {
 				nil, // Skipped by reset timestamp handling.
 				DoubleCounterPoint( // 1: second point in series, first reported.
 					testResource,
-					Labels(),
+					Labels(
+						Label("instance", "instance1"),
+						Label("job", "job1"),
+					),
 					"metric2",
 					time.Unix(2, 0),
 					time.Unix(3, 0),
 					2.5,
 				),
-				DoubleCounterPoint( // 2: third point in series, secnod reported.
+				DoubleCounterPoint( // 2: third point in series, second reported.
 					testResource,
-					Labels(),
+					Labels(
+						Label("instance", "instance1"),
+						Label("job", "job1"),
+					),
 					"metric2",
 					time.Unix(2, 0),
 					time.Unix(4, 0),
@@ -285,7 +280,10 @@ func TestSampleBuilder(t *testing.T) {
 					// Timestamp set to 1ms before the end time to avoid
 					// conflict, see (*seriesCache).getResetAdjusted().
 					testResource,
-					Labels(),
+					Labels(
+						Label("instance", "instance1"),
+						Label("job", "job1"),
+					),
 					"metric2",
 					time.Unix(5, int64(-time.Millisecond)),
 					time.Unix(5, 0),
@@ -293,7 +291,11 @@ func TestSampleBuilder(t *testing.T) {
 				),
 				DoubleGaugePoint( // 4: A double Gauge
 					testResource,
-					Labels(Label("a", "1")),
+					Labels(
+						Label("a", "1"),
+						Label("instance", "instance1"),
+						Label("job", "job1"),
+					),
 					"metric1",
 					time.Unix(1, 0),
 					200,
@@ -310,7 +312,9 @@ func TestSampleBuilder(t *testing.T) {
 						Label("g", "7"),
 						Label("h", "8"),
 						Label("i", "9"),
+						Label("instance", "instance1"),
 						Label("j", "10"),
+						Label("job", "job1"),
 					),
 					"labelnum_ok",
 					time.Unix(3, 0),
@@ -328,7 +332,9 @@ func TestSampleBuilder(t *testing.T) {
 						Label("g", "7"),
 						Label("h", "8"),
 						Label("i", "9"),
+						Label("instance", "instance1"),
 						Label("j", "10"),
+						Label("job", "job1"),
 						Label("k", "11"),
 					),
 					"labelnum_11k",
@@ -336,10 +342,12 @@ func TestSampleBuilder(t *testing.T) {
 					2,
 				),
 				DoubleGaugePoint( // 7
-					// A double gauge w/ 2 resource keys and 2 labels
-					otherTestResource,
+					// A double gauge w/ 2 labels
+					testResource,
 					Labels(
 						Label("a", "1"),
+						Label("instance", "instance1"),
+						Label("job", "job2"),
 						Label("metric_label", "aaa"),
 					),
 					"resource_from_metric",
@@ -349,7 +357,10 @@ func TestSampleBuilder(t *testing.T) {
 				IntGaugePoint( // 8
 					// An integer gauge: rounding from 12.5 to 13
 					testResource,
-					Labels(),
+					Labels(
+						Label("instance", "instance1"),
+						Label("job", "job1"),
+					),
 					"metric3",
 					time.Unix(8, 0),
 					13,
@@ -358,7 +369,10 @@ func TestSampleBuilder(t *testing.T) {
 				IntCounterPoint( // 10
 					// An integer counter.
 					testResource,
-					Labels(),
+					Labels(
+						Label("instance", "instance1"),
+						Label("job", "job1"),
+					),
 					"metric4",
 					time.Unix(6, 0),
 					time.Unix(7, 0),
@@ -367,14 +381,20 @@ func TestSampleBuilder(t *testing.T) {
 				DoubleGaugePoint( // 11
 					// A double gauge.
 					testResource,
-					Labels(),
+					Labels(
+						Label("instance", "instance1"),
+						Label("job", "job1"),
+					),
 					"metric5",
 					time.Unix(8, 0),
 					22.5),
 				nil, // 12; Skipped by reset timestamp handling.
 				DoubleCounterPoint( // 13
 					testResource,
-					Labels(),
+					Labels(
+						Label("instance", "instance1"),
+						Label("job", "job1"),
+					),
 					"metric6",
 					time.Unix(8, 0),
 					time.Unix(9, 0),
@@ -384,16 +404,8 @@ func TestSampleBuilder(t *testing.T) {
 		},
 		// Various cases where we drop series due to absence of additional information.
 		{
-			name: "absense of data",
-			targets: targetMap{
-				"job1/instance1": &targets.Target{
-					Labels:           labels.FromStrings("job", "job1", "instance", "instance1"),
-					DiscoveredLabels: labels.FromStrings("resource_a", "abc"),
-				},
-				"job1/instance_noresource": &targets.Target{
-					Labels: labels.FromStrings("job", "job1", "instance", "instance_noresource"),
-				},
-			},
+			name:           "absence of data",
+			resourceLabels: labels.FromStrings("resource_a", "abc"),
 			metadata: metadataMap{
 				"job1/instance1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
 			},
@@ -411,13 +423,8 @@ func TestSampleBuilder(t *testing.T) {
 		},
 		// Summary metrics.
 		{
-			name: "summary",
-			targets: targetMap{
-				"job1/instance1": &targets.Target{
-					Labels:           labels.FromStrings("job", "job1", "instance", "instance1"),
-					DiscoveredLabels: labels.FromStrings("resource_a", "abc"),
-				},
-			},
+			name:           "summary",
+			resourceLabels: labels.FromStrings("resource_a", "abc"),
 			metadata: metadataMap{
 				"job1/instance1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeSummary, ValueType: metadata.DOUBLE},
 			},
@@ -439,7 +446,10 @@ func TestSampleBuilder(t *testing.T) {
 				nil, // 0: dropped by reset handling.
 				DoubleCounterPoint(
 					testResource,
-					Labels(),
+					Labels(
+						Label("instance", "instance1"),
+						Label("job", "job1"),
+					),
 					"metric1_sum",
 					time.Unix(1, 0),
 					time.Unix(1, int64(500*time.Millisecond)),
@@ -447,7 +457,11 @@ func TestSampleBuilder(t *testing.T) {
 				),
 				DoubleGaugePoint(
 					testResource,
-					Labels(Label("quantile", "0.5")),
+					Labels(
+						Label("instance", "instance1"),
+						Label("job", "job1"),
+						Label("quantile", "0.5"),
+					),
 					"metric1",
 					time.Unix(2, 0),
 					2,
@@ -455,7 +469,10 @@ func TestSampleBuilder(t *testing.T) {
 				nil, // 3: dropped
 				IntCounterPoint(
 					testResource,
-					Labels(),
+					Labels(
+						Label("instance", "instance1"),
+						Label("job", "job1"),
+					),
 					"metric1_count",
 					time.Unix(3, 0),
 					time.Unix(3, int64(500*time.Millisecond)),
@@ -463,7 +480,11 @@ func TestSampleBuilder(t *testing.T) {
 				),
 				DoubleGaugePoint(
 					testResource,
-					Labels(Label("quantile", "0.9")),
+					Labels(
+						Label("instance", "instance1"),
+						Label("job", "job1"),
+						Label("quantile", "0.9"),
+					),
 					"metric1",
 					time.Unix(4, 0),
 					4,
@@ -472,13 +493,8 @@ func TestSampleBuilder(t *testing.T) {
 		},
 		// Histogram.
 		{
-			name: "histogram",
-			targets: targetMap{
-				"job1/instance1": &targets.Target{
-					Labels:           labels.FromStrings("job", "job1", "instance", "instance1"),
-					DiscoveredLabels: labels.FromStrings("resource_a", "abc"),
-				},
-			},
+			name:           "histogram",
+			resourceLabels: labels.FromStrings("resource_a", "abc"),
 			metadata: metadataMap{
 				"job1/instance1/metric1":         &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeHistogram, ValueType: metadata.DOUBLE},
 				"job1/instance1/metric1_a_count": &metadata.Entry{Metric: "metric1_a_count", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
@@ -528,7 +544,10 @@ func TestSampleBuilder(t *testing.T) {
 				nil, // 0: skipped by reset handling.
 				DoubleHistogramPoint( // 1:
 					testResource,
-					Labels(),
+					Labels(
+						Label("instance", "instance1"),
+						Label("job", "job1"),
+					),
 					"metric1",
 					time.Unix(1, 0),
 					time.Unix(2, 0),
@@ -543,7 +562,11 @@ func TestSampleBuilder(t *testing.T) {
 				nil, // 2: skipped
 				DoubleHistogramPoint( // 3: histogram w/ no buckets
 					testResource,
-					Labels(Label("a", "b")),
+					Labels(
+						Label("a", "b"),
+						Label("instance", "instance1"),
+						Label("job", "job1"),
+					),
 					"metric1",
 					time.Unix(1, 0),
 					time.Unix(2, 0),
@@ -552,7 +575,11 @@ func TestSampleBuilder(t *testing.T) {
 				),
 				DoubleGaugePoint( // 4: not a histogram
 					testResource,
-					Labels(Label("a", "b")),
+					Labels(
+						Label("a", "b"),
+						Label("instance", "instance1"),
+						Label("job", "job1"),
+					),
 					"metric1_a_count",
 					time.Unix(1, 0),
 					3,
@@ -567,16 +594,7 @@ func TestSampleBuilder(t *testing.T) {
 				2: labels.FromStrings("job", "job1", "instance", "instance2", "__name__", "metric1"),
 			},
 			// Both instances map to the same monitored resource and will thus produce the same series.
-			targets: targetMap{
-				"job1/instance1": &targets.Target{
-					Labels:           labels.FromStrings("job", "job1", "instance", "instance1"),
-					DiscoveredLabels: labels.FromStrings("resource_a", "abc"),
-				},
-				"job1/instance2": &targets.Target{
-					Labels:           labels.FromStrings("job", "job1", "instance", "instance2"),
-					DiscoveredLabels: labels.FromStrings("resource_a", "abc"),
-				},
-			},
+			resourceLabels: labels.FromStrings("resource_a", "abc"),
 			metadata: metadataMap{
 				"job1/instance1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeCounter, ValueType: metadata.DOUBLE},
 				"job1/instance2/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeCounter, ValueType: metadata.DOUBLE},
@@ -598,7 +616,10 @@ func TestSampleBuilder(t *testing.T) {
 				nil, // Skipped by reset timestamp handling.
 				DoubleCounterPoint(
 					testResource,
-					Labels(),
+					Labels(
+						Label("instance", "instance2"),
+						Label("job", "job1"),
+					),
 					"metric1",
 					time.Unix(1, 0),
 					time.Unix(2, 0),
@@ -607,7 +628,10 @@ func TestSampleBuilder(t *testing.T) {
 				nil, // Rejected because of overlap.
 				DoubleCounterPoint(
 					testResource,
-					Labels(),
+					Labels(
+						Label("instance", "instance2"),
+						Label("job", "job1"),
+					),
 					"metric1",
 					time.Unix(3, 5e8-1e6),
 					time.Unix(3, 5e8),
@@ -622,12 +646,7 @@ func TestSampleBuilder(t *testing.T) {
 			series: seriesMap{
 				1: labels.FromStrings("job", "job1", "instance", "instance1", "a", "1", "__name__", "metric1"),
 			},
-			targets: targetMap{
-				"job1/instance1": &targets.Target{
-					Labels:           labels.FromStrings("job", "job1", "instance", "instance1"),
-					DiscoveredLabels: labels.FromStrings("resource_a", "abc"),
-				},
-			},
+			resourceLabels: labels.FromStrings("resource_a", "abc"),
 			metadata: metadataMap{
 				"job1/instance1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
 			},
@@ -638,7 +657,11 @@ func TestSampleBuilder(t *testing.T) {
 			result: []*metric_pb.ResourceMetrics{
 				DoubleGaugePoint(
 					testResource,
-					Labels(Label("a", "1")),
+					Labels(
+						Label("a", "1"),
+						Label("instance", "instance1"),
+						Label("job", "job1"),
+					),
 					"test.otel.io/metric1",
 					time.Unix(1, 0),
 					200,
@@ -652,12 +675,7 @@ func TestSampleBuilder(t *testing.T) {
 			series: seriesMap{
 				1: labels.FromStrings("job", "job1", "instance", "instance1", "a", "1", "__name__", "metric1_total"),
 			},
-			targets: targetMap{
-				"job1/instance1": &targets.Target{
-					Labels:           labels.FromStrings("job", "job1", "instance", "instance1"),
-					DiscoveredLabels: labels.FromStrings("resource_a", "abc"),
-				},
-			},
+			resourceLabels: labels.FromStrings("resource_a", "abc"),
 			metadata: metadataMap{
 				"job1/instance1/metric1_total": &metadata.Entry{Metric: "metric1_total", MetricType: textparse.MetricTypeCounter, ValueType: metadata.DOUBLE},
 			},
@@ -669,7 +687,11 @@ func TestSampleBuilder(t *testing.T) {
 				nil, // Skipped by reset timestamp handling.
 				DoubleCounterPoint(
 					testResource,
-					Labels(Label("a", "1")),
+					Labels(
+						Label("a", "1"),
+						Label("instance", "instance1"),
+						Label("job", "job1"),
+					),
 					"metric1_total",
 					time.Unix(2, 0),
 					time.Unix(3, 0),
@@ -685,12 +707,7 @@ func TestSampleBuilder(t *testing.T) {
 			series: seriesMap{
 				1: labels.FromStrings("job", "job1", "instance", "instance1", "a", "1", "__name__", "metric1_total"),
 			},
-			targets: targetMap{
-				"job1/instance1": &targets.Target{
-					Labels:           labels.FromStrings("job", "job1", "instance", "instance1"),
-					DiscoveredLabels: labels.FromStrings("resource_a", "abc"),
-				},
-			},
+			resourceLabels: labels.FromStrings("resource_a", "abc"),
 			metadata: metadataMap{
 				"job1/instance1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeCounter, ValueType: metadata.DOUBLE},
 			},
@@ -702,7 +719,11 @@ func TestSampleBuilder(t *testing.T) {
 				nil, // Skipped by reset timestamp handling.
 				DoubleCounterPoint(
 					testResource,
-					Labels(Label("a", "1")),
+					Labels(
+						Label("a", "1"),
+						Label("instance", "instance1"),
+						Label("job", "job1"),
+					),
 					"metric1",
 					time.Unix(2, 0),
 					time.Unix(3, 0),
@@ -718,12 +739,7 @@ func TestSampleBuilder(t *testing.T) {
 			series: seriesMap{
 				1: labels.FromStrings("job", "job1", "instance", "instance1", "a", "1", "__name__", "metric1_total"),
 			},
-			targets: targetMap{
-				"job1/instance1": &targets.Target{
-					Labels:           labels.FromStrings("job", "job1", "instance", "instance1"),
-					DiscoveredLabels: labels.FromStrings("resource_a", "abc"),
-				},
-			},
+			resourceLabels: labels.FromStrings("resource_a", "abc"),
 			metadata: metadataMap{
 				"job1/instance1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
 			},
@@ -733,7 +749,11 @@ func TestSampleBuilder(t *testing.T) {
 			result: []*metric_pb.ResourceMetrics{
 				DoubleGaugePoint(
 					testResource,
-					Labels(Label("a", "1")),
+					Labels(
+						Label("a", "1"),
+						Label("instance", "instance1"),
+						Label("job", "job1"),
+					),
 					"metric1_total",
 					time.Unix(3, 0),
 					8,
@@ -742,12 +762,7 @@ func TestSampleBuilder(t *testing.T) {
 		},
 		// Samples with a NaN value should be dropped.
 		{
-			targets: targetMap{
-				"job1/instance1": &targets.Target{
-					Labels:           labels.FromStrings("job", "job1", "instance", "instance1"),
-					DiscoveredLabels: labels.FromStrings("resource_a", "abc"),
-				},
-			},
+			resourceLabels: labels.FromStrings("resource_a", "abc"),
 			series: seriesMap{
 				1: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_count"),
 			},
@@ -767,12 +782,7 @@ func TestSampleBuilder(t *testing.T) {
 		},
 		// Samples with a NaN value should be dropped.
 		{
-			targets: targetMap{
-				"job1/instance1": &targets.Target{
-					Labels:           labels.FromStrings("job", "job1", "instance", "instance1"),
-					DiscoveredLabels: labels.FromStrings("resource_a", "abc"),
-				},
-			},
+			resourceLabels: labels.FromStrings("resource_a", "abc"),
 			series: seriesMap{
 				1: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_count"),
 			},
@@ -791,7 +801,10 @@ func TestSampleBuilder(t *testing.T) {
 				nil, // due to NaN
 				IntCounterPoint(
 					testResource,
-					Labels(),
+					Labels(
+						Label("instance", "instance1"),
+						Label("job", "job1"),
+					),
 					"metric1_count",
 					time.Unix(2, 0),
 					time.Unix(5, 0),
@@ -811,7 +824,7 @@ func TestSampleBuilder(t *testing.T) {
 				var err error
 				var result []*metric_pb.ResourceMetrics
 
-				series := newSeriesCache(nil, "", nil, nil, c.targets, c.metadata, c.metricsPrefix)
+				series := newSeriesCache(nil, "", nil, nil, c.metadata, c.metricsPrefix, c.resourceLabels)
 				for ref, s := range c.series {
 					series.set(ctx, ref, s, 0)
 				}
