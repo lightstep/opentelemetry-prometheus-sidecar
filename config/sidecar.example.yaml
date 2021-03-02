@@ -35,15 +35,21 @@ prometheus:
   # Skip points older than this
   max_point_age: 72h
 
+  # Send at most this number of timeseries per request
+  max_timeseries_per_request: 500
+
+  # Max number of shards, i.e. amount of concurrency
+  max_shards: 200
+
+  # Scrape intervals, when set, are used to delay startup.  If set, 
+  # the sidecar will wait until the first scrape completes with
+  # this interval
+  scrape_intervals: [30s, 60s]
+
 # OpenTelemetry settings:
 opentelemetry:
   # Metrics prefix is prepended to all exported metric names:
   metrics_prefix: prefix.
-
-  # This option tells the sidecar to apply all "__meta_"-prefixed
-  # target labels returned by Prometheus discovered as resource
-  # attributes in the exported metric data:
-  use_meta_labels: true
 
 # Administrative settings:
 admin:
@@ -101,16 +107,12 @@ static_metadata:
   value_type: int64
   help:       Number of bits transferred by this process.
 
-# Startup delay determines how long to wait before processing new
-# write-ahead-log entries after startup:
-startup_delay: 30s
-
 # Startup timeout determines how long to wait for the endpoint to
 # become available once before entering the initial run state.
 startup_timeout: 300s
 
 # Control the format and level of console-logging output:
-log_config:
+log:
   level: debug
   format: json
   verbose: 1

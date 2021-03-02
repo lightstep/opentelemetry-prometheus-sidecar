@@ -31,6 +31,7 @@ import (
 	metric_pb "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
 	resource_pb "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/resource/v1"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/internal/otlptest"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/internal/promtest"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
@@ -217,11 +218,14 @@ func TestSampleDeliverySimple(t *testing.T) {
 	c := NewTestStorageClient(t, true)
 	c.expectSamples(samples)
 
-	cfg := config.DefaultQueueConfig()
+	mainConfig := config.DefaultMainConfig()
+	cfg := mainConfig.QueueConfig()
 	cfg.Capacity = n
 	cfg.MaxSamplesPerSend = n
 
-	tailer, err := tail.Tail(context.Background(), telemetry.DefaultLogger(), dir)
+	prom := promtest.NewFakePrometheus()
+
+	tailer, err := tail.Tail(context.Background(), telemetry.DefaultLogger(), dir, prom.ReadyConfig(), -1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -262,12 +266,15 @@ func TestSampleDeliveryMultiShard(t *testing.T) {
 
 	c := NewTestStorageClient(t, true)
 
-	cfg := config.DefaultQueueConfig()
+	mainConfig := config.DefaultMainConfig()
+	cfg := mainConfig.QueueConfig()
 	// flush after each sample, to avoid blocking the test
 	cfg.MaxSamplesPerSend = 1
 	cfg.MaxShards = numShards
 
-	tailer, err := tail.Tail(context.Background(), telemetry.DefaultLogger(), dir)
+	prom := promtest.NewFakePrometheus()
+
+	tailer, err := tail.Tail(context.Background(), telemetry.DefaultLogger(), dir, prom.ReadyConfig(), 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -296,8 +303,10 @@ func TestSampleDeliveryTimeout(t *testing.T) {
 	}
 	defer os.RemoveAll(dir)
 
+	mainConfig := config.DefaultMainConfig()
+
 	// Let's send one less sample than batch size, and wait the timeout duration
-	n := config.DefaultQueueConfig().MaxSamplesPerSend - 1
+	n := mainConfig.QueueConfig().MaxSamplesPerSend - 1
 
 	var samples1, samples2 []*metric_pb.ResourceMetrics
 	for i := 0; i < n; i++ {
@@ -315,11 +324,13 @@ func TestSampleDeliveryTimeout(t *testing.T) {
 	}
 
 	c := NewTestStorageClient(t, true)
-	cfg := config.DefaultQueueConfig()
+	cfg := mainConfig.QueueConfig()
 	cfg.MaxShards = 1
 	cfg.BatchSendDeadline = model.Duration(100 * time.Millisecond)
 
-	tailer, err := tail.Tail(context.Background(), telemetry.DefaultLogger(), dir)
+	prom := promtest.NewFakePrometheus()
+
+	tailer, err := tail.Tail(context.Background(), telemetry.DefaultLogger(), dir, prom.ReadyConfig(), 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -357,7 +368,8 @@ func TestSampleDeliveryOrder(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	ts := 10
-	n := config.DefaultQueueConfig().MaxSamplesPerSend * ts
+	mainConfig := config.DefaultMainConfig()
+	n := mainConfig.QueueConfig().MaxSamplesPerSend * ts
 
 	var samples []*metric_pb.ResourceMetrics
 	for i := 0; i < n; i++ {
@@ -371,11 +383,13 @@ func TestSampleDeliveryOrder(t *testing.T) {
 	c := NewTestStorageClient(t, false)
 	c.expectSamples(samples)
 
-	tailer, err := tail.Tail(context.Background(), telemetry.DefaultLogger(), dir)
+	prom := promtest.NewFakePrometheus()
+
+	tailer, err := tail.Tail(context.Background(), telemetry.DefaultLogger(), dir, prom.ReadyConfig(), 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := NewQueueManager(nil, config.DefaultQueueConfig(), 0, c, tailer)
+	m, err := NewQueueManager(nil, mainConfig.QueueConfig(), 0, c, tailer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -467,7 +481,8 @@ func TestSpawnNotMoreThanMaxConcurrentSendsGoroutines(t *testing.T) {
 	// `MaxSamplesPerSend*Shards` samples should be consumed by the
 	// per-shard goroutines, and then another `MaxSamplesPerSend`
 	// should be left on the queue.
-	n := config.DefaultQueueConfig().MaxSamplesPerSend * 2
+	mainConfig := config.DefaultMainConfig()
+	n := mainConfig.QueueConfig().MaxSamplesPerSend * 2
 
 	var samples []*metric_pb.ResourceMetrics
 	for i := 0; i < n; i++ {
@@ -479,11 +494,13 @@ func TestSpawnNotMoreThanMaxConcurrentSendsGoroutines(t *testing.T) {
 	}
 
 	c := NewTestBlockedStorageClient()
-	cfg := config.DefaultQueueConfig()
+	cfg := mainConfig.QueueConfig()
 	cfg.MaxShards = 1
 	cfg.Capacity = n
 
-	tailer, err := tail.Tail(context.Background(), telemetry.DefaultLogger(), dir)
+	prom := promtest.NewFakePrometheus()
+
+	tailer, err := tail.Tail(context.Background(), telemetry.DefaultLogger(), dir, prom.ReadyConfig(), 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -521,7 +538,7 @@ func TestSpawnNotMoreThanMaxConcurrentSendsGoroutines(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	if m.queueLen() != config.DefaultQueueConfig().MaxSamplesPerSend {
+	if m.queueLen() != mainConfig.QueueConfig().MaxSamplesPerSend {
 		t.Errorf("Failed to drain QueueManager queue, %d elements left",
 			m.queueLen(),
 		)

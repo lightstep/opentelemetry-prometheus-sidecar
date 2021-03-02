@@ -73,6 +73,7 @@ func Main() bool {
 	telem := internal.StartTelemetry(
 		cfg,
 		"stresstest-prometheus-sidecar",
+		"stresstest-prometheus-sidecar-001",
 		false,
 		logger,
 	)
@@ -92,7 +93,7 @@ func Main() bool {
 
 	queueManager, err := otlp.NewQueueManager(
 		log.With(logger, "component", "queue_manager"),
-		config.DefaultQueueConfig(),
+		cfg.QueueConfig(),
 		cfg.Destination.Timeout.Duration,
 		scf,
 		&fakeTailer{time.Now()},

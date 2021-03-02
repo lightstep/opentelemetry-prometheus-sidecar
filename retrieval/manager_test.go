@@ -24,6 +24,7 @@ import (
 	metric_pb "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
 	resource_pb "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/resource/v1"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/internal/otlptest"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/internal/promtest"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
@@ -66,7 +67,10 @@ func TestReader_Progress(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tailer, err := tail.Tail(ctx, telemetry.DefaultLogger(), dir)
+
+	prom := promtest.NewFakePrometheus()
+
+	tailer, err := tail.Tail(ctx, telemetry.DefaultLogger(), dir, prom.ReadyConfig(), 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,6 +119,14 @@ func TestReader_Progress(t *testing.T) {
 			samples := make([]record.RefSample, 1000)
 			samples[0] = record.RefSample{Ref: 1, T: int64(sz) * 1000}
 
+			// Note: We must update the segment number in order for
+			// the Tail reader to make progress.
+			//
+			// Note: This uses the default segment size, independent of
+			// the actual segment size, because that's what the sidecar
+			// uses to calculate Size(), so this expression is consistent.
+			prom.SetSegment(sz / wal.DefaultSegmentSize)
+
 			if err := w.Log(enc.Samples(samples, nil)); err != nil {
 				t.Error(err)
 				break
@@ -122,9 +134,9 @@ func TestReader_Progress(t *testing.T) {
 		}
 	}()
 	// Proess the WAL until the writing goroutine completes.
-	r.Run(ctx, 0)
+	r.Run(ctx, 0, -1)
 
-	progressOffset, err := ReadProgressFile(dir)
+	progressOffset, _, err := ReadProgressFile(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,14 +153,14 @@ func TestReader_Progress(t *testing.T) {
 	ctx, cancel = context.WithCancel(context.Background())
 	defer cancel()
 
-	tailer, err = tail.Tail(ctx, telemetry.DefaultLogger(), dir)
+	tailer, err = tail.Tail(ctx, telemetry.DefaultLogger(), dir, prom.ReadyConfig(), 1)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	recorder := &nopAppender{}
 	r = NewPrometheusReader(nil, dir, tailer, nil, nil, metadataMap, recorder, "", 0, extraLabels)
-	go r.Run(ctx, progressOffset)
+	go r.Run(ctx, progressOffset, -1)
 
 	// Wait for reader to process until the end.
 	ctx, _ = context.WithTimeout(ctx, 5*time.Second)
@@ -198,22 +210,28 @@ func TestReader_ProgressFile(t *testing.T) {
 	}
 	defer os.RemoveAll(dir)
 
-	offset, err := ReadProgressFile(dir)
+	offset, corruptSegment, err := ReadProgressFile(dir)
 	if err != nil {
 		t.Fatalf("read progress: %s", err)
 	}
 	if offset != 0 {
 		t.Fatalf("expected offset %d but got %d", 0, offset)
 	}
-	if err := SaveProgressFile(dir, progressBufferMargin+12345); err != nil {
+	if corruptSegment != -1 {
+		t.Fatalf("expected corrupt-segment %d but got %d", -1, corruptSegment)
+	}
+	if err := SaveProgressFile(dir, progressBufferMargin+12345, 10); err != nil {
 		t.Fatalf("save progress: %s", err)
 	}
-	offset, err = ReadProgressFile(dir)
+	offset, corruptSegment, err = ReadProgressFile(dir)
 	if err != nil {
 		t.Fatalf("read progress: %s", err)
 	}
 	if offset != 12345 {
 		t.Fatalf("expected progress offset %d but got %d", 12345, offset)
+	}
+	if corruptSegment != 10 {
+		t.Fatalf("expected corrupt-segment %d but got %d", 9, corruptSegment)
 	}
 }
 

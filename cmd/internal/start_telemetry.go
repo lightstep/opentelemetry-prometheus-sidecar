@@ -9,11 +9,12 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
+	"go.opentelemetry.io/otel/semconv"
 )
 
 type ShutdownFunc func(context.Context)
 
-func StartTelemetry(cfg config.MainConfig, defaultSvcName string, isSuper bool, logger log.Logger) *telemetry.Telemetry {
+func StartTelemetry(cfg config.MainConfig, defaultSvcName string, svcInstanceId string, isSuper bool, logger log.Logger) *telemetry.Telemetry {
 	diagConfig := cfg.Diagnostics
 
 	if cfg.DisableDiagnostics {
@@ -32,10 +33,10 @@ func StartTelemetry(cfg config.MainConfig, defaultSvcName string, isSuper bool, 
 	// because we are using metrics data for internal health checking.
 	reportingPeriod := cfg.Admin.HealthCheckPeriod.Duration / 2
 
-	return startTelemetry(diagConfig, reportingPeriod, defaultSvcName, isSuper, logger)
+	return startTelemetry(diagConfig, reportingPeriod, defaultSvcName, svcInstanceId, isSuper, logger)
 }
 
-func startTelemetry(diagConfig config.OTLPConfig, reportingPeriod time.Duration, defaultSvcName string, isSuper bool, logger log.Logger) *telemetry.Telemetry {
+func startTelemetry(diagConfig config.OTLPConfig, reportingPeriod time.Duration, defaultSvcName string, svcInstanceId string, isSuper bool, logger log.Logger) *telemetry.Telemetry {
 	endpoint, _ := url.Parse(diagConfig.Endpoint)
 	hostport := endpoint.Hostname()
 	if len(endpoint.Port()) > 0 {
@@ -46,10 +47,7 @@ func startTelemetry(diagConfig config.OTLPConfig, reportingPeriod time.Duration,
 	metricsHostport := hostport
 	spanHostport := hostport
 
-	// Set a service.name resource if none is set.
-	const serviceNameKey = "service.name"
-
-	svcName := diagConfig.Attributes[serviceNameKey]
+	svcName := diagConfig.Attributes[string(semconv.ServiceNameKey)]
 	if svcName == "" {
 		svcName = defaultSvcName
 	}
@@ -65,7 +63,8 @@ func startTelemetry(diagConfig config.OTLPConfig, reportingPeriod time.Duration,
 		spanHostport = ""
 	}
 
-	diagConfig.Attributes[serviceNameKey] = svcName
+	diagConfig.Attributes[string(semconv.ServiceNameKey)] = svcName
+	diagConfig.Attributes[string(semconv.ServiceInstanceIDKey)] = svcInstanceId
 	diagConfig.Headers[config.AgentKey] = agentName
 
 	// TODO: Configure trace batching interval.

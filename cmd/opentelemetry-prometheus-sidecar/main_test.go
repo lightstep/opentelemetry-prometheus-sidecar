@@ -26,6 +26,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	traces "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/trace/v1"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/internal/promtest"
 	"github.com/stretchr/testify/require"
 )
 
@@ -39,14 +40,11 @@ func TestMain(m *testing.M) {
 }
 
 func runPrometheusService(ts *testServer) {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/-/ready", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	})
+	fp := promtest.NewFakePrometheus()
 	address := fmt.Sprint("0.0.0.0:19093")
 	server := &http.Server{
 		Addr:    address,
-		Handler: mux,
+		Handler: fp.ServeMux(),
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -71,7 +69,6 @@ func TestStartupInterrupt(t *testing.T) {
 		append(e2eTestMainCommonFlags,
 			"--prometheus.wal=testdata/wal",
 			"--log.level=debug",
-			"--startup.delay=1s",
 		)...)
 
 	cmd.Env = append(os.Environ(), "RUN_MAIN=1")
@@ -122,7 +119,7 @@ Loop:
 	if err := cmd.Process.Kill(); err == nil {
 		t.Errorf("opentelemetry-prometheus-sidecar didn't shutdown after sending the Interrupt signal")
 	}
-	const expected = "source is not ready: context canceled"
+	const expected = "Prometheus is not ready: context canceled"
 	require.Error(t, stoppedErr)
 	require.Contains(t, stoppedErr.Error(), "exit status 1")
 
@@ -242,7 +239,6 @@ func TestSuperStackDump(t *testing.T) {
 		append(e2eTestMainSupervisorFlags,
 			"--prometheus.wal=testdata/wal",
 			"--healthcheck.period=1s",
-			"--startup.delay=0s",
 			"--log.level=debug",
 		)...)
 

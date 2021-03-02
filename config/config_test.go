@@ -161,8 +161,8 @@ destination:
 
 prometheus:
   wal: wal-eeee
+  scrape_intervals: [22m13s]
 
-startup_delay: 1333s
 startup_timeout: 1777s
 `,
 			nil,
@@ -172,6 +172,11 @@ startup_timeout: 1777s
 					Endpoint: config.DefaultPrometheusEndpoint,
 					MaxPointAge: DurationConfig{
 						25 * time.Hour,
+					},
+					MaxTimeseriesPerRequest: 500,
+					MaxShards:               200,
+					ScrapeIntervals: []string{
+						(1333 * time.Second).String(),
 					},
 				},
 				Admin: AdminConfig{
@@ -205,9 +210,6 @@ startup_timeout: 1777s
 				LogConfig: LogConfig{
 					Level:  "info",
 					Format: "logfmt",
-				},
-				StartupDelay: DurationConfig{
-					1333 * time.Second,
 				},
 				StartupTimeout: DurationConfig{
 					1777 * time.Second,
@@ -254,17 +256,20 @@ filters:
 prometheus:
   wal: bad-guy
 
-log_config:
+log:
   format: json
   level: error
 `,
 			[]string{
-				"--startup.delay=1333s",
 				"--startup.timeout=1777s",
 				"--destination.attribute", "c=d",
 				"--destination.header", "g=h",
 				"--destination.compression", "compression_fmt",
 				"--prometheus.wal", "wal-eeee",
+				"--prometheus.max-point-age", "10h",
+				"--prometheus.max-timeseries-per-request", "5",
+				"--prometheus.max-shards", "10",
+				"--prometheus.scrape-interval=22m13s",
 				"--log.level=warning",
 				"--healthcheck.period=17s",
 				"--diagnostics.endpoint", "https://look.here",
@@ -277,7 +282,12 @@ log_config:
 					WAL:      "wal-eeee",
 					Endpoint: config.DefaultPrometheusEndpoint,
 					MaxPointAge: DurationConfig{
-						25 * time.Hour,
+						10 * time.Hour,
+					},
+					MaxTimeseriesPerRequest: 5,
+					MaxShards:               10,
+					ScrapeIntervals: []string{
+						(1333 * time.Second).String(),
 					},
 				},
 				Admin: AdminConfig{
@@ -320,9 +330,6 @@ log_config:
 					Level:  "warning",
 					Format: "json",
 				},
-				StartupDelay: DurationConfig{
-					1333 * time.Second,
-				},
 				StartupTimeout: DurationConfig{
 					1777 * time.Second,
 				},
@@ -355,11 +362,13 @@ prometheus:
   wal: /volume/wal
   endpoint: http://127.0.0.1:19090/
   max_point_age: 72h
+  max_timeseries_per_request: 10
+  max_shards: 20
+  scrape_intervals: [30s]
 
-startup_delay: 30s
 startup_timeout: 33s
 
-log_config:
+log:
   level: warn
   format: json
 
@@ -375,7 +384,6 @@ security:
 
 opentelemetry:
   metrics_prefix: prefix.
-  use_meta_labels: true
 
 filters:
 - metric{label=value}
@@ -407,9 +415,6 @@ static_metadata:
 					Port:              9999,
 					HealthCheckPeriod: DurationConfig{10 * time.Second},
 				},
-				StartupDelay: DurationConfig{
-					30 * time.Second,
-				},
 				StartupTimeout: DurationConfig{
 					33 * time.Second,
 				},
@@ -419,10 +424,14 @@ static_metadata:
 					MaxPointAge: DurationConfig{
 						72 * time.Hour,
 					},
+					MaxTimeseriesPerRequest: 10,
+					MaxShards:               20,
+					ScrapeIntervals: []string{
+						(30 * time.Second).String(),
+					},
 				},
 				OpenTelemetry: OTelConfig{
 					MetricsPrefix: "prefix.",
-					UseMetaLabels: true,
 				},
 				Destination: OTLPConfig{
 					Endpoint: "https://ingest.staging.lightstep.com:443",

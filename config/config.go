@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/ghodss/yaml"
+	"github.com/go-kit/kit/log"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/snappy"
 	"github.com/pkg/errors"
@@ -46,7 +47,6 @@ const (
 	DefaultHealthCheckPeriod  = time.Second * 60
 	DefaultReadinessPeriod    = time.Second * 5
 	DefaultMaxPointAge        = time.Hour * 25
-	DefaultStartupDelay       = time.Minute
 	DefaultShutdownDelay      = time.Minute
 	DefaultStartupTimeout     = time.Minute * 5
 	DefaultNoisyLogPeriod     = time.Second * 5
@@ -55,10 +55,12 @@ const (
 	DefaultSupervisorBufferSize  = 16384
 	DefaultSupervisorLogsHistory = 16
 
-	// TODO: The two settings below are not configurable, they should be.
+	// How many points per request
+	DefaultMaxTimeseriesPerRequest = 500
+	// Max number of shards, i.e. amount of concurrency
+	DefaultMaxShards = 200
 
-	// How many points per request.
-	MaxTimeseriesPerRequest = 200
+	// TODO: The setting below is not configurable, it should be.
 
 	// DefaultMaxExportAttempts sets a maximum on the number of
 	// attempts to export a request.  This is not RPC requests,
@@ -88,6 +90,14 @@ an OpenTelemetry (https://opentelemetry.io) Protocol endpoint.
 	OutcomeSuccessValue = "success"
 
 	HealthCheckURI = "/-/health"
+
+	// PrometheusCurrentSegmentMetricName names an internal gauge
+	// exposed by Prometheus (having no labels).
+	PrometheusCurrentSegmentMetricName = "prometheus_tsdb_wal_segment_current"
+
+	// PrometheusTargetIntervalLengthName is an internal histogram
+	// indicating how long the interval between scrapes.
+	PrometheusTargetIntervalLengthName = "prometheus_target_interval_length_seconds"
 )
 
 var (
@@ -145,14 +155,16 @@ type LogConfig struct {
 }
 
 type PromConfig struct {
-	Endpoint    string         `json:"endpoint"`
-	WAL         string         `json:"wal"`
-	MaxPointAge DurationConfig `json:"max_point_age"`
+	Endpoint                string         `json:"endpoint"`
+	WAL                     string         `json:"wal"`
+	MaxPointAge             DurationConfig `json:"max_point_age"`
+	MaxTimeseriesPerRequest int            `json:"max_timeseries_per_request"`
+	MaxShards               int            `json:"max_shards"`
+	ScrapeIntervals         []string       `json:"scrape_intervals"`
 }
 
 type OTelConfig struct {
 	MetricsPrefix string `json:"metrics_prefix"`
-	UseMetaLabels bool   `json:"use_meta_labels"`
 }
 
 type AdminConfig struct {
@@ -171,12 +183,11 @@ type MainConfig struct {
 	Admin          AdminConfig            `json:"admin"`
 	Security       SecurityConfig         `json:"security"`
 	Diagnostics    OTLPConfig             `json:"diagnostics"`
-	StartupDelay   DurationConfig         `json:"startup_delay"`
 	StartupTimeout DurationConfig         `json:"startup_timeout"`
 	Filters        []string               `json:"filters"`
 	MetricRenames  []MetricRenamesConfig  `json:"metric_renames"`
 	StaticMetadata []StaticMetadataConfig `json:"static_metadata"`
-	LogConfig      LogConfig              `json:"log_config"`
+	LogConfig      LogConfig              `json:"log"`
 
 	DisableSupervisor  bool `json:"disable_supervisor"`
 	DisableDiagnostics bool `json:"disable_diagnostics"`
@@ -186,14 +197,35 @@ type MainConfig struct {
 	ConfigFilename string `json:"-" yaml:"-"`
 }
 
+// TODO Move this config object into MainConfig (or at least the
+// fields we use, which is most) and add command-line flags.
+func (c MainConfig) QueueConfig() promconfig.QueueConfig {
+	cfg := promconfig.DefaultQueueConfig
+
+	cfg.MaxBackoff = model.Duration(2 * time.Second)
+	cfg.MaxSamplesPerSend = c.Prometheus.MaxTimeseriesPerRequest
+	cfg.MaxShards = c.Prometheus.MaxShards
+
+	// We want the queues to have enough buffer to ensure consistent flow with full batches
+	// being available for every new request.
+	// Testing with different latencies and shard numbers have shown that 3x of the batch size
+	// works well.
+	cfg.Capacity = 3 * cfg.MaxSamplesPerSend
+
+	return cfg
+}
+
 type FileReadFunc func(filename string) ([]byte, error)
 
 func DefaultMainConfig() MainConfig {
 	return MainConfig{
 		Prometheus: PromConfig{
-			WAL:         DefaultWALDirectory,
-			Endpoint:    DefaultPrometheusEndpoint,
-			MaxPointAge: DurationConfig{DefaultMaxPointAge},
+			WAL:                     DefaultWALDirectory,
+			Endpoint:                DefaultPrometheusEndpoint,
+			MaxPointAge:             DurationConfig{DefaultMaxPointAge},
+			MaxTimeseriesPerRequest: DefaultMaxTimeseriesPerRequest,
+			MaxShards:               DefaultMaxShards,
+			ScrapeIntervals:         nil,
 		},
 		Admin: AdminConfig{
 			Port:              DefaultAdminPort,
@@ -216,9 +248,6 @@ func DefaultMainConfig() MainConfig {
 			Level:   "info",
 			Format:  "logfmt",
 			Verbose: 0,
-		},
-		StartupDelay: DurationConfig{
-			DefaultStartupDelay,
 		},
 		StartupTimeout: DurationConfig{
 			DefaultStartupTimeout,
@@ -257,7 +286,7 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 		a.Flag(lowerPrefix+".timeout", upperPrefix+" timeout used for OTLP Export() requests").
 			DurationVar(&op.Timeout.Duration)
 
-		a.Flag(lowerPrefix+".compression", upperPrefix+" compression used for OTLP requests (e.g., snappy).").
+		a.Flag(lowerPrefix+".compression", upperPrefix+" compression used for OTLP requests (e.g., snappy, gzip, none).").
 			StringVar(&op.Compression)
 	}
 
@@ -273,6 +302,15 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 	a.Flag("prometheus.max-point-age", "Skip points older than this, to assist recovery. Default: "+DefaultMaxPointAge.String()).
 		DurationVar(&cfg.Prometheus.MaxPointAge.Duration)
 
+	a.Flag("prometheus.max-timeseries-per-request", fmt.Sprintf("Send at most this number of timeseries per request. Default: %d", DefaultMaxTimeseriesPerRequest)).
+		IntVar(&cfg.Prometheus.MaxTimeseriesPerRequest)
+
+	a.Flag("prometheus.max-shards", fmt.Sprintf("Max number of shards, i.e. amount of concurrency. Default: %d", DefaultMaxShards)).
+		IntVar(&cfg.Prometheus.MaxShards)
+
+	a.Flag("prometheus.scrape-interval", "Delay at startup until Prometheus completes a scrape for this interval. Default waits for the first scrape to complete, multiple intervals can be set").
+		StringsVar(&cfg.Prometheus.ScrapeIntervals)
+
 	a.Flag("admin.port", "Administrative port this process listens on. Default: "+fmt.Sprint(DefaultAdminPort)).
 		IntVar(&cfg.Admin.Port)
 	a.Flag("admin.listen-ip", "Administrative IP address this process listens on. Default: "+DefaultAdminListenIP).
@@ -284,14 +322,8 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 	a.Flag("opentelemetry.metrics-prefix", "Customized prefix for exporter metrics. If not set, none will be used").
 		StringVar(&cfg.OpenTelemetry.MetricsPrefix)
 
-	a.Flag("opentelemetry.use-meta-labels", "Prometheus target labels prefixed with __meta_ map into labels.").
-		BoolVar(&cfg.OpenTelemetry.UseMetaLabels)
-
 	a.Flag("filter", "PromQL metric and label matcher which must pass for a series to be forwarded to OpenTelemetry. If repeated, the series must pass any of the filter sets to be forwarded.").
 		StringsVar(&cfg.Filters)
-
-	a.Flag("startup.delay", "Delay at startup to allow Prometheus its initial scrape. Default: "+DefaultStartupDelay.String()).
-		DurationVar(&cfg.StartupDelay.Duration)
 
 	a.Flag("startup.timeout", "Timeout at startup to allow the endpoint to become available. Default: "+DefaultStartupTimeout.String()).
 		DurationVar(&cfg.StartupTimeout.Duration)
@@ -501,19 +533,11 @@ func (d DurationConfig) MarshalJSON() ([]byte, error) {
 	return json.Marshal(d.Duration.String())
 }
 
-// TODO Move this config object into MainConfig (or at least the
-// fields we use, which is most) and add command-line flags.
-func DefaultQueueConfig() promconfig.QueueConfig {
-	cfg := promconfig.DefaultQueueConfig
-
-	cfg.MaxBackoff = model.Duration(2 * time.Second)
-	cfg.MaxSamplesPerSend = MaxTimeseriesPerRequest
-
-	// We want the queues to have enough buffer to ensure consistent flow with full batches
-	// being available for every new request.
-	// Testing with different latencies and shard numbers have shown that 3x of the batch size
-	// works well.
-	cfg.Capacity = 3 * MaxTimeseriesPerRequest
-
-	return cfg
+// PromReady is used for prometheus.WaitForReady() in several
+// places.  It is not parsed from the config file or command-line, it
+// is here to avoid a test package cycle, primarily.
+type PromReady struct {
+	Logger          log.Logger
+	PromURL         *url.URL
+	ScrapeIntervals []time.Duration
 }

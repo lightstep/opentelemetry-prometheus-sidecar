@@ -26,6 +26,8 @@ import (
 	common "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/common/v1"
 	metrics "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
 	traces "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/trace/v1"
+	"github.com/stretchr/testify/assert"
+	"go.opentelemetry.io/otel/semconv"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	grpcMetadata "google.golang.org/grpc/metadata"
@@ -195,7 +197,6 @@ func TestE2E(t *testing.T) {
 		append(e2eTestMainCommonFlags,
 			"--prometheus.wal", path.Join(dataDir, "wal"),
 			"--destination.attribute=service.name=Service",
-			"--startup.delay=1s",
 		)...,
 	)
 	sideCmd.Env = append(os.Environ(), "RUN_MAIN=1")
@@ -284,11 +285,8 @@ func TestE2E(t *testing.T) {
 
 		// At this moment, the labels in static_configs are NOT
 		// passed to the Resource.
-		if diff, equal := messagediff.PrettyDiff(rvals, map[string]string{
-			"service.name": "Service",
-		}); !equal {
-			t.Errorf("unexpected resources:\n%v", diff)
-		}
+		assert.Equal(t, rvals[string(semconv.ServiceNameKey)], "Service")
+		assert.NotEqual(t, rvals[string(semconv.ServiceInstanceIDKey)], "")
 
 		output[name] = append(output[name], val)
 	}

@@ -27,6 +27,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/internal/promtest"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/tsdb/wal"
@@ -64,7 +66,9 @@ func TestCorruption(t *testing.T) {
 	dir := "./testdata/corruption"
 	ctx, cancel := context.WithCancel(context.Background())
 
-	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir)
+	prom := promtest.NewFakePrometheus()
+
+	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir, prom.ReadyConfig(), 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +101,10 @@ func TestInvalidSegment(t *testing.T) {
 	dir := "./testdata/invalid-segment"
 	ctx, cancel := context.WithCancel(context.Background())
 
-	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir)
+	prom := promtest.NewFakePrometheus()
+	prom.SetSegment(2)
+
+	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir, prom.ReadyConfig(), 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +129,7 @@ func TestInvalidSegment(t *testing.T) {
 	if wr.Err() == nil {
 		t.Fatal(errors.New("expected segment transition error"))
 	}
-	assert.Contains(t, wr.Err().Error(), "segment 0 transition at unexpected")
+	assert.Contains(t, wr.Err().Error(), "read first header byte: truncated WAL segment")
 }
 
 func TestTailFuzz(t *testing.T) {
@@ -133,16 +140,20 @@ func TestTailFuzz(t *testing.T) {
 	defer os.RemoveAll(dir)
 	ctx, cancel := context.WithCancel(context.Background())
 
-	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir)
+	prom := promtest.NewFakePrometheus()
+
+	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir, prom.ReadyConfig(), 1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer rc.Close()
 
 	var wg sync.WaitGroup
-	wg.Add(1)
+	wg.Add(2)
 
-	w, err := wal.NewSize(nil, nil, dir, 2*1024*1024, false)
+	const segmentSize = 2 * 1024 * 1024
+
+	w, err := wal.NewSize(nil, nil, dir, segmentSize, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,6 +166,7 @@ func TestTailFuzz(t *testing.T) {
 	const count = 50000
 	var asyncErr atomic.Value
 	go func() {
+		defer wg.Done()
 		for i := 0; i < count; i++ {
 			if i%100 == 0 {
 				time.Sleep(time.Duration(rand.Intn(10 * int(time.Millisecond))))
@@ -168,9 +180,32 @@ func TestTailFuzz(t *testing.T) {
 				asyncErr.Store(err)
 				break
 			}
+
 			written = append(written, rec)
 		}
-		wg.Done()
+	}()
+
+	// Asynchronously udate the segment number in order for the
+	// Tail reader to make progress, since we are testing a real
+	// WAL with a fake Prometheus.
+	stopCh := make(chan struct{})
+	go func() {
+		defer wg.Done()
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-stopCh:
+				return
+			case <-ticker.C:
+				ss, err := listSegments(dir)
+				require.NoError(t, err)
+				if len(ss) > 0 {
+					prom.SetSegment(ss[len(ss)-1].index)
+				}
+			}
+		}
 	}()
 
 	wr := wal.NewReader(rc)
@@ -183,6 +218,7 @@ func TestTailFuzz(t *testing.T) {
 	if wr.Err() != nil {
 		t.Fatal(wr.Err())
 	}
+	close(stopCh)
 	wg.Wait()
 	if err := asyncErr.Load(); err != nil {
 		t.Fatal("async error: ", err)
@@ -213,48 +249,92 @@ func TestTailFuzz(t *testing.T) {
 	}
 }
 
-func BenchmarkTailFuzz(t *testing.B) {
+func TestSlowFsync(t *testing.T) {
 	dir, err := ioutil.TempDir("", "test_tail")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(dir)
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rc.Close()
+	prom := promtest.NewFakePrometheus()
 
-	w, err := wal.NewSize(nil, nil, dir, 32*1024*1024, false)
+	const (
+		segmentSize = 2 * 1024 * 1024
+		recSize     = 1024 * 1024
+	)
+
+	rec := make([]byte, recSize)
+
+	w, err := wal.NewSize(nil, nil, dir, segmentSize, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer w.Close()
 
-	t.SetBytes(4 * 2000) // Average record size times worker count.
-	t.ResetTimer()
+	w.Log(rec)
 
-	var rec [4000]byte
-	count := t.N * 4
-	for k := 0; k < 4; k++ {
-		go func() {
-			for i := 0; i < count/4; i++ {
-				if err := w.Log(rec[:rand.Intn(4000)]); err != nil {
-					panic(err)
-				}
-			}
-		}()
+	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir, prom.ReadyConfig(), 1)
+	if err != nil {
+		t.Fatal(err)
 	}
-
+	defer rc.Close()
 	wr := wal.NewReader(rc)
 
-	for i := 1; wr.Next(); i++ {
-		if i == t.N*4 {
-			break
-		}
+	// Read one record.
+	require.True(t, wr.Next())
+	require.Equal(t, recSize, len(wr.Record()))
+
+	// The next record will start a new segment, but set
+	// Prometheus unready first.
+	prom.SetReady(false)
+
+	go func() {
+		time.Sleep(config.DefaultHealthCheckTimeout)
+		prom.SetReady(true)
+		w.Log(rec)
+		time.Sleep(config.DefaultHealthCheckTimeout)
+		prom.SetSegment(1)
+	}()
+
+	// Reading this second record has to wait for both readiness
+	// and the updated segment.
+	require.True(t, wr.Next())
+	require.Equal(t, recSize, len(wr.Record()))
+}
+
+func TestCorruptSegment(t *testing.T) {
+	dir, err := ioutil.TempDir("", "test_tail")
+	if err != nil {
+		t.Fatal(err)
 	}
+	ctx, cancel := context.WithCancel(context.Background())
+	os.Mkdir(path.Join(dir, "checkpoint.00004043"), 0777)
+	defer os.RemoveAll(dir)
+
+	require.NoError(t, ioutil.WriteFile(path.Join(dir, "checkpoint.00004043/000000000000000000000"), []byte("1"), 0777))
+
+	defer cancel()
+
+	prom := promtest.NewFakePrometheus()
+
+	const (
+		segmentSize = 2 * 1024 * 1024
+		recSize     = 1024 * 1024
+	)
+
+	rec := make([]byte, recSize)
+
+	w, err := wal.NewSize(nil, nil, dir, segmentSize, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+
+	w.Log(rec)
+
+	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir, prom.ReadyConfig(), 4044)
+	require.Nil(t, err)
+	require.Equal(t, 4045, rc.nextSegment)
 }

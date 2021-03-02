@@ -29,7 +29,18 @@ import (
 	"github.com/prometheus/prometheus/pkg/textparse"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wal"
+	"github.com/stretchr/testify/require"
 )
+
+// metadataMap implements a MetadataGetter for exact matches of job/instance/metric inputs.
+// TODO: Move me back to transform_test.go once it is restored.
+/*
+type metadataMap map[string]*metadata.Entry
+
+func (m metadataMap) Get(ctx context.Context, job, instance, metric string) (*metadata.Entry, error) {
+	return m[job+"/"+instance+"/"+metric], nil
+}
+*/
 
 // This test primarily verifies the garbage collection logic of the cache.
 // The getters are verified integrated into the sample builder in transform_test.go
@@ -311,6 +322,59 @@ func TestSeriesCache_Filter(t *testing.T) {
 		t.Fatalf("error retrieving metric: %s", err)
 	} else if ok {
 		t.Fatalf("metric was not filtered")
+	}
+}
+
+func TestSeriesCache_Filter_Complex(t *testing.T) {
+	// Populate the getters with data.
+	extraLabels := labels.FromStrings("__resource_a", "resource2_a")
+	metadataMap := metadataMap{
+		"job1/inst1/github_metric": &metadata.Entry{Metric: "github_metric", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
+		"job1/inst1/slack_metric":  &metadata.Entry{Metric: "slack_metric", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
+	}
+	logBuffer := &bytes.Buffer{}
+	defer func() {
+		if logBuffer.Len() > 0 {
+			t.Log(logBuffer.String())
+		}
+	}()
+	mustNewMatcher := func(mt labels.MatchType, k, v string) *labels.Matcher {
+		m, err := labels.NewMatcher(mt, k, v)
+		require.NoError(t, err)
+		return m
+	}
+	logger := log.NewLogfmtLogger(logBuffer)
+	c := newSeriesCache(logger, "", [][]*labels.Matcher{
+		{
+			mustNewMatcher(labels.MatchRegexp, "__name__", "github.+"),
+			mustNewMatcher(labels.MatchRegexp, "category", "issues.+"),
+		},
+	}, nil, metadataMap, "", extraLabels)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Test that all but one of these are dropped.
+	lsets := []labels.Labels{
+		labels.FromStrings("__name__", "github_metric", "job", "job1", "instance", "inst1", "category", "issues_xyz"),
+		labels.FromStrings("__name__", "github_metric", "job", "job1", "instance", "inst1", "category", "pullrequests_xyz"),
+		labels.FromStrings("__name__", "slack_metric", "job", "job1", "instance", "inst1", "category", "issues_xyz"),
+	}
+	// Only the 0th entry passes the filter.
+	for idx, lset := range lsets {
+		err := c.set(ctx, uint64(idx), lset, 1)
+		require.NoError(t, err)
+
+		_, ok, err := c.get(ctx, uint64(idx))
+
+		notFound := !ok || err != nil
+		found := !notFound
+
+		if idx == 0 {
+			require.True(t, found, "OK %v Err %v", ok, err)
+		} else {
+			require.True(t, notFound, "OK %v Err %v", ok, err)
+		}
 	}
 }
 
