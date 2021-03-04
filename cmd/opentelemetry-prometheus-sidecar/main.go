@@ -253,7 +253,7 @@ func Main() bool {
 			func() error {
 				level.Info(logger).Log("msg", "starting Prometheus reader")
 				err = prometheusReader.Run(ctx, startOffset, corruptSegment)
-				if strings.Contains(err.Error(), "truncated WAL segment") {
+				if err != nil && strings.Contains(err.Error(), "truncated WAL segment") {
 					_ = retrieval.SaveProgressFile(cfg.Prometheus.WAL, startOffset, tailer.CurrentSegment())
 				}
 				return err
