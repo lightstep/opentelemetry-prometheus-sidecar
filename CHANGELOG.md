@@ -8,6 +8,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+## [0.18.3](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.18.3) - 2021-03-04
+
 ## [0.18.2](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.18.2) - 2021-02-26
 
 ### Changed
