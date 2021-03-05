@@ -16,7 +16,7 @@ const (
 	scrapeIntervalName = config.PrometheusTargetIntervalLengthName
 )
 
-func checkPrometheusVersion(inCtx context.Context, cfg config.PromReady) error {
+func scrapeMetrics(inCtx context.Context, cfg config.PromReady) (Result, error) {
 	u := *cfg.PromURL
 	u.Path = path.Join(u.Path, "/metrics")
 
@@ -24,14 +24,13 @@ func checkPrometheusVersion(inCtx context.Context, cfg config.PromReady) error {
 	defer cancel()
 
 	mon := NewMonitor(&u)
-	res, err := mon.Get(ctx)
-	if err != nil {
-		return err
-	}
+	return mon.Get(ctx)
+}
 
+func checkPrometheusVersion(res Result) error {
 	minVersion, _ := goversion.NewVersion(config.PromethuesMinVersion)
 	var prometheusVersion *goversion.Version
-	err = errors.New("version not found")
+	err := errors.New("version not found")
 	for _, lp := range res.Gauge(config.PrometheusBuildInfoName).AllLabels() {
 		if len(lp.Get("version")) > 0 {
 			prometheusVersion, err = goversion.NewVersion(lp.Get("version"))
@@ -49,18 +48,8 @@ func checkPrometheusVersion(inCtx context.Context, cfg config.PromReady) error {
 	return nil
 }
 
-func completedFirstScrapes(inCtx context.Context, cfg config.PromReady) error {
-	u := *cfg.PromURL
-	u.Path = path.Join(u.Path, "/metrics")
+func completedFirstScrapes(res Result, cfg config.PromReady) error {
 
-	ctx, cancel := context.WithTimeout(inCtx, config.DefaultHealthCheckTimeout)
-	defer cancel()
-
-	mon := NewMonitor(&u)
-	res, err := mon.Get(ctx)
-	if err != nil {
-		return err
-	}
 	summary := res.Summary(scrapeIntervalName)
 	foundLabelSets := summary.AllLabels()
 	if len(foundLabelSets) == 0 {
@@ -109,7 +98,7 @@ func completedFirstScrapes(inCtx context.Context, cfg config.PromReady) error {
 	return nil
 }
 
-func WaitForReady(inCtx context.Context, cfg config.PromReady) error {
+func WaitForReady(inCtx context.Context, inCtxCancel context.CancelFunc, cfg config.PromReady) error {
 	u := *cfg.PromURL
 	u.Path = path.Join(u.Path, "/-/ready")
 
@@ -128,12 +117,6 @@ func WaitForReady(inCtx context.Context, cfg config.PromReady) error {
 			return errors.Wrap(err, "build request")
 		}
 
-		err = checkPrometheusVersion(inCtx, cfg)
-		if err != nil {
-			cancel()
-			return err
-		}
-
 		success := func() bool {
 			defer cancel()
 			resp, err := http.DefaultClient.Do(req)
@@ -145,9 +128,21 @@ func WaitForReady(inCtx context.Context, cfg config.PromReady) error {
 			respOK := err == nil && resp.StatusCode/100 == 2
 
 			if respOK {
+				result, err := scrapeMetrics(inCtx, cfg)
+				if err != nil {
+					return false
+				}
+				err = checkPrometheusVersion(result)
+				if err != nil {
+					// invalid prometheus version is unrecoverable
+					// cancel the caller's context and exit
+					level.Warn(cfg.Logger).Log("msg", "Invalid Prometheus version", "err", err)
+					inCtxCancel()
+					return false
+				}
 				// Great! We also need it to have completed
 				// a full round of scrapes.
-				err = completedFirstScrapes(inCtx, cfg)
+				err = completedFirstScrapes(result, cfg)
 				if err == nil {
 					return true
 				}
