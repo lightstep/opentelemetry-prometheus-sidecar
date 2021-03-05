@@ -12,12 +12,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [0.18.3](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.18.3) - 2021-03-04
 
 ### Changed
-- Fix issue that caused a segmentation failure on clean exit (#143)
+- Fix issue that caused a segmentation failure on clean exit. (#143)
 - Fix reset handling by checking against previous value instead of reset value. (#145)
 
 ### Added
 - Added a check for minimum version of prometheus on start, report an error and exit if prometheus running
-  is less version 2.10.0 (#144)
+  is less version 2.10.0. (#144)
 
 ## [0.18.2](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.18.2) - 2021-02-26
 
