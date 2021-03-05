@@ -416,3 +416,68 @@ func TestSeriesCache_RenameMetric(t *testing.T) {
 		t.Fatalf("want proto metric name %q but got %q", want, entry.desc.Name)
 	}
 }
+
+func TestSeriesCache_ResetBehavior(t *testing.T) {
+	// Test the fix in
+	// https://github.com/Stackdriver/stackdriver-prometheus-sidecar/pull/263
+	logBuffer := &bytes.Buffer{}
+	defer func() {
+		if logBuffer.Len() > 0 {
+			t.Log(logBuffer.String())
+		}
+	}()
+	logger := log.NewLogfmtLogger(logBuffer)
+	extraLabels := labels.FromStrings("__resource_a", "resource2_a")
+	metadataMap := metadataMap{
+		"job1/inst1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
+	}
+	c := newSeriesCache(logger, "", nil, nil, metadataMap, "", extraLabels)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	const refID = 1
+
+	if err := c.set(ctx, refID, labels.FromStrings("__name__", "metric1", "job", "job1", "instance", "inst1"), 5); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	_, ok, err := c.get(ctx, refID)
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	type kase struct {
+		ts         int64
+		value      float64
+		reset      int64
+		cumulative float64
+		ok         bool
+	}
+
+	const pad = 1
+
+	// Simulate two resets.
+	for i, k := range []kase{
+		{1, 10, 1, 0, false},
+		{2, 20, 1, 10, true},
+		{3, 30, 1, 20, true},
+		{4, 40, 1, 30, true},
+
+		{5, 5, 5 - pad, 5, true},
+		{6, 10, 5 - pad, 10, true},
+		{7, 15, 5 - pad, 15, true},
+
+		{8, 0, 8 - pad, 0, true},
+		{9, 10, 8 - pad, 10, true},
+	} {
+		ts, val, ok := c.getResetAdjusted(refID, k.ts, k.value)
+
+		require.Equal(t, k.ok, ok, "%d", i)
+
+		if !ok {
+			continue
+		}
+		require.Equal(t, k.reset, ts, "%d", i)
+		require.Equal(t, k.cumulative, val, "%d", i)
+	}
+}
