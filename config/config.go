@@ -98,6 +98,11 @@ an OpenTelemetry (https://opentelemetry.io) Protocol endpoint.
 	// PrometheusTargetIntervalLengthName is an internal histogram
 	// indicating how long the interval between scrapes.
 	PrometheusTargetIntervalLengthName = "prometheus_target_interval_length_seconds"
+
+	// PrometheusBuildInfoName provides prometheus version information
+	PrometheusBuildInfoName = "prometheus_build_info"
+	// PromethuesMinVersion is the minimum supported version
+	PromethuesMinVersion = "2.10.0"
 )
 
 var (

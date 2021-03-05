@@ -20,12 +20,14 @@ jobs:
         
     - name: Install Prometheus
       run: |
+        export PROM_VERSION=`cat $GITHUB_WORKSPACE/PROM_VERSION`
         mkdir $HOME/prom
-        cd $HOME/prom
-        git clone https://github.com/prometheus/prometheus.git
-        cd $HOME/prom/prometheus
-        git checkout v`cat $GITHUB_WORKSPACE/PROM_VERSION`
-        go install ./cmd/prometheus
+        cd $HOME/prom/
+        wget https://github.com/prometheus/prometheus/releases/download/v${PROM_VERSION}/prometheus-${PROM_VERSION}.linux-amd64.tar.gz
+        tar -xvzf prometheus-${PROM_VERSION}.linux-amd64.tar.gz
+        mkdir -p $GITHUB_WORKSPACE/bin
+        cp prometheus-${PROM_VERSION}.linux-amd64/prom* $GITHUB_WORKSPACE/bin
+        echo "$GITHUB_WORKSPACE/bin" >> $GITHUB_PATH
 
     - name: Build
       run: make

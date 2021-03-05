@@ -244,7 +244,8 @@ func (t *Tailer) CurrentSegment() int {
 
 func (t *Tailer) waitForReadiness() error {
 	// Note: no timeout on the context, we're really waiting.
-	return prometheus.WaitForReady(t.ctx, t.readyCfg)
+	ctx, cancel := context.WithCancel(t.ctx)
+	return prometheus.WaitForReady(ctx, cancel, t.readyCfg)
 }
 
 func (t *Tailer) getPrometheusSegment() (int, error) {
