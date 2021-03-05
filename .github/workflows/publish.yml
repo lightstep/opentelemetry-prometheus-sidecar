@@ -15,17 +15,6 @@ jobs:
       uses: actions/setup-go@v2
       with:
         go-version: 1.15
-        
-    - name: Install Prometheus
-      run: |
-        export PROM_VERSION=`cat $GITHUB_WORKSPACE/PROM_VERSION`
-        mkdir $HOME/prom
-        cd $HOME/prom/
-        wget https://github.com/prometheus/prometheus/releases/download/v${PROM_VERSION}/prometheus-${PROM_VERSION}.linux-amd64.tar.gz
-        tar -xvzf prometheus-${PROM_VERSION}.linux-amd64.tar.gz
-        mkdir -p $GITHUB_WORKSPACE/bin
-        cp prometheus-${PROM_VERSION}.linux-amd64/prom* $GITHUB_WORKSPACE/bin
-        echo "::add-path::$GITHUB_WORKSPACE/bin"
 
     - name: Build
       run: make build-linux-amd64
