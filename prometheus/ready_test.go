@@ -18,8 +18,20 @@ func TestReady(t *testing.T) {
 	fs := promtest.NewFakePrometheus()
 	fs.SetReady(true)
 	fs.SetIntervals(30 * time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), config.DefaultHealthCheckTimeout*4/3)
+	defer cancel()
 
-	require.NoError(t, WaitForReady(context.Background(), fs.ReadyConfig()))
+	require.NoError(t, WaitForReady(ctx, cancel, fs.ReadyConfig()))
+}
+
+func TestInvalidVersion(t *testing.T) {
+	fs := promtest.NewFakePrometheusWithVersion("2.1.0")
+
+	ctx, cancel := context.WithTimeout(context.Background(), config.DefaultHealthCheckTimeout*4/3)
+	defer cancel()
+	err := WaitForReady(ctx, cancel, fs.ReadyConfig())
+	require.Error(t, err)
+	require.Equal(t, context.Canceled, err)
 }
 
 func TestSlowStart(t *testing.T) {
@@ -34,8 +46,9 @@ func TestSlowStart(t *testing.T) {
 		time.Sleep(time.Second * 3)
 		fs.SetIntervals(30)
 	}()
-
-	require.NoError(t, WaitForReady(context.Background(), fs.ReadyConfig()))
+	ctx, cancel := context.WithTimeout(context.Background(), config.DefaultHealthCheckTimeout*4/3)
+	defer cancel()
+	require.NoError(t, WaitForReady(ctx, cancel, fs.ReadyConfig()))
 }
 
 func TestNotReady(t *testing.T) {
@@ -47,7 +60,7 @@ func TestNotReady(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*config.DefaultHealthCheckTimeout)
 	defer cancel()
-	err := WaitForReady(ctx, fs.ReadyConfig())
+	err := WaitForReady(ctx, cancel, fs.ReadyConfig())
 	require.Error(t, err)
 	require.Equal(t, context.DeadlineExceeded, err)
 }
@@ -62,7 +75,7 @@ func TestReadyFail(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*config.DefaultHealthCheckTimeout)
 	defer cancel()
-	err = WaitForReady(ctx, config.PromReady{
+	err = WaitForReady(ctx, cancel, config.PromReady{
 		Logger:  logger,
 		PromURL: tu,
 	})
@@ -74,7 +87,7 @@ func TestReadyCancel(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // immediate
-	err := WaitForReady(ctx, fs.ReadyConfig())
+	err := WaitForReady(ctx, cancel, fs.ReadyConfig())
 
 	require.Error(t, err)
 	require.Equal(t, context.Canceled, err)
@@ -105,8 +118,8 @@ func TestReadySpecificInterval(t *testing.T) {
 		time.Sleep(1 * time.Second)
 		fs.SetIntervals(20*time.Second, 40*time.Second, 60*time.Second, interval)
 	}()
-
-	err := WaitForReady(context.Background(), rc)
+	ctx, cancel := context.WithCancel(context.Background())
+	err := WaitForReady(ctx, cancel, rc)
 
 	require.NoError(t, err)
 }
@@ -123,7 +136,7 @@ func TestReadySpecificIntervalWait(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), config.DefaultHealthCheckTimeout*4/3)
 	defer cancel()
-	err := WaitForReady(ctx, rc)
+	err := WaitForReady(ctx, cancel, rc)
 
 	require.Error(t, err)
 	require.Equal(t, context.DeadlineExceeded, err)

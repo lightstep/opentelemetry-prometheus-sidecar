@@ -336,9 +336,9 @@ func selfTest(ctx context.Context, scf otlp.StorageClientFactory, timeout time.D
 	level.Debug(logger).Log("msg", "checking Prometheus readiness")
 
 	// These tests are performed sequentially, to keep the logs simple.
-	// Note waitForPrometheus has no unrecoverable error conditions, so
-	// loops until success or the context is canceled.
-	if err := prometheus.WaitForReady(ctx, readyCfg); err != nil {
+	// Note WaitForReady loops until success or stop if the context is canceled
+	// or an unsupported version of prometheus is identified
+	if err := prometheus.WaitForReady(ctx, cancel, readyCfg); err != nil {
 		return errors.Wrap(err, "Prometheus is not ready")
 	}
 
