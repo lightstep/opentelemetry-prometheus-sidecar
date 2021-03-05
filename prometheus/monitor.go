@@ -195,3 +195,22 @@ func (s Summary) Count() uint64 {
 	}
 	return *s.summary.SampleCount
 }
+
+// AllLabels returns the set of labels present for this family
+func (f Family) AllLabels() []labels.Labels {
+	if f.family == nil {
+		return nil
+	}
+	var res []labels.Labels
+	for _, m := range f.family.Metric {
+		var ll labels.Labels
+		for _, lp := range m.Label {
+			ll = append(ll, labels.Label{
+				Name:  *lp.Name,
+				Value: *lp.Value,
+			})
+		}
+		res = append(res, ll)
+	}
+	return res
+}

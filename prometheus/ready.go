@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/level"
+	goversion "github.com/hashicorp/go-version"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/pkg/errors"
 )
@@ -14,6 +15,39 @@ import (
 const (
 	scrapeIntervalName = config.PrometheusTargetIntervalLengthName
 )
+
+func checkPrometheusVersion(inCtx context.Context, cfg config.PromReady) error {
+	u := *cfg.PromURL
+	u.Path = path.Join(u.Path, "/metrics")
+
+	ctx, cancel := context.WithTimeout(inCtx, config.DefaultHealthCheckTimeout)
+	defer cancel()
+
+	mon := NewMonitor(&u)
+	res, err := mon.Get(ctx)
+	if err != nil {
+		return err
+	}
+
+	minVersion, _ := goversion.NewVersion(config.PromethuesMinVersion)
+	var prometheusVersion *goversion.Version
+	err = errors.New("version not found")
+	for _, lp := range res.Gauge(config.PrometheusBuildInfoName).AllLabels() {
+		if len(lp.Get("version")) > 0 {
+			prometheusVersion, err = goversion.NewVersion(lp.Get("version"))
+			break
+		}
+	}
+
+	if err != nil {
+		return errors.Wrap(err, "prometheus version unavailable")
+	}
+
+	if prometheusVersion.LessThan(minVersion) {
+		return errors.Errorf("prometheus version %s+ required, detected: %s", minVersion, prometheusVersion)
+	}
+	return nil
+}
 
 func completedFirstScrapes(inCtx context.Context, cfg config.PromReady) error {
 	u := *cfg.PromURL
@@ -92,6 +126,12 @@ func WaitForReady(inCtx context.Context, cfg config.PromReady) error {
 		if err != nil {
 			cancel()
 			return errors.Wrap(err, "build request")
+		}
+
+		err = checkPrometheusVersion(inCtx, cfg)
+		if err != nil {
+			cancel()
+			return err
 		}
 
 		success := func() bool {

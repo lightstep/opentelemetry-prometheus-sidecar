@@ -22,6 +22,14 @@ func TestReady(t *testing.T) {
 	require.NoError(t, WaitForReady(context.Background(), fs.ReadyConfig()))
 }
 
+func TestInvalidVersion(t *testing.T) {
+	fs := promtest.NewFakePrometheusWithVersion("2.1.0")
+
+	err := WaitForReady(context.Background(), fs.ReadyConfig())
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "prometheus version")
+}
+
 func TestSlowStart(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping test in short mode.")

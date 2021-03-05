@@ -22,10 +22,15 @@ type FakePrometheus struct {
 }
 
 func NewFakePrometheus() *FakePrometheus {
+	return NewFakePrometheusWithVersion(config.PromethuesMinVersion)
+}
+
+func NewFakePrometheusWithVersion(promVersion string) *FakePrometheus {
 	const segmentName = config.PrometheusCurrentSegmentMetricName
 	const scrapeIntervalName = config.PrometheusTargetIntervalLengthName
 	const scrapeIntervalSum = scrapeIntervalName + "_sum"
 	const scrapeIntervalCount = scrapeIntervalName + "_count"
+	const promBuildInfo = config.PrometheusBuildInfoName
 
 	fp := &FakePrometheus{
 		ready:     true,
@@ -48,6 +53,15 @@ func NewFakePrometheus() *FakePrometheus {
 		defer fp.lock.Unlock()
 
 		_, err := w.Write([]byte(fmt.Sprintf(`
+# HELP %s A metric with a constant '1' value labeled by version, revision, branch, and goversion from which prometheus was built.
+# TYPE %s gauge
+%s{branch="HEAD",goversion="go1.11.1",revision="167a4b4e73a8eca8df648d2d2043e21bdb9a7449",version="%s"} 1
+`, promBuildInfo, promBuildInfo, promBuildInfo, promVersion)))
+		if err != nil {
+			panic(err)
+		}
+
+		_, err = w.Write([]byte(fmt.Sprintf(`
 # HELP %s Current segment.
 # TYPE %s gauge
 %s{} %d
