@@ -27,7 +27,7 @@ jobs:
         tar -xvzf prometheus-${PROM_VERSION}.linux-amd64.tar.gz
         mkdir -p $GITHUB_WORKSPACE/bin
         cp prometheus-${PROM_VERSION}.linux-amd64/prom* $GITHUB_WORKSPACE/bin
-        echo "::add-path::$GITHUB_WORKSPACE/bin"
+        echo "$GITHUB_WORKSPACE/bin" >> $GITHUB_PATH
 
     - name: Build
       run: make
