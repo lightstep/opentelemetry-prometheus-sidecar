@@ -120,7 +120,7 @@ func Main() bool {
 	defer cancelMain()
 
 	healthChecker := health.NewChecker(
-		telem.Controller, cfg.Admin.HealthCheckPeriod.Duration, logger,
+		telem.Controller, cfg.Admin.HealthCheckPeriod.Duration, logger, cfg.Admin.HealthCheckThresholdRatio,
 	)
 
 	httpClient := &http.Client{

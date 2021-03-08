@@ -61,6 +61,10 @@ admin:
   # be raised for Prometheus configurations that scrape infrequently.
   # Default: 1m
   health_check_period: 20s
+  # Controls the threshold ratio used to determine if the check
+  # should pass or fail based on the number of succes or failure to
+  # send metrics via OTLP
+  health_check_threshold_ratio: 0.5
 
 # Security settings:
 security:

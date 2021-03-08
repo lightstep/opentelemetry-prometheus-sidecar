@@ -41,8 +41,7 @@ const (
 	// In the default configuration, these settings compute a 5
 	// minute average:
 
-	numSamples     = 5
-	thresholdRatio = 0.5
+	numSamples = 5
 )
 
 type (
@@ -60,6 +59,8 @@ type (
 		tracker      map[string]*metricTracker
 		lastUpdate   time.Time
 		lastResponse Response
+
+		thresholdRatio float64
 	}
 
 	ready struct {
@@ -95,7 +96,7 @@ type (
 
 // NewChecker returns a new ready and liveness checkers based on
 // state from the metrics controller.
-func NewChecker(cont *controller.Controller, period time.Duration, logger log.Logger) *Checker {
+func NewChecker(cont *controller.Controller, period time.Duration, logger log.Logger, thresholdRatio float64) *Checker {
 	c := &Checker{
 		logger:            logger,
 		period:            period,
@@ -105,6 +106,7 @@ func NewChecker(cont *controller.Controller, period time.Duration, logger log.Lo
 		lastResponse: Response{
 			Code: http.StatusOK,
 		},
+		thresholdRatio: thresholdRatio,
 	}
 	c.readyHandler.Checker = c
 	c.aliveHandler.Checker = c
@@ -305,7 +307,7 @@ func (a *alive) check(metrics map[string][]exportRecord) error {
 
 		goodRatio := outcomes.matchRatio()
 
-		if !math.IsNaN(goodRatio) && goodRatio < thresholdRatio {
+		if !math.IsNaN(goodRatio) && goodRatio < a.Checker.thresholdRatio {
 			errorRatio := (1 - goodRatio)
 			return errors.Errorf(
 				"%s high error ratio: %.2f%%",

@@ -42,15 +42,16 @@ const (
 	DefaultPrometheusEndpoint = "http://127.0.0.1:9090/"
 	DefaultWALDirectory       = "data/wal"
 
-	DefaultExportTimeout      = time.Second * 60
-	DefaultHealthCheckTimeout = time.Second * 5
-	DefaultHealthCheckPeriod  = time.Second * 60
-	DefaultReadinessPeriod    = time.Second * 5
-	DefaultMaxPointAge        = time.Hour * 25
-	DefaultShutdownDelay      = time.Minute
-	DefaultStartupTimeout     = time.Minute * 5
-	DefaultNoisyLogPeriod     = time.Second * 5
-	DefaultPrometheusTimeout  = time.Second * 60
+	DefaultExportTimeout             = time.Second * 60
+	DefaultHealthCheckTimeout        = time.Second * 5
+	DefaultHealthCheckPeriod         = time.Second * 60
+	DefaultHealthCheckThresholdRatio = 0.5
+	DefaultReadinessPeriod           = time.Second * 5
+	DefaultMaxPointAge               = time.Hour * 25
+	DefaultShutdownDelay             = time.Minute
+	DefaultStartupTimeout            = time.Minute * 5
+	DefaultNoisyLogPeriod            = time.Second * 5
+	DefaultPrometheusTimeout         = time.Second * 60
 
 	DefaultSupervisorBufferSize  = 16384
 	DefaultSupervisorLogsHistory = 16
@@ -173,9 +174,10 @@ type OTelConfig struct {
 }
 
 type AdminConfig struct {
-	ListenIP          string         `json:"listen_ip"`
-	Port              int            `json:"port"`
-	HealthCheckPeriod DurationConfig `json:"health_check_period"`
+	ListenIP                  string         `json:"listen_ip"`
+	Port                      int            `json:"port"`
+	HealthCheckPeriod         DurationConfig `json:"health_check_period"`
+	HealthCheckThresholdRatio float64        `json:"health_check_threshold_ratio"`
 }
 
 type MainConfig struct {
@@ -233,9 +235,10 @@ func DefaultMainConfig() MainConfig {
 			ScrapeIntervals:         nil,
 		},
 		Admin: AdminConfig{
-			Port:              DefaultAdminPort,
-			ListenIP:          DefaultAdminListenIP,
-			HealthCheckPeriod: DurationConfig{DefaultHealthCheckPeriod},
+			Port:                      DefaultAdminPort,
+			ListenIP:                  DefaultAdminListenIP,
+			HealthCheckPeriod:         DurationConfig{DefaultHealthCheckPeriod},
+			HealthCheckThresholdRatio: DefaultHealthCheckThresholdRatio,
 		},
 		Destination: OTLPConfig{
 			Headers:     map[string]string{},
@@ -336,7 +339,10 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 	// TODO: The warning about how to set healthcheck.period can
 	// be verified once Prometheus starts - it exports a metric
 	// with actual scrape intervals labeled by intended interval.
-	a.Flag("healthcheck.period", "Period for internal health checking; set at a minimum to the shortest Promethues scrape period").DurationVar(&cfg.Admin.HealthCheckPeriod.Duration)
+	a.Flag("healthcheck.period", "Period for internal health checking; set at a minimum to the shortest Promethues scrape period").
+		DurationVar(&cfg.Admin.HealthCheckPeriod.Duration)
+	a.Flag("healthcheck.threshold-ratio", "Threshold ratio for internal health checking. Default: 0.5").
+		Float64Var(&cfg.Admin.HealthCheckThresholdRatio)
 
 	a.Flag(promlogflag.LevelFlagName, promlogflag.LevelFlagHelp).StringVar(&cfg.LogConfig.Level)
 	a.Flag(promlogflag.FormatFlagName, promlogflag.FormatFlagHelp).StringVar(&cfg.LogConfig.Format)
