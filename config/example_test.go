@@ -54,7 +54,8 @@ func Example() {
 	//   "admin": {
 	//     "listen_ip": "0.0.0.0",
 	//     "port": 10000,
-	//     "health_check_period": "20s"
+	//     "health_check_period": "20s",
+	//     "health_check_threshold_ratio": 0.5
 	//   },
 	//   "security": {
 	//     "root_certificates": [

@@ -46,7 +46,7 @@ func testController(t *testing.T) *tester {
 	produced := metric.Must(provider.Meter("test")).NewInt64Counter(config.ProducedMetric)
 	outcome := metric.Must(provider.Meter("test")).NewInt64Counter(config.OutcomeMetric)
 
-	checker := NewChecker(cont, 0 /* uncached */, telemetry.DefaultLogger())
+	checker := NewChecker(cont, 0 /* uncached */, telemetry.DefaultLogger(), config.DefaultHealthCheckThresholdRatio)
 
 	aliveServer := httptest.NewServer(checker.Alive())
 
@@ -146,6 +146,38 @@ func TestOutcomesProgress(t *testing.T) {
 			config.OutcomeMetric,
 		),
 	)
+}
+
+func TestOutcomesProgressCustomRatio(t *testing.T) {
+	ctx := context.Background()
+	tester := testController(t)
+	tester.Checker.thresholdRatio = 0.3
+	tester.SetRunning()
+
+	for j := 0; j < numSamples; j++ {
+		tester.outcomeInst.Add(ctx, 10, label.String("outcome", "success"))
+		tester.producedInst.Add(ctx, 1)
+
+		code, result := tester.getHealth()
+
+		require.Equal(t, http.StatusOK, code)
+		require.Equal(t, "healthy", result.Status)
+	}
+
+	for j := 0; j < numSamples/2; j++ {
+		tester.outcomeInst.Add(ctx, 10, label.String("outcome", "failed"))
+		tester.producedInst.Add(ctx, 1)
+
+		code, result := tester.getHealth()
+
+		require.Equal(t, http.StatusOK, code, "J %d", j)
+		require.Equal(t, "healthy", result.Status)
+	}
+
+	code, result := tester.getHealth()
+
+	require.Equal(t, http.StatusOK, code)
+	require.Equal(t, "healthy", result.Status)
 }
 
 func TestOutcomes4951(t *testing.T) {

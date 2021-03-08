@@ -180,9 +180,10 @@ startup_timeout: 1777s
 					},
 				},
 				Admin: AdminConfig{
-					ListenIP:          config.DefaultAdminListenIP,
-					Port:              config.DefaultAdminPort,
-					HealthCheckPeriod: DurationConfig{config.DefaultHealthCheckPeriod},
+					ListenIP:                  config.DefaultAdminListenIP,
+					Port:                      config.DefaultAdminPort,
+					HealthCheckPeriod:         DurationConfig{config.DefaultHealthCheckPeriod},
+					HealthCheckThresholdRatio: config.DefaultHealthCheckThresholdRatio,
 				},
 				Destination: OTLPConfig{
 					Endpoint: "http://womp.womp",
@@ -272,6 +273,7 @@ log:
 				"--prometheus.scrape-interval=22m13s",
 				"--log.level=warning",
 				"--healthcheck.period=17s",
+				"--healthcheck.threshold-ratio=0.2",
 				"--diagnostics.endpoint", "https://look.here",
 				"--disable-diagnostics",
 				`--filter=l1{l2="v3"}`,
@@ -291,9 +293,10 @@ log:
 					},
 				},
 				Admin: AdminConfig{
-					ListenIP:          config.DefaultAdminListenIP,
-					Port:              config.DefaultAdminPort,
-					HealthCheckPeriod: DurationConfig{17 * time.Second},
+					ListenIP:                  config.DefaultAdminListenIP,
+					Port:                      config.DefaultAdminPort,
+					HealthCheckPeriod:         DurationConfig{17 * time.Second},
+					HealthCheckThresholdRatio: 0.2,
 				},
 				Destination: OTLPConfig{
 					Endpoint: "http://womp.womp",
@@ -376,6 +379,7 @@ admin:
   listen_ip: 0.0.0.0
   port: 9999
   health_check_period: 10s
+  health_check_threshold_ratio: 0.1
 
 security:
   root_certificates:
@@ -411,9 +415,10 @@ static_metadata:
 					},
 				},
 				Admin: AdminConfig{
-					ListenIP:          config.DefaultAdminListenIP,
-					Port:              9999,
-					HealthCheckPeriod: DurationConfig{10 * time.Second},
+					ListenIP:                  config.DefaultAdminListenIP,
+					Port:                      9999,
+					HealthCheckPeriod:         DurationConfig{10 * time.Second},
+					HealthCheckThresholdRatio: 0.1,
 				},
 				StartupTimeout: DurationConfig{
 					33 * time.Second,

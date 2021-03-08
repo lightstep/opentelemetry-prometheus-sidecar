@@ -243,6 +243,9 @@ Flags:
                                  Period for internal health checking; set at a
                                  minimum to the shortest Promethues scrape
                                  period
+      --healthcheck.threshold-ratio=HEALTHCHECK.THRESHOLD-RATIO
+                                 Threshold ratio for internal health checking.
+                                 Default: 0.5
       --log.level=LOG.LEVEL      Only log messages with the given severity or
                                  above. One of: [debug, info, warn, error]
       --log.format=LOG.FORMAT    Output format of log messages. One of: [logfmt,
