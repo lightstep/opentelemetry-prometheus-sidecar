@@ -328,6 +328,12 @@ Loop:
 	for i, s := range samples {
 		e, ok, err := b.series.get(ctx, s.Ref)
 		if err != nil {
+			// Note: This case may or may not trigger the
+			// len(samples) == len(newSamples) test in
+			// manager.go. The important part here is that
+			// we may skip or may not skip any points that
+			// belong to the histogram, but if we don't
+			// the manager safetly advances.
 			return nil, 0, samples, err
 		}
 		if !ok {

@@ -189,10 +189,9 @@ Outer:
 
 				if len(samples) == len(newSamples) {
 					// Note: This means builder.next() has a bug, but is
-					// easy to mitigate.
-					doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
-						level.Debug(r.logger).Log("msg", "internal error: next did not advance")
-					})
+					// easy to mitigate.  There are a few code paths where
+					// it's easier to fall through to this than to be sure
+					// the samples list becomes shorter by at least 1.
 					samples = samples[1:]
 				} else {
 					samples = newSamples
