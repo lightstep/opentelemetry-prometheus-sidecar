@@ -811,6 +811,20 @@ func TestSampleBuilder(t *testing.T) {
 				),
 			},
 		},
+		{
+			name: "gauge not histogram",
+			series: seriesMap{
+				1: labels.FromStrings("job", "job1", "instance", "instance1", "a", "1", "__name__", "metric1"),
+			},
+			resourceLabels: labels.FromStrings("resource_a", "abc"),
+			metadata: metadataMap{
+				"job1/instance1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeHistogram, ValueType: metadata.DOUBLE},
+			},
+			input: []record.RefSample{
+				{Ref: 1, T: 2000, V: 5.5},
+			},
+			fail: true,
+		},
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
