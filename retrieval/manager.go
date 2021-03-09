@@ -188,10 +188,9 @@ Outer:
 				outputSample, hash, newSamples, err := builder.next(ctx, samples)
 
 				if len(samples) == len(newSamples) {
-					// Note: This means builder.next() has a bug, but is
-					// easy to mitigate.  There are a few code paths where
-					// it's easier to fall through to this than to be sure
-					// the samples list becomes shorter by at least 1.
+					// Note: There are a few code paths in `builder.next()`
+					// where it's easier to fall through to this than to be
+					// sure the samples list becomes shorter by at least 1.
 					samples = samples[1:]
 				} else {
 					samples = newSamples
