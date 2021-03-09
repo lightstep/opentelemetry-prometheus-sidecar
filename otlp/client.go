@@ -264,13 +264,20 @@ func (c *Client) Store(req *metricsService.ExportMetricsServiceRequest) error {
 				ResourceMetrics: req.ResourceMetrics[begin:end],
 			}
 
+			var md grpcMetadata.MD
 			var err error
 			defer exportDuration.Start(ctx).Stop(&err)
 
-			if _, err = service.Export(c.grpcMetadata(ctx), req_copy); err != nil {
+			// Note: Lightstep uses gRPC Trailers or http2 response headers
+			// to return information about validation errors.  Currently we
+			// print this information.  A future release will apply more
+			// structure to monitor dropped points.
+
+			if _, err = service.Export(c.grpcMetadata(ctx), req_copy, grpc.Trailer(&md)); err != nil {
 				level.Debug(c.logger).Log(
 					"msg", "export failure",
 					"err", truncateErrorString(err),
+					"note", fmt.Sprint(md),
 				)
 				errors <- err
 				return
@@ -280,6 +287,7 @@ func (c *Client) Store(req *metricsService.ExportMetricsServiceRequest) error {
 				level.Debug(c.logger).Log(
 					"msg", "successful write",
 					"records", end-begin,
+					"note", fmt.Sprint(md),
 				)
 			})
 		}(i, end)
