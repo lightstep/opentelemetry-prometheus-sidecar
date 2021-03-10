@@ -28,11 +28,13 @@ import (
 	runtimeMetrics "go.opentelemetry.io/contrib/instrumentation/runtime"
 	"go.opentelemetry.io/contrib/propagators/b3"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpgrpc"
-	"go.opentelemetry.io/otel/label"
+	metricotel "go.opentelemetry.io/otel/metric/global"
 	"go.opentelemetry.io/otel/propagation"
 	metricsdk "go.opentelemetry.io/otel/sdk/export/metric"
+	"go.opentelemetry.io/otel/sdk/metric/aggregator/histogram"
 	controller "go.opentelemetry.io/otel/sdk/metric/controller/basic"
 	processor "go.opentelemetry.io/otel/sdk/metric/processor/basic"
 	selector "go.opentelemetry.io/otel/sdk/metric/selector/simple"
@@ -214,9 +216,9 @@ func configurePropagators(c *Config) error {
 }
 
 func newResource(c *Config) (*resource.Resource, error) {
-	var kv []label.KeyValue
+	var kv []attribute.KeyValue
 	for k, v := range c.ResourceAttributes {
-		kv = append(kv, label.String(k, v))
+		kv = append(kv, attribute.String(k, v))
 	}
 	return resource.New(
 		context.Background(),
@@ -282,9 +284,9 @@ func (c *Config) setupMetrics(telem *Telemetry) (start, stop func(ctx context.Co
 	cont := controller.New(
 		newCopyToCounterProcessor(
 			processor.New(
-				selector.NewWithHistogramDistribution([]float64{
+				selector.NewWithHistogramDistribution(histogram.WithExplicitBoundaries([]float64{
 					0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10,
-				}),
+				})),
 				metricsdk.CumulativeExportKindSelector(),
 				// Note: we don't really need memory for all metrics, and this
 				// becomes a problem when there is high cardinality.  This is to
@@ -300,7 +302,7 @@ func (c *Config) setupMetrics(telem *Telemetry) (start, stop func(ctx context.Co
 
 	provider := cont.MeterProvider()
 
-	otel.SetMeterProvider(provider)
+	metricotel.SetMeterProvider(provider)
 
 	telem.Controller = cont
 
@@ -345,7 +347,7 @@ func InternalOnly() *Telemetry {
 		controller.WithCollectPeriod(0),
 	)
 
-	otel.SetMeterProvider(cont.MeterProvider())
+	metricotel.SetMeterProvider(cont.MeterProvider())
 	return &Telemetry{
 		Controller: cont,
 	}

@@ -26,7 +26,7 @@ import (
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/otel/label"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	controller "go.opentelemetry.io/otel/sdk/metric/controller/basic"
 )
@@ -91,7 +91,7 @@ func TestProducedProgress(t *testing.T) {
 		// and check for health.
 		for j := 0; j < k; j++ {
 			tester.producedInst.Add(ctx, 1)
-			tester.outcomeInst.Add(ctx, 1, label.String("outcome", "success"))
+			tester.outcomeInst.Add(ctx, 1, attribute.String("outcome", "success"))
 
 			for i := 0; i < numSamples-1; i++ {
 				code, result := tester.getHealth()
@@ -119,7 +119,7 @@ func TestOutcomesProgress(t *testing.T) {
 	tester.SetRunning()
 
 	for j := 0; j < numSamples; j++ {
-		tester.outcomeInst.Add(ctx, 10, label.String("outcome", "success"))
+		tester.outcomeInst.Add(ctx, 10, attribute.String("outcome", "success"))
 		tester.producedInst.Add(ctx, 1)
 
 		code, result := tester.getHealth()
@@ -129,7 +129,7 @@ func TestOutcomesProgress(t *testing.T) {
 	}
 
 	for j := 0; j < numSamples/2; j++ {
-		tester.outcomeInst.Add(ctx, 10, label.String("outcome", "failed"))
+		tester.outcomeInst.Add(ctx, 10, attribute.String("outcome", "failed"))
 		tester.producedInst.Add(ctx, 1)
 
 		code, result := tester.getHealth()
@@ -155,7 +155,7 @@ func TestOutcomesProgressCustomRatio(t *testing.T) {
 	tester.SetRunning()
 
 	for j := 0; j < numSamples; j++ {
-		tester.outcomeInst.Add(ctx, 10, label.String("outcome", "success"))
+		tester.outcomeInst.Add(ctx, 10, attribute.String("outcome", "success"))
 		tester.producedInst.Add(ctx, 1)
 
 		code, result := tester.getHealth()
@@ -165,7 +165,7 @@ func TestOutcomesProgressCustomRatio(t *testing.T) {
 	}
 
 	for j := 0; j < numSamples/2; j++ {
-		tester.outcomeInst.Add(ctx, 10, label.String("outcome", "failed"))
+		tester.outcomeInst.Add(ctx, 10, attribute.String("outcome", "failed"))
 		tester.producedInst.Add(ctx, 1)
 
 		code, result := tester.getHealth()
@@ -186,8 +186,8 @@ func TestOutcomes4951(t *testing.T) {
 	tester.SetRunning()
 
 	for j := 0; j < 100; j++ {
-		tester.outcomeInst.Add(ctx, 51, label.String("outcome", "success"))
-		tester.outcomeInst.Add(ctx, 49, label.String("outcome", fmt.Sprint(rand.Intn(10))))
+		tester.outcomeInst.Add(ctx, 51, attribute.String("outcome", "success"))
+		tester.outcomeInst.Add(ctx, 49, attribute.String("outcome", fmt.Sprint(rand.Intn(10))))
 		tester.producedInst.Add(ctx, 100)
 
 		code, result := tester.getHealth()
@@ -203,7 +203,7 @@ func TestOutcomesNoSuccess(t *testing.T) {
 	tester.SetRunning()
 
 	for j := 0; j < numSamples-1; j++ {
-		tester.outcomeInst.Add(ctx, 10, label.String("outcome", "failed"))
+		tester.outcomeInst.Add(ctx, 10, attribute.String("outcome", "failed"))
 		tester.producedInst.Add(ctx, 1)
 
 		code, result := tester.getHealth()
@@ -218,7 +218,7 @@ func TestOutcomesNoSuccess(t *testing.T) {
 	require.Contains(t, result.Status,
 		fmt.Sprintf("unhealthy: %s{%s} stopped moving at %d",
 			config.OutcomeMetric,
-			outcomeGoodLabel,
+			outcomeGoodAttribute,
 			0,
 		),
 	)
