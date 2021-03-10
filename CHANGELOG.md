@@ -11,6 +11,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Added
 - Adding `--healthcheck.threshold-ratio` to support tuning the acceptable error ratio
   when exporting metrics to a backend. (#146)
+- Print metadata from gRPC response trailers. (#151)
+
+### Changed
+- Update Prometheus go.mod dependencies to match the 2.24.1 release. (#152)
+- Fix metadata type conflict causing infinite loop due to change of instrument 
+  from histogram to another kind. (#151)
 
 ## [0.18.3](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.18.3) - 2021-03-04
 
