@@ -111,7 +111,7 @@ The sidecar requires write access to the directory to store its progress between
 To configure the sidecar for a Prometheus server installed using the
 [Prometheus Community Helm Charts](https://github.com/prometheus-community/helm-charts).
 
-#### Sidecar Setup
+#### Sidecar with Prometheus Helm chart
 To configure the core compoents of the Prometheus sidecar, add the following definition to your custom `values.yaml`:
 
 ```
@@ -136,6 +136,45 @@ server:
         port: admin-port
       periodSeconds: 30
       failureThreshold: 2
+```
+#### Sidecar with kube-prometheus-stack Helm chart
+To configure the sidecar using the Prometheus Operator via the [kube-prometheus-stack](https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack) helm chart:
+
+```
+prometheus:
+  prometheusSpec:
+    containers: 
+      - name: otel-sidecar
+        image: lightstep/opentelemetry-prometheus-sidecar:v0.18.3
+        imagePullPolicy: Always
+
+        args:
+        - --prometheus.wal=/prometheus/prometheus-db/wal
+        - --destination.endpoint=$(DESTINATION)
+        - --destination.header=access-token=AAAAAAAAAAAAAAAA
+
+        #####
+        ports:
+        - name: admin-port
+          containerPort: 9091 
+
+        ##### 
+        livenessProbe:
+          httpGet:
+            path: /-/health
+            port: admin-port
+          periodSeconds: 30
+          failureThreshold: 2
+
+        #####
+        resources:
+          requests:
+            ephemeral-storage: "50M"
+
+        volumeMounts:
+        - name: prometheus-db
+          mountPath: /prometheus
+
 ```
 
 The [upstream Stackdriver Prometheus sidecar Kubernetes
