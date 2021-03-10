@@ -32,7 +32,7 @@ import (
 	"github.com/prometheus/common/version"
 	promconfig "github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/pkg/textparse"
-	"go.opentelemetry.io/otel/label"
+	"go.opentelemetry.io/otel/attribute"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
 
@@ -87,13 +87,13 @@ an OpenTelemetry (https://opentelemetry.io) Protocol endpoint.
 	OutcomeMetric       = "sidecar.queue.outcome"
 	DroppedSeriesMetric = "sidecar.dropped.series"
 
-	OutcomeKey          = label.Key("outcome")
+	OutcomeKey          = attribute.Key("outcome")
 	OutcomeSuccessValue = "success"
 
 	HealthCheckURI = "/-/health"
 
 	// PrometheusCurrentSegmentMetricName names an internal gauge
-	// exposed by Prometheus (having no labels).
+	// exposed by Prometheus (having no attributes).
 	PrometheusCurrentSegmentMetricName = "prometheus_tsdb_wal_segment_current"
 
 	// PrometheusTargetIntervalLengthName is an internal histogram
@@ -330,7 +330,7 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 	a.Flag("opentelemetry.metrics-prefix", "Customized prefix for exporter metrics. If not set, none will be used").
 		StringVar(&cfg.OpenTelemetry.MetricsPrefix)
 
-	a.Flag("filter", "PromQL metric and label matcher which must pass for a series to be forwarded to OpenTelemetry. If repeated, the series must pass any of the filter sets to be forwarded.").
+	a.Flag("filter", "PromQL metric and attribute matcher which must pass for a series to be forwarded to OpenTelemetry. If repeated, the series must pass any of the filter sets to be forwarded.").
 		StringsVar(&cfg.Filters)
 
 	a.Flag("startup.timeout", "Timeout at startup to allow the endpoint to become available. Default: "+DefaultStartupTimeout.String()).

@@ -31,14 +31,18 @@ require (
 	// see https://github.com/prometheus/prometheus/issues/7663.
 	github.com/prometheus/prometheus v1.8.2-0.20201015110737-0a7fdd3b7696
 	github.com/stretchr/testify v1.7.0
-	go.opentelemetry.io/contrib/instrumentation/host v0.16.0
-	go.opentelemetry.io/contrib/instrumentation/runtime v0.16.0
-	go.opentelemetry.io/contrib/propagators v0.16.0
-	go.opentelemetry.io/otel v0.16.0
-	go.opentelemetry.io/otel/exporters/otlp v0.16.0
-	go.opentelemetry.io/otel/sdk v0.16.0
+	go.opentelemetry.io/contrib/instrumentation/host v0.18.0
+	go.opentelemetry.io/contrib/instrumentation/runtime v0.18.0
+	go.opentelemetry.io/contrib/propagators v0.18.0
+	go.opentelemetry.io/otel v0.18.0
+	go.opentelemetry.io/otel/exporters/otlp v0.18.0
+	go.opentelemetry.io/otel/metric v0.18.0
+	go.opentelemetry.io/otel/sdk v0.18.0
+	go.opentelemetry.io/otel/sdk/export/metric v0.18.0
+	go.opentelemetry.io/otel/sdk/metric v0.18.0
+	go.opentelemetry.io/otel/trace v0.18.0
 	google.golang.org/genproto v0.0.0-20200904004341-0bd0a958aa1d
-	google.golang.org/grpc v1.35.0
+	google.golang.org/grpc v1.36.0
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 	gopkg.in/d4l3k/messagediff.v1 v1.2.1
 )

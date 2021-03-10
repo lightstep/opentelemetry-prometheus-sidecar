@@ -30,7 +30,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/textparse"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wal"
-	"go.opentelemetry.io/otel/label"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 )
 
@@ -39,7 +39,7 @@ var (
 		config.DroppedSeriesMetric,
 		metric.WithDescription("Number of series that were dropped, not exported"),
 	)
-	keyReason = label.Key("key_reason")
+	keyReason = attribute.Key("key_reason")
 
 	droppedSeriesMetadataNotFound = droppedSeries.Bind(
 		keyReason.String("metadata_not_found"),

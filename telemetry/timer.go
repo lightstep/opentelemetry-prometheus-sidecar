@@ -27,7 +27,7 @@ import (
 	"time"
 
 	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
-	"go.opentelemetry.io/otel/label"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 )
 
@@ -57,13 +57,13 @@ func (t Timer) Start(ctx context.Context) Timing {
 	}
 }
 
-func (t Timing) Stop(err *error, kvs ...label.KeyValue) {
+func (t Timing) Stop(err *error, kvs ...attribute.KeyValue) {
 	errorval := "false"
 	if err != nil && *err != nil {
 		errorval = "true"
 	}
 
-	kvs = append(kvs, label.String("error", errorval))
+	kvs = append(kvs, attribute.String("error", errorval))
 
 	metric.Float64ValueRecorder(t.timer).Record(t.ctx, time.Since(t.started).Seconds(), kvs...)
 }
