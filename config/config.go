@@ -132,10 +132,10 @@ type MetricRenamesConfig struct {
 // it would help greatly, and then that package could refer to this one for
 // configuration.
 type StaticMetadataConfig struct {
-	Metric    string `json:"metric"`
-	Type      string `json:"type"`
-	ValueType string `json:"value_type"`
-	Help      string `json:"help"`
+	Metric    string               `json:"metric"`
+	Type      textparse.MetricType `json:"type"`
+	ValueType string               `json:"value_type"`
+	Help      string               `json:"help"`
 }
 
 type SecurityConfig struct {
