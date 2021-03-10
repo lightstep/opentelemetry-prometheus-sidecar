@@ -12,6 +12,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Adding `--healthcheck.threshold-ratio` to support tuning the acceptable error ratio
   when exporting metrics to a backend. (#146)
 
+### Changed
+- Update to [OTel-Go 0.18](https://github.com/open-telemetry/opentelemetry-go/releases/tag/v0.18.0). (#153)
+
 ## [0.18.3](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.18.3) - 2021-03-04
 
 ### Changed
