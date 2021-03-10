@@ -45,6 +45,7 @@ import (
 	"github.com/prometheus/common/version"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/prometheus/tsdb/wal"
 	"go.opentelemetry.io/otel/semconv"
 	grpcMetadata "google.golang.org/grpc/metadata"
 
@@ -251,7 +252,7 @@ func Main() bool {
 	{
 		g.Add(
 			func() error {
-				level.Info(logger).Log("msg", "starting Prometheus reader")
+				level.Info(logger).Log("msg", "starting Prometheus reader", "segment", startOffset/wal.DefaultSegmentSize)
 				err = prometheusReader.Run(ctx, startOffset, corruptSegment)
 				if err != nil && strings.Contains(err.Error(), "truncated WAL segment") {
 					_ = retrieval.SaveProgressFile(cfg.Prometheus.WAL, startOffset, tailer.CurrentSegment())

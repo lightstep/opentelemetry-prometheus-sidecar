@@ -38,6 +38,10 @@ const (
 	otlpCUMULATIVE = metric_pb.AggregationTemporality_AGGREGATION_TEMPORALITY_CUMULATIVE
 )
 
+var (
+	ErrHistogramMetadataMissing = errors.New("histogram metadata missing")
+)
+
 // Appender appends a time series with exactly one data point. A hash for the series
 // (but not the data point) must be provided.
 // The client may cache the computed hash more easily, which is why its part of the call
@@ -69,8 +73,9 @@ func (b *sampleBuilder) next(ctx context.Context, samples []record.RefSample) (*
 	}
 
 	entry, ok, err := b.series.get(ctx, sample.Ref)
+
 	if err != nil {
-		return nil, 0, samples, errors.Wrap(err, "get series information")
+		return nil, 0, tailSamples, errors.Wrap(err, "get series information")
 	}
 	if !ok {
 		return nil, 0, tailSamples, nil
@@ -175,7 +180,7 @@ func (b *sampleBuilder) next(ctx context.Context, samples []record.RefSample) (*
 		}
 
 	default:
-		return nil, 0, samples[1:], errors.Errorf("unexpected metric type %s", entry.metadata.MetricType)
+		return nil, 0, tailSamples, errors.Errorf("unexpected metric type %s", entry.metadata.MetricType)
 	}
 
 	if !b.series.updateSampleInterval(entry.hash, resetTimestamp, sample.T) {
@@ -323,6 +328,12 @@ Loop:
 	for i, s := range samples {
 		e, ok, err := b.series.get(ctx, s.Ref)
 		if err != nil {
+			// Note: This case may or may not trigger the
+			// len(samples) == len(newSamples) test in
+			// manager.go. The important part here is that
+			// we may skip or may not skip any points that
+			// belong to the histogram, but if we don't
+			// the manager safetly advances.
 			return nil, 0, samples, err
 		}
 		if !ok {
@@ -382,6 +393,11 @@ Loop:
 		// TODO add a counter for this event. Note there is
 		// more validation we could do: the sum should agree
 		// with the buckets.
+		if consumed == 0 {
+			// This may be caused by a change of metadata or metadata conflict.
+			// There was no "le" label, or there was no _sum or _count suffix.
+			return nil, 0, samples[1:], ErrHistogramMetadataMissing
+		}
 		return nil, 0, samples[consumed:], nil
 	}
 	// We do not assume that the buckets in the sample batch are in order, so we sort them again here.

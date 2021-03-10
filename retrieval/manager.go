@@ -152,10 +152,6 @@ Outer:
 			for _, s := range series {
 				err = seriesCache.set(ctx, s.Ref, s.Labels, r.tailer.CurrentSegment())
 				if err != nil {
-					// TODO: This code path deserves the same kind of
-					// backoff used in the record.Samples branch.
-					// We'll hit Prometheus quite hard if the target
-					// cache refresh is failing.
 					doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
 						level.Error(r.logger).Log(
 							"msg", "update series cache",
@@ -180,7 +176,6 @@ Outer:
 				level.Error(r.logger).Log("decode samples", "err", err)
 				continue
 			}
-			backoff := time.Duration(0)
 			processed, produced := len(samples), 0
 
 			for len(samples) > 0 {
@@ -189,22 +184,28 @@ Outer:
 					break Outer
 				default:
 				}
-				// We intentionally don't use time.After in the select statement above
-				// since we'd unnecessarily spawn a new goroutine for each sample
-				// we process even when there are no errors.
-				if backoff > 0 {
-					time.Sleep(backoff)
-				}
 
 				outputSample, hash, newSamples, err := builder.next(ctx, samples)
-				samples = newSamples
+
+				if len(samples) == len(newSamples) {
+					// Note: There are a few code paths in `builder.next()`
+					// where it's easier to fall through to this than to be
+					// sure the samples list becomes shorter by at least 1.
+					samples = samples[1:]
+				} else {
+					samples = newSamples
+				}
 				if err != nil {
-					level.Warn(r.logger).Log("msg", "failed to build sample", "err", err)
-					backoff = exponential(backoff)
+					// Note: This case is poorly monitored (LS-22396):
+					doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
+						level.Warn(r.logger).Log("msg", "failed to build sample", "err", err)
+					})
 					continue
 				}
 				if outputSample == nil {
-					// Note: This case is poorly monitored (LS-22396)
+					// Note: This case is poorly monitored (LS-22396): some of these
+					// cases are timestamp resets, which are ordinary, but can't be
+					// monitored either.
 					continue
 				}
 				r.appender.Append(ctx, hash, outputSample)
