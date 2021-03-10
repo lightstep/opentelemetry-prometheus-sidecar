@@ -140,6 +140,8 @@ server:
 #### Sidecar with kube-prometheus-stack Helm chart
 To configure the sidecar using the Prometheus Operator via the [kube-prometheus-stack](https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack) helm chart:
 
+*NOTE: the volume configured in the sidecar must be the same volume as prometheus uses*
+
 ```
 prometheus:
   prometheusSpec:
