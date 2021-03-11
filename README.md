@@ -461,6 +461,7 @@ Metrics from the subordinate process can help identify issues once the first met
 | sidecar.segment.opens | counter | number of WAL segment open() calls | |
 | sidecar.segment.reads | counter | number of WAL segment read() calls | |
 | sidecar.segment.bytes | counter | number of WAL segment bytes read | |
+| sidecar.segment.skipped | counter | number of skipped WAL segments | |
 
 ## Upstream
 

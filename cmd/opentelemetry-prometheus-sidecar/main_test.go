@@ -27,6 +27,7 @@ import (
 	"github.com/go-kit/kit/log"
 	traces "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/trace/v1"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/internal/promtest"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
 	"github.com/stretchr/testify/require"
 )
 
@@ -336,4 +337,39 @@ func TestSuperStackDump(t *testing.T) {
 	}
 
 	require.True(t, foundCrash, "expected to find a crash report")
+}
+
+type fakePrometheusReader struct {
+	attempts int
+	err      error
+}
+
+func (r *fakePrometheusReader) Run(context.Context, int) error {
+	return r.err
+}
+func (r *fakePrometheusReader) Next() {
+	r.attempts += 1
+}
+func (r *fakePrometheusReader) CurrentSegment() int {
+	return 0
+}
+
+func TestErrSkipSegment(t *testing.T) {
+	maxAttempts := 5
+
+	r := fakePrometheusReader{}
+	err := runReader(context.Background(), &r, "", 0, maxAttempts)
+	require.Nil(t, err, "unexpected error")
+	require.Equal(t, 0, r.attempts)
+
+	r = fakePrometheusReader{err: tail.ErrRestartReader}
+	err = runReader(context.Background(), &r, "", 0, maxAttempts)
+	require.Equal(t, tail.ErrRestartReader, err)
+	require.Equal(t, 0, r.attempts)
+
+	// looping should only happen for ErrSkipSegment
+	r = fakePrometheusReader{err: tail.ErrSkipSegment}
+	err = runReader(context.Background(), &r, "", 0, maxAttempts)
+	require.Equal(t, tail.ErrSkipSegment, err)
+	require.Equal(t, 5, r.attempts)
 }

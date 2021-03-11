@@ -71,6 +71,8 @@ const (
 	// reader.
 	DefaultMaxExportAttempts = 2
 
+	DefaultMaxRetrySkipSegments = 5
+
 	briefDescription = `
 The OpenTelemetry Prometheus sidecar runs alongside the
 Prometheus (https://prometheus.io/) Server and sends metrics data to

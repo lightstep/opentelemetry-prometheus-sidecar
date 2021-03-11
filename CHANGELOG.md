@@ -12,12 +12,20 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Adding `--healthcheck.threshold-ratio` to support tuning the acceptable error ratio
   when exporting metrics to a backend. (#146)
 - Print metadata from gRPC response trailers. (#151)
+- Added `sidecar.segment.skipped` counter to keep track of the number of times an
+  event has caused the WAL to be skipped. (#155)
 
 ### Changed
 - Fix metadata type conflict causing infinite loop due to change of instrument 
   from histogram to another kind. (#151)
 - Update Prometheus go.mod dependencies to match the 2.24.1 release. (#152)
 - Update to [OTel-Go 0.18](https://github.com/open-telemetry/opentelemetry-go/releases/tag/v0.18.0). (#153)
+- PrometheusReader handles truncated segment errors by raising an `ErrSkipSegment` which
+  will trigger the tailer to skip to the next segment in process. (#155)
+
+### Removed
+- Field `corrupt-segment` has been removed from the progress file as the state is
+  no longer needed now that the PrometheusReader handles this case. (#155)
 
 ## [0.18.3](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.18.3) - 2021-03-04
 

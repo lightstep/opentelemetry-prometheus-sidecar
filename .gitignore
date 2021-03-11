@@ -4,4 +4,4 @@ opentelemetry_sidecar.json
 /opentelemetry-prometheus-sidecar
 # vendor dir
 vendor/
-
+data/
