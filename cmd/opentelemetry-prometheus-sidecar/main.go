@@ -74,14 +74,21 @@ func main() {
 	}
 }
 
-func runReader(ctx context.Context, reader *retrieval.PrometheusReader, walDir string, startOffset int) error {
+type prometheusReader interface {
+	Run(context.Context, int) error
+	Next()
+	CurrentSegment() int
+}
+
+func runReader(ctx context.Context, reader prometheusReader, walDir string, startOffset int, maxRetries int) error {
 	var err error
+	attempts := 0
 	for {
 		err = reader.Run(ctx, startOffset)
-		// TODO: add a retry configuration value to ensure we dont loop indefinitely
-		if err != nil && strings.Contains(err.Error(), tail.ErrSkipSegment.Error()) {
+		if err != nil && attempts < maxRetries && strings.Contains(err.Error(), tail.ErrSkipSegment.Error()) {
 			_ = retrieval.SaveProgressFile(walDir, startOffset)
 			reader.Next()
+			attempts += 1
 			startOffset = reader.CurrentSegment() * wal.DefaultSegmentSize
 			continue
 		}
@@ -267,7 +274,7 @@ func Main() bool {
 		g.Add(
 			func() error {
 				level.Info(logger).Log("msg", "starting Prometheus reader", "segment", startOffset/wal.DefaultSegmentSize)
-				return runReader(ctx, prometheusReader, cfg.Prometheus.WAL, startOffset)
+				return runReader(ctx, prometheusReader, cfg.Prometheus.WAL, startOffset, config.DefaultMaxRetrySkipSegments)
 			},
 			func(err error) {
 				// Prometheus reader needs to be stopped before closing the TSDB
