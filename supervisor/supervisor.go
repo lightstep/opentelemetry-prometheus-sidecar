@@ -36,8 +36,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/version"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/label"
 	"go.opentelemetry.io/otel/semconv"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -217,7 +217,7 @@ func (s *Supervisor) healthcheckErr(ctx context.Context) (err error) {
 	}()
 
 	span.AddEvent("recent-logs", trace.WithAttributes(
-		label.Array("activity", s.copyLogs()),
+		attribute.Array("activity", s.copyLogs()),
 	))
 
 	var hr health.Response
@@ -243,16 +243,16 @@ func (s *Supervisor) healthcheckErr(ctx context.Context) (err error) {
 		if err := json.NewDecoder(resp.Body).Decode(&hr); err != nil {
 			return errors.Wrap(err, "decode response")
 		}
-		span.SetAttributes(label.String("sidecar.status", hr.Status))
+		span.SetAttributes(attribute.String("sidecar.status", hr.Status))
 
 		if hr.Stackdump != "" {
-			span.SetAttributes(label.String("sidecar.stackdump", hr.Stackdump))
+			span.SetAttributes(attribute.String("sidecar.stackdump", hr.Stackdump))
 		}
 
 		for k, es := range hr.Metrics {
 			for _, e := range es {
 				span.SetAttributes(
-					label.Float64(fmt.Sprintf("%s{%s}", k, e.Labels), e.Value),
+					attribute.Float64(fmt.Sprintf("%s{%s}", k, e.Labels), e.Value),
 				)
 			}
 		}
@@ -271,7 +271,7 @@ func (s *Supervisor) healthcheckErr(ctx context.Context) (err error) {
 		hstat = s.noteUnhealthy(hr)
 	}
 
-	span.SetAttributes(label.String("sidecar.health", hstat))
+	span.SetAttributes(attribute.String("sidecar.health", hstat))
 	return err
 }
 
@@ -280,7 +280,7 @@ func (s *Supervisor) finalSpan(err error) {
 	defer span.End()
 
 	span.AddEvent("recent-logs", trace.WithAttributes(
-		label.Array("activity", s.copyLogs()),
+		attribute.Array("activity", s.copyLogs()),
 	))
 
 	if err != nil {

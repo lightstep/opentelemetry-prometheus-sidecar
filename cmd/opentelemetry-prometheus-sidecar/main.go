@@ -45,7 +45,7 @@ import (
 	"github.com/prometheus/common/version"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
-	"github.com/prometheus/tsdb/wal"
+	"github.com/prometheus/prometheus/tsdb/wal"
 	"go.opentelemetry.io/otel/semconv"
 	grpcMetadata "google.golang.org/grpc/metadata"
 

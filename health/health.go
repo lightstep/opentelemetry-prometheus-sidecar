@@ -28,7 +28,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/pkg/errors"
-	"go.opentelemetry.io/otel/label"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric/number"
 	export "go.opentelemetry.io/otel/sdk/export/metric"
 	"go.opentelemetry.io/otel/sdk/export/metric/aggregation"
@@ -36,7 +36,7 @@ import (
 )
 
 const (
-	outcomeGoodLabel = string(config.OutcomeKey) + "=" + config.OutcomeSuccessValue
+	outcomeGoodAttribute = string(config.OutcomeKey) + "=" + config.OutcomeSuccessValue
 
 	// In the default configuration, these settings compute a 5
 	// minute average:
@@ -131,7 +131,7 @@ func (c *Checker) SetRunning() {
 func (a *alive) getMetrics() (map[string][]exportRecord, error) {
 	cont := a.metricsController
 	ret := map[string][]exportRecord{}
-	enc := label.DefaultEncoder()
+	enc := attribute.DefaultEncoder()
 
 	// Note: we use the latest checkpoint, which is computed
 	// periodically for the OTLP metrics exporter.
@@ -293,14 +293,14 @@ func (a *alive) check(metrics map[string][]exportRecord) error {
 		)
 	}
 
-	outcomes := sumWhere(config.OutcomeMetric, outcomeGoodLabel)
+	outcomes := sumWhere(config.OutcomeMetric, outcomeGoodAttribute)
 
 	if outcomes.defined() {
 
 		if outcomes.matchDelta() == 0 {
 			return errors.Errorf("%s{%s} stopped moving at %v",
 				config.OutcomeMetric,
-				outcomeGoodLabel,
+				outcomeGoodAttribute,
 				outcomes.matchValue(),
 			)
 		}
@@ -365,7 +365,7 @@ func (m *metricTracker) matchValue() float64 {
 	return m.lastSample().match
 }
 
-// matchRatio returns the ratio of count that match the queried labels
+// matchRatio returns the ratio of count that match the queried attributes
 // compared with the total including matches plus non-matches.
 func (m *metricTracker) matchRatio() float64 {
 	last := m.lastSample()
