@@ -345,10 +345,7 @@ type fakePrometheusReader struct {
 }
 
 func (r *fakePrometheusReader) Run(context.Context, int) error {
-	// if r.attempts < r.max {
 	return r.err
-	// }
-	// return nil
 }
 func (r *fakePrometheusReader) Next() {
 	r.attempts += 1
