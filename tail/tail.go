@@ -71,6 +71,12 @@ var (
 			"The number of bytes read from WAL segments",
 		),
 	)
+	segmentSkipCounter = sidecar.OTelMeterMust.NewInt64Counter(
+		"sidecar.segment.skipped",
+		metric.WithDescription(
+			"The number of skipped WAL segments",
+		),
+	)
 
 	ErrRestartReader = errors.New("sidecar fell behind, restarting reader")
 	ErrSkipSegment   = errors.New("skip truncated WAL segment")
@@ -405,6 +411,7 @@ func (t *Tailer) Read(b []byte) (int, error) {
 					"offset", currentOffset,
 				)
 			})
+			segmentSkipCounter.Add(t.ctx, 1)
 			return 0, ErrSkipSegment
 		}
 
