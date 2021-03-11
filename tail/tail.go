@@ -73,6 +73,7 @@ var (
 	)
 
 	ErrRestartReader = errors.New("sidecar fell behind, restarting reader")
+	ErrSkipSegment   = errors.New("skip truncated WAL segment")
 )
 
 // Tailer tails a write ahead log in a given directory.
@@ -94,7 +95,7 @@ type Tailer struct {
 // are read before reading any WAL segments.
 // Tailing may fail if we are racing with the DB itself in deleting obsolete checkpoints
 // and segments. The caller should implement relevant logic to retry in those cases.
-func Tail(ctx context.Context, logger log.Logger, dir string, readyCfg config.PromReady, corruptSegment int) (*Tailer, error) {
+func Tail(ctx context.Context, logger log.Logger, dir string, readyCfg config.PromReady) (*Tailer, error) {
 	mu := *readyCfg.PromURL
 	mu.Path = path.Join(mu.Path, "metrics")
 	t := &Tailer{
@@ -124,15 +125,6 @@ func Tail(ctx context.Context, logger log.Logger, dir string, readyCfg config.Pr
 		}
 		// We will resume reading ordinary segments at k+1.
 		k += 1
-		if k == corruptSegment {
-			// check if k is known as corrupt
-			// if so, skip it
-			level.Warn(t.logger).Log(
-				"msg", "skipping corrupt segment",
-				"segment", k,
-			)
-			k += 1
-		}
 		t.nextSegment = k
 	}
 	return t, nil
@@ -195,6 +187,10 @@ func (t *Tailer) currentOffset() int {
 	t.mtx.Lock()
 	defer t.mtx.Unlock()
 	return t.offset
+}
+
+func (t *Tailer) Next() {
+	t.incNextSegment()
 }
 
 func (t *Tailer) incNextSegment() int {
@@ -400,7 +396,8 @@ func (t *Tailer) Read(b []byte) (int, error) {
 		if !blockSizeAligned {
 			// If the promSeg is more than 1 ahead of the reader but
 			// the block size is not aligned, we have a serious
-			// inconsistency.
+			// inconsistency. Return an ErrSkipSegment to restart
+			// the reader and skip ahead
 			doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
 				level.Error(t.logger).Log(
 					"msg", "truncated WAL segment",
@@ -408,11 +405,7 @@ func (t *Tailer) Read(b []byte) (int, error) {
 					"offset", currentOffset,
 				)
 			})
-			return 0, errors.Errorf(
-				"truncated WAL segment %d @ %d",
-				currentSegment,
-				currentOffset,
-			)
+			return 0, ErrSkipSegment
 		}
 
 		if promSeg < currentSegment {

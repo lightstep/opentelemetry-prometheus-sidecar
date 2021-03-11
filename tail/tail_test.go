@@ -68,7 +68,7 @@ func TestCorruption(t *testing.T) {
 
 	prom := promtest.NewFakePrometheus()
 
-	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir, prom.ReadyConfig(), 1)
+	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir, prom.ReadyConfig())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +104,7 @@ func TestInvalidSegment(t *testing.T) {
 	prom := promtest.NewFakePrometheus()
 	prom.SetSegment(2)
 
-	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir, prom.ReadyConfig(), 1)
+	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir, prom.ReadyConfig())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +129,7 @@ func TestInvalidSegment(t *testing.T) {
 	if wr.Err() == nil {
 		t.Fatal(errors.New("expected segment transition error"))
 	}
-	assert.Contains(t, wr.Err().Error(), "read first header byte: truncated WAL segment")
+	assert.Contains(t, wr.Err().Error(), "read first header byte: skip truncated WAL segment")
 }
 
 func TestTailFuzz(t *testing.T) {
@@ -142,7 +142,7 @@ func TestTailFuzz(t *testing.T) {
 
 	prom := promtest.NewFakePrometheus()
 
-	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir, prom.ReadyConfig(), 1)
+	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir, prom.ReadyConfig())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -275,7 +275,7 @@ func TestSlowFsync(t *testing.T) {
 
 	w.Log(rec)
 
-	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir, prom.ReadyConfig(), 1)
+	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir, prom.ReadyConfig())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -302,39 +302,4 @@ func TestSlowFsync(t *testing.T) {
 	// and the updated segment.
 	require.True(t, wr.Next())
 	require.Equal(t, recSize, len(wr.Record()))
-}
-
-func TestCorruptSegment(t *testing.T) {
-	dir, err := ioutil.TempDir("", "test_tail")
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	os.Mkdir(path.Join(dir, "checkpoint.00004043"), 0777)
-	defer os.RemoveAll(dir)
-
-	require.NoError(t, ioutil.WriteFile(path.Join(dir, "checkpoint.00004043/000000000000000000000"), []byte("1"), 0777))
-
-	defer cancel()
-
-	prom := promtest.NewFakePrometheus()
-
-	const (
-		segmentSize = 2 * 1024 * 1024
-		recSize     = 1024 * 1024
-	)
-
-	rec := make([]byte, recSize)
-
-	w, err := wal.NewSize(nil, nil, dir, segmentSize, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer w.Close()
-
-	w.Log(rec)
-
-	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir, prom.ReadyConfig(), 4044)
-	require.Nil(t, err)
-	require.Equal(t, 4045, rc.nextSegment)
 }

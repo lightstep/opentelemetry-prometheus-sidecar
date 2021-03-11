@@ -74,6 +74,21 @@ func main() {
 	}
 }
 
+func runReader(ctx context.Context, reader *retrieval.PrometheusReader, walDir string, startOffset int) error {
+	var err error
+	for {
+		err = reader.Run(ctx, startOffset)
+		// TODO: add a retry configuration value to ensure we dont loop indefinitely
+		if err != nil && strings.Contains(err.Error(), tail.ErrSkipSegment.Error()) {
+			_ = retrieval.SaveProgressFile(walDir, startOffset)
+			reader.Next()
+			startOffset = reader.CurrentSegment() * wal.DefaultSegmentSize
+			continue
+		}
+		return err
+	}
+}
+
 func Main() bool {
 	// Setup debugging helpers
 	if os.Getenv("DEBUG") != "" {
@@ -157,7 +172,7 @@ func Main() bool {
 	metadataCache := metadata.NewCache(httpClient, metadataURL, staticMetadata)
 
 	// Check the progress file, ensure we can write this file.
-	startOffset, corruptSegment, err := readWriteStartOffset(cfg, logger)
+	startOffset, err := readWriteStartOffset(cfg, logger)
 	if err != nil {
 		level.Error(logger).Log("msg", "cannot write progress file", "err", err)
 		return false
@@ -168,7 +183,6 @@ func Main() bool {
 		log.With(logger, "component", "wal_reader"),
 		cfg.Prometheus.WAL,
 		readyCfg,
-		corruptSegment,
 	)
 	if err != nil {
 		level.Error(logger).Log("msg", "tailing WAL failed", "err", err)
@@ -253,11 +267,7 @@ func Main() bool {
 		g.Add(
 			func() error {
 				level.Info(logger).Log("msg", "starting Prometheus reader", "segment", startOffset/wal.DefaultSegmentSize)
-				err = prometheusReader.Run(ctx, startOffset, corruptSegment)
-				if err != nil && strings.Contains(err.Error(), "truncated WAL segment") {
-					_ = retrieval.SaveProgressFile(cfg.Prometheus.WAL, startOffset, tailer.CurrentSegment())
-				}
-				return err
+				return runReader(ctx, prometheusReader, cfg.Prometheus.WAL, startOffset)
 			},
 			func(err error) {
 				// Prometheus reader needs to be stopped before closing the TSDB
@@ -405,15 +415,15 @@ func newAdminServer(hc *health.Checker, acfg config.AdminConfig, logger log.Logg
 
 // readWriteStartOffset reads the last (approxiate) progress position and re-writes
 // the progress file, to ensure we have write permission on startup.
-func readWriteStartOffset(cfg config.MainConfig, logger log.Logger) (int, int, error) {
-	startOffset, corruptSegment, err := retrieval.ReadProgressFile(cfg.Prometheus.WAL)
+func readWriteStartOffset(cfg config.MainConfig, logger log.Logger) (int, error) {
+	startOffset, err := retrieval.ReadProgressFile(cfg.Prometheus.WAL)
 	if err != nil {
 		level.Warn(logger).Log("msg", "reading progress file failed", "err", err)
 		startOffset = 0
 	}
 
-	err = retrieval.SaveProgressFile(cfg.Prometheus.WAL, startOffset, corruptSegment)
-	return startOffset, corruptSegment, err
+	err = retrieval.SaveProgressFile(cfg.Prometheus.WAL, startOffset)
+	return startOffset, err
 }
 
 func parseIntervals(ss []string) (dd []time.Duration, _ error) {

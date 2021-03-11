@@ -70,7 +70,7 @@ func TestReader_Progress(t *testing.T) {
 
 	prom := promtest.NewFakePrometheus()
 
-	tailer, err := tail.Tail(ctx, telemetry.DefaultLogger(), dir, prom.ReadyConfig(), 1)
+	tailer, err := tail.Tail(ctx, telemetry.DefaultLogger(), dir, prom.ReadyConfig())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,9 +134,9 @@ func TestReader_Progress(t *testing.T) {
 		}
 	}()
 	// Proess the WAL until the writing goroutine completes.
-	r.Run(ctx, 0, -1)
+	r.Run(ctx, 0)
 
-	progressOffset, _, err := ReadProgressFile(dir)
+	progressOffset, err := ReadProgressFile(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,14 +153,14 @@ func TestReader_Progress(t *testing.T) {
 	ctx, cancel = context.WithCancel(context.Background())
 	defer cancel()
 
-	tailer, err = tail.Tail(ctx, telemetry.DefaultLogger(), dir, prom.ReadyConfig(), 1)
+	tailer, err = tail.Tail(ctx, telemetry.DefaultLogger(), dir, prom.ReadyConfig())
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	recorder := &nopAppender{}
 	r = NewPrometheusReader(nil, dir, tailer, nil, nil, metadataMap, recorder, "", 0, extraLabels)
-	go r.Run(ctx, progressOffset, -1)
+	go r.Run(ctx, progressOffset)
 
 	// Wait for reader to process until the end.
 	ctx, _ = context.WithTimeout(ctx, 5*time.Second)
@@ -210,28 +210,22 @@ func TestReader_ProgressFile(t *testing.T) {
 	}
 	defer os.RemoveAll(dir)
 
-	offset, corruptSegment, err := ReadProgressFile(dir)
+	offset, err := ReadProgressFile(dir)
 	if err != nil {
 		t.Fatalf("read progress: %s", err)
 	}
 	if offset != 0 {
 		t.Fatalf("expected offset %d but got %d", 0, offset)
 	}
-	if corruptSegment != -1 {
-		t.Fatalf("expected corrupt-segment %d but got %d", -1, corruptSegment)
-	}
-	if err := SaveProgressFile(dir, progressBufferMargin+12345, 10); err != nil {
+	if err := SaveProgressFile(dir, progressBufferMargin+12345); err != nil {
 		t.Fatalf("save progress: %s", err)
 	}
-	offset, corruptSegment, err = ReadProgressFile(dir)
+	offset, err = ReadProgressFile(dir)
 	if err != nil {
 		t.Fatalf("read progress: %s", err)
 	}
 	if offset != 12345 {
 		t.Fatalf("expected progress offset %d but got %d", 12345, offset)
-	}
-	if corruptSegment != 10 {
-		t.Fatalf("expected corrupt-segment %d but got %d", 9, corruptSegment)
 	}
 }
 

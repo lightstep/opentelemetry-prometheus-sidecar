@@ -12,6 +12,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Adding `--healthcheck.threshold-ratio` to support tuning the acceptable error ratio
   when exporting metrics to a backend. (#146)
 
+### Changed
+- PrometheusReader handles truncated segment errors by raising an `ErrSkipSegment` which
+  will trigger the tailer to skip to the next segment in process. (#150)
+
+### Removed
+- Field `corrupt-segment` has been removed from the progress file as the state is
+  no longer needed now that the PrometheusReader handles this case. (#150)
+
 ## [0.18.3](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.18.3) - 2021-03-04
 
 ### Changed
