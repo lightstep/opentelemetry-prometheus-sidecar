@@ -21,7 +21,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/common"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry/doevery"
@@ -30,20 +30,10 @@ import (
 	"github.com/prometheus/prometheus/pkg/textparse"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wal"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/metric"
 )
 
-var (
-	droppedSeries = sidecar.OTelMeterMust.NewInt64Counter(
-		config.DroppedSeriesMetric,
-		metric.WithDescription("Number of series that were dropped, not exported"),
-	)
-	keyReason = attribute.Key("key_reason")
-
-	droppedSeriesMetadataNotFound = droppedSeries.Bind(
-		keyReason.String("metadata_not_found"),
-	)
+var droppedSeriesMetadataNotFound = common.DroppedSeries.Bind(
+	common.DroppedKeyReason.String("metadata_not_found"),
 )
 
 // tsDesc has complete, proto-independent data about a metric data

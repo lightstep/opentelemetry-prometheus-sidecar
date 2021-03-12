@@ -87,7 +87,8 @@ an OpenTelemetry (https://opentelemetry.io) Protocol endpoint.
 	ProcessedMetric     = "sidecar.samples.processed"
 	ProducedMetric      = "sidecar.samples.produced"
 	OutcomeMetric       = "sidecar.queue.outcome"
-	DroppedSeriesMetric = "sidecar.dropped.series"
+	DroppedSeriesMetric = "sidecar.series.dropped"
+	DroppedPointsMetric = "sidecar.points.dropped"
 
 	OutcomeKey          = attribute.Key("outcome")
 	OutcomeSuccessValue = "success"

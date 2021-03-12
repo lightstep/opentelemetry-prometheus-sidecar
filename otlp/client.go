@@ -21,11 +21,14 @@ import (
 	"io/ioutil"
 	"net"
 	"net/url"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/common"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	metricsService "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/collector/metrics/v1"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
@@ -74,6 +77,11 @@ var (
 		"sidecar.connect.duration",
 		"duration of the grpc.Dial() call",
 	)
+
+	droppedMetricsCounter = common.DroppedSeries
+	droppedPointsCounter  = common.DroppedPoints
+
+	errNoSingleCount = fmt.Errorf("no single count")
 )
 
 // Client allows reading and writing from/to a remote gRPC endpoint. The
@@ -283,6 +291,8 @@ func (c *Client) Store(req *metricsService.ExportMetricsServiceRequest) error {
 				return
 			}
 
+			c.parseResponseMetadata(ctx, md)
+
 			doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
 				level.Debug(c.logger).Log(
 					"msg", "successful write",
@@ -298,6 +308,37 @@ func (c *Client) Store(req *metricsService.ExportMetricsServiceRequest) error {
 		return err
 	}
 	return nil
+}
+
+func singleCount(values []string) (int, error) {
+	if len(values) != 1 {
+		return 0, errNoSingleCount
+	}
+	return strconv.Atoi(values[0])
+}
+
+func (c *Client) parseResponseMetadata(ctx context.Context, md grpcMetadata.MD) {
+
+	for key, values := range md {
+		key = strings.ToLower(key)
+		if !strings.HasPrefix(key, "otlp-") {
+			continue
+		}
+		if key == "otlp-points-dropped" {
+			if points, err := singleCount(values); err == nil {
+				droppedPointsCounter.Add(ctx, int64(points))
+			}
+		} else if key == "otlp-metrics-dropped" {
+			if points, err := singleCount(values); err == nil {
+				droppedMetricsCounter.Add(ctx, int64(points))
+			}
+		} else {
+			// TODO: Accumulate the explanations and the
+			// example metric names into a map[string]map[string]struct{},
+			// dump it periodically to the log.
+		}
+
+	}
 }
 
 func (c *Client) Close() error {
