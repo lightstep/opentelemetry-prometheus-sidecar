@@ -86,11 +86,6 @@ var (
 	droppedMetricsCounter = common.DroppedSeries
 	droppedPointsCounter  = common.DroppedPoints
 
-	exampleInvalid = telemetry.NewGaugeSet(
-		"sidecar.metrics.invalid",
-		"labeled examples of invalid metric data",
-	)
-
 	errNoSingleCount = fmt.Errorf("no single count")
 )
 
@@ -105,6 +100,7 @@ type Client struct {
 	headers          grpcMetadata.MD
 	compressor       string
 	prometheus       config.PromConfig
+	invalidSet       *InvalidSet
 
 	conn *grpc.ClientConn
 }
@@ -118,6 +114,7 @@ type ClientConfig struct {
 	Headers          grpcMetadata.MD
 	Compressor       string
 	Prometheus       config.PromConfig
+	InvalidSet       *InvalidSet
 }
 
 // NewClient creates a new Client.
@@ -134,6 +131,7 @@ func NewClient(conf ClientConfig) *Client {
 		headers:          conf.Headers,
 		compressor:       conf.Compressor,
 		prometheus:       conf.Prometheus,
+		invalidSet:       conf.InvalidSet,
 	}
 }
 
@@ -344,10 +342,7 @@ func (c *Client) parseResponseMetadata(ctx context.Context, md grpcMetadata.MD) 
 		} else if strings.HasPrefix(key, invalidTrailerPrefix) {
 			key = key[len(invalidTrailerPrefix):]
 			for _, metricName := range values {
-				exampleInvalid.Set(
-					common.DroppedKeyReason.String(key),
-					metricNameKey.String(metricName),
-				)
+				c.invalidSet.Set(key, metricName)
 			}
 		} else {
 			doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {

@@ -89,6 +89,7 @@ func Main() bool {
 		Timeout:          cfg.Destination.Timeout.Duration,
 		RootCertificates: cfg.Security.RootCertificates,
 		Headers:          grpcMetadata.New(cfg.Destination.Headers),
+		InvalidSet:       otlp.NewInvalidSet(logger),
 	})
 
 	queueManager, err := otlp.NewQueueManager(

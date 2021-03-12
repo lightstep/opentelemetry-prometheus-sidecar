@@ -208,6 +208,7 @@ func Main() bool {
 		Headers:          grpcMetadata.New(cfg.Destination.Headers),
 		Compressor:       cfg.Destination.Compression,
 		Prometheus:       cfg.Prometheus,
+		InvalidSet:       otlp.NewInvalidSet(log.With(logger, "component", "validation")),
 	})
 
 	queueManager, err := otlp.NewQueueManager(
