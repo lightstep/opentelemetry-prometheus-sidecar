@@ -21,11 +21,12 @@ import (
 
 type metricServiceServer struct {
 	status *status.Status
+	metricsService.UnimplementedMetricsServiceServer
 }
 
 func (s *metricServiceServer) Export(ctx context.Context, req *metricsService.ExportMetricsServiceRequest) (*metricsService.ExportMetricsServiceResponse, error) {
 	var emptyValue = metricsService.ExportMetricsServiceResponse{}
-	// md, ok := grpcMetadata.FromIncomingContext(ctx)
+
 	if s.status == nil {
 		return &emptyValue, nil
 	}

@@ -39,7 +39,9 @@ func newLocalListener() net.Listener {
 func TestStoreErrorHandlingOnTimeout(t *testing.T) {
 	listener := newLocalListener()
 	grpcServer := grpc.NewServer()
-	metricsService.RegisterMetricsServiceServer(grpcServer, &metricServiceServer{nil})
+	metricsService.RegisterMetricsServiceServer(grpcServer, &metricServiceServer{
+		status: nil,
+	})
 	go grpcServer.Serve(listener)
 	defer grpcServer.Stop()
 
