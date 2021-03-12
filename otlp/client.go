@@ -33,6 +33,7 @@ import (
 	metricsService "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/collector/metrics/v1"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry/doevery"
+	"go.opentelemetry.io/otel/attribute"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	grpcMetadata "google.golang.org/grpc/metadata"
@@ -65,6 +66,10 @@ const (
 		}
 	}]
 }`
+
+	metricNameKey attribute.Key = "metric_name"
+
+	invalidTrailerPrefix = "otlp-invalid-"
 )
 
 var (
@@ -80,6 +85,11 @@ var (
 
 	droppedMetricsCounter = common.DroppedSeries
 	droppedPointsCounter  = common.DroppedPoints
+
+	exampleInvalid = telemetry.NewGaugeSet(
+		"sidecar.metrics.invalid",
+		"labeled examples of invalid metric data",
+	)
 
 	errNoSingleCount = fmt.Errorf("no single count")
 )
@@ -318,7 +328,6 @@ func singleCount(values []string) (int, error) {
 }
 
 func (c *Client) parseResponseMetadata(ctx context.Context, md grpcMetadata.MD) {
-
 	for key, values := range md {
 		key = strings.ToLower(key)
 		if !strings.HasPrefix(key, "otlp-") {
@@ -332,12 +341,23 @@ func (c *Client) parseResponseMetadata(ctx context.Context, md grpcMetadata.MD) 
 			if points, err := singleCount(values); err == nil {
 				droppedMetricsCounter.Add(ctx, int64(points))
 			}
+		} else if strings.HasPrefix(key, invalidTrailerPrefix) {
+			key = key[len(invalidTrailerPrefix):]
+			for _, metricName := range values {
+				exampleInvalid.Set(
+					common.DroppedKeyReason.String(key),
+					metricNameKey.String(metricName),
+				)
+			}
 		} else {
-			// TODO: Accumulate the explanations and the
-			// example metric names into a map[string]map[string]struct{},
-			// dump it periodically to the log.
+			doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
+				level.Info(c.logger).Log(
+					"msg", "unrecognized trailer",
+					"key", key,
+					"values", values,
+				)
+			})
 		}
-
 	}
 }
 
