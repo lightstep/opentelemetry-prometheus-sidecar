@@ -33,6 +33,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	grpcMetadata "google.golang.org/grpc/metadata"
+	"google.golang.org/protobuf/proto"
 )
 
 const (
@@ -272,7 +273,7 @@ func (c *Client) Store(req *metricsService.ExportMetricsServiceRequest) error {
 				level.Debug(c.logger).Log(
 					"msg", "export failure",
 					"err", truncateErrorString(err),
-					//"size", proto.Size(&reqCopy),
+					"size", proto.Size(reqCopy),
 					"trailers", fmt.Sprint(md),
 				)
 				errors <- err
@@ -287,7 +288,7 @@ func (c *Client) Store(req *metricsService.ExportMetricsServiceRequest) error {
 				level.Debug(c.logger).Log(
 					"msg", "successful write",
 					"records", end-begin,
-					//"size", proto.Size(&reqCopy),
+					"size", proto.Size(reqCopy),
 					"trailers", fmt.Sprint(md),
 				)
 			})
