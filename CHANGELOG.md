@@ -24,6 +24,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Update to [OTel-Go 0.18](https://github.com/open-telemetry/opentelemetry-go/releases/tag/v0.18.0). (#153)
 - PrometheusReader handles truncated segment errors by raising an `ErrSkipSegment` which
   will trigger the tailer to skip to the next segment in process. (#155)
+- Update to google.golang.org/protobuf v1.25.0, remove gogo dependency. (#156)  
 
 ### Removed
 - Field `corrupt-segment` has been removed from the progress file as the state is

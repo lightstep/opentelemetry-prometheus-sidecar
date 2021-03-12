@@ -37,6 +37,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	grpcMetadata "google.golang.org/grpc/metadata"
+	"google.golang.org/protobuf/proto"
 )
 
 const (
@@ -276,7 +277,7 @@ func (c *Client) Store(req *metricsService.ExportMetricsServiceRequest) error {
 		wg.Add(1)
 		go func(begin int, end int) {
 			defer wg.Done()
-			req_copy := &metricsService.ExportMetricsServiceRequest{
+			reqCopy := &metricsService.ExportMetricsServiceRequest{
 				ResourceMetrics: req.ResourceMetrics[begin:end],
 			}
 
@@ -284,20 +285,20 @@ func (c *Client) Store(req *metricsService.ExportMetricsServiceRequest) error {
 			var err error
 			defer exportDuration.Start(ctx).Stop(&err)
 
-			// Note: Lightstep uses gRPC Trailers or http2 response headers
-			// to return information about validation errors.  Currently we
-			// print this information.  A future release will apply more
-			// structure to monitor dropped points.
-
-			if _, err = service.Export(c.grpcMetadata(ctx), req_copy, grpc.Trailer(&md)); err != nil {
+			if _, err = service.Export(c.grpcMetadata(ctx), reqCopy, grpc.Trailer(&md)); err != nil {
 				level.Debug(c.logger).Log(
 					"msg", "export failure",
 					"err", truncateErrorString(err),
-					"note", fmt.Sprint(md),
+					"size", proto.Size(reqCopy),
+					"trailers", fmt.Sprint(md),
 				)
 				errors <- err
 				return
 			}
+			// Note: Lightstep uses gRPC response Trailers
+			// to return information about validation errors
+			// following a successful Export when any points or
+			// metrics were dropped.
 
 			c.parseResponseMetadata(ctx, md)
 
@@ -305,7 +306,8 @@ func (c *Client) Store(req *metricsService.ExportMetricsServiceRequest) error {
 				level.Debug(c.logger).Log(
 					"msg", "successful write",
 					"records", end-begin,
-					"note", fmt.Sprint(md),
+					"size", proto.Size(reqCopy),
+					"trailers", fmt.Sprint(md),
 				)
 			})
 		}(i, end)

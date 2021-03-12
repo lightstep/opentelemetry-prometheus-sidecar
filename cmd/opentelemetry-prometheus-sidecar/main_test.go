@@ -321,11 +321,11 @@ func TestSuperStackDump(t *testing.T) {
 			}
 			statusCode := sa["http.status_code"]
 			require.Contains(t, []string{
-				"int_value:200 ",
-				"int_value:503 ",
+				"int_value:200",
+				"int_value:503",
 			}, statusCode)
 
-			if statusCode == "int_value:200 " {
+			if statusCode == "int_value:200" {
 				continue
 			}
 
