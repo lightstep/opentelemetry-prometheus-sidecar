@@ -44,12 +44,14 @@ type (
 		t       *testing.T
 		stops   chan func()
 		metrics chan *metrics.ResourceMetrics
+		metricService.UnimplementedMetricsServiceServer
 	}
 
 	traceServer struct {
 		t     *testing.T
 		stops chan func()
 		spans chan *traces.ResourceSpans
+		traceService.UnimplementedTraceServiceServer
 	}
 )
 

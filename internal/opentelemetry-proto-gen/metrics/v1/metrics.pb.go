@@ -22,8 +22,8 @@ package v1
 
 import (
 	proto "github.com/golang/protobuf/proto"
-	v11 "go.opentelemetry.io/proto/otlp/common/v1"
-	v1 "go.opentelemetry.io/proto/otlp/resource/v1"
+	v11 "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/common/v1"
+	v1 "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/resource/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"

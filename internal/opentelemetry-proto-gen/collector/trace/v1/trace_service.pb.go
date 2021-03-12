@@ -22,7 +22,7 @@ package v1
 
 import (
 	proto "github.com/golang/protobuf/proto"
-	v1 "go.opentelemetry.io/proto/otlp/trace/v1"
+	v1 "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/trace/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
