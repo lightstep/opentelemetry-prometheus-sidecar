@@ -68,7 +68,7 @@ func TestReader_Progress(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	prom := promtest.NewFakePrometheus()
+	prom := promtest.NewFakePrometheus(promtest.Config{})
 
 	tailer, err := tail.Tail(ctx, telemetry.DefaultLogger(), dir, prom.ReadyConfig())
 	if err != nil {
@@ -90,7 +90,7 @@ func TestReader_Progress(t *testing.T) {
 		"namespace", "ns1", "location", "loc1",
 		"job", "job1", "__address__", "inst1")
 
-	metadataMap := metadataMap{
+	metadataMap := promtest.MetadataMap{
 		"job1/inst1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, Help: "help"},
 	}
 

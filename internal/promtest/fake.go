@@ -1,6 +1,7 @@
 package promtest
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"net/http"
@@ -10,8 +11,21 @@ import (
 	"time"
 
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 )
+
+// MetadataMap implements a MetadataGetter for exact matches of "job/instance/metric" inputs.
+type MetadataMap map[string]*metadata.Entry
+
+func (m MetadataMap) Get(ctx context.Context, job, instance, metric string) (*metadata.Entry, error) {
+	return m[job+"/"+instance+"/"+metric], nil
+}
+
+type Config struct {
+	Version  string
+	Metadata MetadataMap
+}
 
 type FakePrometheus struct {
 	lock      sync.Mutex
@@ -21,11 +35,11 @@ type FakePrometheus struct {
 	mux       *http.ServeMux
 }
 
-func NewFakePrometheus() *FakePrometheus {
-	return NewFakePrometheusWithVersion(config.PromethuesMinVersion)
-}
+func NewFakePrometheus(cfg Config) *FakePrometheus {
+	if cfg.Version == "" {
+		cfg.Version = config.PrometheusMinVersion
+	}
 
-func NewFakePrometheusWithVersion(promVersion string) *FakePrometheus {
 	const segmentName = config.PrometheusCurrentSegmentMetricName
 	const scrapeIntervalName = config.PrometheusTargetIntervalLengthName
 	const scrapeIntervalSum = scrapeIntervalName + "_sum"
@@ -56,7 +70,7 @@ func NewFakePrometheusWithVersion(promVersion string) *FakePrometheus {
 # HELP %s A metric with a constant '1' value labeled by version, revision, branch, and goversion from which prometheus was built.
 # TYPE %s gauge
 %s{branch="HEAD",goversion="go1.11.1",revision="167a4b4e73a8eca8df648d2d2043e21bdb9a7449",version="%s"} 1
-`, promBuildInfo, promBuildInfo, promBuildInfo, promVersion)))
+`, promBuildInfo, promBuildInfo, promBuildInfo, cfg.Version)))
 		if err != nil {
 			panic(err)
 		}

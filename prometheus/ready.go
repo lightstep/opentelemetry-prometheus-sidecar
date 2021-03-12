@@ -28,7 +28,7 @@ func scrapeMetrics(inCtx context.Context, cfg config.PromReady) (Result, error) 
 }
 
 func checkPrometheusVersion(res Result) error {
-	minVersion, _ := goversion.NewVersion(config.PromethuesMinVersion)
+	minVersion, _ := goversion.NewVersion(config.PrometheusMinVersion)
 	var prometheusVersion *goversion.Version
 	err := errors.New("version not found")
 	for _, lp := range res.Gauge(config.PrometheusBuildInfoName).AllLabels() {

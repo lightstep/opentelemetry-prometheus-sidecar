@@ -15,7 +15,7 @@ import (
 var logger = telemetry.DefaultLogger()
 
 func TestReady(t *testing.T) {
-	fs := promtest.NewFakePrometheus()
+	fs := promtest.NewFakePrometheus(promtest.Config{})
 	fs.SetReady(true)
 	fs.SetIntervals(30 * time.Second)
 	ctx, cancel := context.WithTimeout(context.Background(), config.DefaultHealthCheckTimeout*4/3)
@@ -25,7 +25,7 @@ func TestReady(t *testing.T) {
 }
 
 func TestInvalidVersion(t *testing.T) {
-	fs := promtest.NewFakePrometheusWithVersion("2.1.0")
+	fs := promtest.NewFakePrometheus(promtest.Config{Version: "2.1.0"})
 
 	ctx, cancel := context.WithTimeout(context.Background(), config.DefaultHealthCheckTimeout*4/3)
 	defer cancel()
@@ -38,7 +38,7 @@ func TestSlowStart(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping test in short mode.")
 	}
-	fs := promtest.NewFakePrometheus()
+	fs := promtest.NewFakePrometheus(promtest.Config{})
 	fs.SetReady(true)
 	fs.SetIntervals()
 
@@ -55,7 +55,7 @@ func TestNotReady(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping test in short mode.")
 	}
-	fs := promtest.NewFakePrometheus()
+	fs := promtest.NewFakePrometheus(promtest.Config{})
 	fs.SetReady(false)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*config.DefaultHealthCheckTimeout)
@@ -83,7 +83,7 @@ func TestReadyFail(t *testing.T) {
 }
 
 func TestReadyCancel(t *testing.T) {
-	fs := promtest.NewFakePrometheus()
+	fs := promtest.NewFakePrometheus(promtest.Config{})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // immediate
@@ -97,7 +97,7 @@ func TestReadySpecificInterval(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping test in short mode.")
 	}
-	fs := promtest.NewFakePrometheus()
+	fs := promtest.NewFakePrometheus(promtest.Config{})
 	fs.SetIntervals() // None set
 
 	const interval = 79 * time.Second
@@ -128,7 +128,7 @@ func TestReadySpecificIntervalWait(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping test in short mode.")
 	}
-	fs := promtest.NewFakePrometheus()
+	fs := promtest.NewFakePrometheus(promtest.Config{})
 	fs.SetIntervals(19 * time.Second) // Not the one we want
 
 	rc := fs.ReadyConfig()

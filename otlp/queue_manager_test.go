@@ -223,7 +223,7 @@ func TestSampleDeliverySimple(t *testing.T) {
 	cfg.Capacity = n
 	cfg.MaxSamplesPerSend = n
 
-	prom := promtest.NewFakePrometheus()
+	prom := promtest.NewFakePrometheus(promtest.Config{})
 
 	tailer, err := tail.Tail(context.Background(), telemetry.DefaultLogger(), dir, prom.ReadyConfig())
 	if err != nil {
@@ -272,7 +272,7 @@ func TestSampleDeliveryMultiShard(t *testing.T) {
 	cfg.MaxSamplesPerSend = 1
 	cfg.MaxShards = numShards
 
-	prom := promtest.NewFakePrometheus()
+	prom := promtest.NewFakePrometheus(promtest.Config{})
 
 	tailer, err := tail.Tail(context.Background(), telemetry.DefaultLogger(), dir, prom.ReadyConfig())
 	if err != nil {
@@ -328,7 +328,7 @@ func TestSampleDeliveryTimeout(t *testing.T) {
 	cfg.MaxShards = 1
 	cfg.BatchSendDeadline = model.Duration(100 * time.Millisecond)
 
-	prom := promtest.NewFakePrometheus()
+	prom := promtest.NewFakePrometheus(promtest.Config{})
 
 	tailer, err := tail.Tail(context.Background(), telemetry.DefaultLogger(), dir, prom.ReadyConfig())
 	if err != nil {
@@ -383,7 +383,7 @@ func TestSampleDeliveryOrder(t *testing.T) {
 	c := NewTestStorageClient(t, false)
 	c.expectSamples(samples)
 
-	prom := promtest.NewFakePrometheus()
+	prom := promtest.NewFakePrometheus(promtest.Config{})
 
 	tailer, err := tail.Tail(context.Background(), telemetry.DefaultLogger(), dir, prom.ReadyConfig())
 	if err != nil {
@@ -498,7 +498,7 @@ func TestSpawnNotMoreThanMaxConcurrentSendsGoroutines(t *testing.T) {
 	cfg.MaxShards = 1
 	cfg.Capacity = n
 
-	prom := promtest.NewFakePrometheus()
+	prom := promtest.NewFakePrometheus(promtest.Config{})
 
 	tailer, err := tail.Tail(context.Background(), telemetry.DefaultLogger(), dir, prom.ReadyConfig())
 	if err != nil {

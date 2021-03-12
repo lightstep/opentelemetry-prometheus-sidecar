@@ -40,8 +40,8 @@ func TestMain(m *testing.M) {
 	main()
 }
 
-func runPrometheusService(ts *testServer) {
-	fp := promtest.NewFakePrometheus()
+func (ts *testServer) runPrometheusService(cfg promtest.Config) {
+	fp := promtest.NewFakePrometheus(cfg)
 	address := fmt.Sprint("0.0.0.0:19093")
 	server := &http.Server{
 		Addr:    address,
@@ -218,7 +218,7 @@ func TestStartupUnhealthyEndpoint(t *testing.T) {
 
 	ts := newTestServer(t)
 	defer ts.Stop()
-	runPrometheusService(ts)
+	ts.runPrometheusService(promtest.Config{})
 
 	cmd.Wait()
 
@@ -245,7 +245,7 @@ func TestSuperStackDump(t *testing.T) {
 
 	ms := newTestServer(t)
 	go runMetricsService(ms)
-	runPrometheusService(ms) // Note: there's no metadata api here, we'll see failures.
+	ms.runPrometheusService(promtest.Config{}) // Note: there's no metadata api here, we'll see failures. @@@
 
 	ts := newTraceServer(t)
 	go runDiagnosticsService(ms, ts)

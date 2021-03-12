@@ -66,7 +66,7 @@ func TestCorruption(t *testing.T) {
 	dir := "./testdata/corruption"
 	ctx, cancel := context.WithCancel(context.Background())
 
-	prom := promtest.NewFakePrometheus()
+	prom := promtest.NewFakePrometheus(promtest.Config{})
 
 	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir, prom.ReadyConfig())
 	if err != nil {
@@ -101,7 +101,7 @@ func TestInvalidSegment(t *testing.T) {
 	dir := "./testdata/invalid-segment"
 	ctx, cancel := context.WithCancel(context.Background())
 
-	prom := promtest.NewFakePrometheus()
+	prom := promtest.NewFakePrometheus(promtest.Config{})
 	prom.SetSegment(2)
 
 	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir, prom.ReadyConfig())
@@ -140,7 +140,7 @@ func TestTailFuzz(t *testing.T) {
 	defer os.RemoveAll(dir)
 	ctx, cancel := context.WithCancel(context.Background())
 
-	prom := promtest.NewFakePrometheus()
+	prom := promtest.NewFakePrometheus(promtest.Config{})
 
 	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir, prom.ReadyConfig())
 	if err != nil {
@@ -258,7 +258,7 @@ func TestSlowFsync(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	prom := promtest.NewFakePrometheus()
+	prom := promtest.NewFakePrometheus(promtest.Config{})
 
 	const (
 		segmentSize = 2 * 1024 * 1024

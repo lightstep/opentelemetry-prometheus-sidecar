@@ -105,8 +105,8 @@ an OpenTelemetry (https://opentelemetry.io) Protocol endpoint.
 
 	// PrometheusBuildInfoName provides prometheus version information
 	PrometheusBuildInfoName = "prometheus_build_info"
-	// PromethuesMinVersion is the minimum supported version
-	PromethuesMinVersion = "2.10.0"
+	// PrometheusMinVersion is the minimum supported version
+	PrometheusMinVersion = "2.10.0"
 )
 
 var (
