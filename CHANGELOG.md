@@ -14,6 +14,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Print metadata from gRPC response trailers. (#151)
 - Added `sidecar.segment.skipped` counter to keep track of the number of times an
   event has caused the WAL to be skipped. (#155)
+- Parsing and reporting on dropped metric points due to validation errors
+  using Lightstep's conventions. (#157)
 
 ### Changed
 - Fix metadata type conflict causing infinite loop due to change of instrument 
