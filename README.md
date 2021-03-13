@@ -322,6 +322,15 @@ When multiple scrape intervals are in use, all intervals should be
 monitored.  Use the `--prometheus.scrape-interval=DURATION` flag to
 set scrape intervals to monitor at startup.
 
+#### Validation errors
+
+The sidecar reports validation errors using conventions established by
+Lightstep for conveying information about _partial success_ when
+writing to the OTLP destination.  These errors are returned using gRPC
+"trailers" (a.k.a. http2 response headers) and are output as metrics
+and logs.  See `sidecar.points.dropped`, `sidecar.series.dropped`, and
+`sidecar.metrics.invalid` metrics to diagnose validation errors.
+
 #### Resources
 
 Use the `--destination.attribute=KEY=VALUE` flag to add additional resource attributes to all exported timeseries.
@@ -457,6 +466,7 @@ Metrics from the subordinate process can help identify issues once the first met
 | sidecar.samples.produced | counter | number of samples (i.e., points) read from the prometheus WAL | |
 | sidecar.series.dropped | counter | number of series or metrics dropped | `key_reason`: various |
 | sidecar.points.dropped | counter | number of points dropped because | `key_reason`: various |
+| sidecar.metrics.invalid | gauge | constant value for invalid metrics | `key_reason`: various, `metric_name`: name of invalid metric instrument |
 | sidecar.wal.size | gauge | size of the prometheus WAL | |
 | sidecar.wal.offset | gauge | current offset in the prometheus WAL | |
 | sidecar.segment.opens | counter | number of WAL segment open() calls | |
