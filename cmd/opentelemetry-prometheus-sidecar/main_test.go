@@ -31,6 +31,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// Note: the tests would be cleaner in this package if
+//   var bout, berr bytes.Buffer
+//   cmd.Stdout = &bout
+//   cmd.Stderr = &berr
+// followed by
+//   t.Logf("stdout: %v\n", bout.String())
+//   t.Logf("stderr: %v\n", berr.String())
+// and assertions was replaced with a helper class.  When the test
+// times out unexpectedly, this information is not being printed,
+// which the helper could fix with a pipe.
+
 func TestMain(m *testing.M) {
 	if os.Getenv("RUN_MAIN") == "" {
 		// Run the test directly.
@@ -49,9 +60,7 @@ func (ts *testServer) runPrometheusService(cfg promtest.Config) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 
-	ts.lock.Lock()
 	ts.stops <- cancel
-	ts.lock.Unlock()
 
 	go server.ListenAndServe()
 
@@ -248,7 +257,7 @@ func TestSuperStackDump(t *testing.T) {
 		)...)
 
 	ms := newTestServer(t, nil)
-	go ms.runMetricsService()
+	ms.runMetricsService()
 
 	// Note: there's no metadata api here, we'll see a "metadata
 	// not found" failure in the log. We could fix this by configuring
@@ -256,7 +265,7 @@ func TestSuperStackDump(t *testing.T) {
 	ms.runPrometheusService(promtest.Config{})
 
 	ts := newTraceServer(t)
-	go ms.runDiagnosticsService(ts)
+	ms.runDiagnosticsService(ts)
 
 	cmd.Env = append(os.Environ(), "RUN_MAIN=1")
 	var bout, berr bytes.Buffer
@@ -309,8 +318,8 @@ func TestSuperStackDump(t *testing.T) {
 
 	cancel()
 	wg.Wait()
-	ms.Stop()
-	ts.Stop()
+	defer ms.Stop()
+	defer ts.Stop()
 
 	lock.Lock()
 	defer lock.Unlock()

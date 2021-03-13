@@ -24,6 +24,7 @@ import (
 
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/common"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
+	metrics "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
 	otlpmetrics "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
 	otlpresource "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/resource/v1"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/internal/otlptest"
@@ -37,9 +38,8 @@ import (
 )
 
 func TestValidationErrorReporting(t *testing.T) {
-	if true { // testing.Short()
-		// t.Skip("skipping test in short mode.")
-		t.Skip("skipping test TODO(jmacd): times out in CI, passes reliably in dev.")
+	if testing.Short() {
+		t.Skip("skipping test in short mode.")
 	}
 
 	// Create a WAL with 3 series, 5 points.  Two of them are
@@ -111,8 +111,8 @@ func TestValidationErrorReporting(t *testing.T) {
 		"otlp-invalid-reason2": {"gauge", "mistake"},
 	})
 	defer ms.Stop()
-	go ms.runDiagnosticsService(nil)
-	go ms.runPrometheusService(promtest.Config{
+	ms.runDiagnosticsService(nil)
+	ms.runPrometheusService(promtest.Config{
 		// Conflicting types for "counter" and "gauge".
 		Metadata: promtest.MetadataMap{
 			"job1/inst1/counter": &config.MetadataEntry{
@@ -141,12 +141,14 @@ func TestValidationErrorReporting(t *testing.T) {
 			"--destination.endpoint=http://127.0.0.1:19000",
 			"--diagnostics.endpoint=http://127.0.0.1:19000",
 			"--prometheus.wal", dir,
-			"--startup.timeout=5s",
-			"--destination.timeout=1s",
+			"--startup.timeout=15s",
+			"--healthcheck.period=5s",
+			"--destination.timeout=5s",
 			"--log.level=info",
 		)...)
 
 	cmd.Env = append(os.Environ(), "RUN_MAIN=1")
+
 	var bout, berr bytes.Buffer
 	cmd.Stdout = &bout
 	cmd.Stderr = &berr
@@ -155,82 +157,60 @@ func TestValidationErrorReporting(t *testing.T) {
 		return
 	}
 
-	stopCh := make(chan struct{})
+	invalid := map[string]bool{}
+	timer := time.NewTimer(time.Second * 10)
+	defer timer.Stop()
 
-	// Wait for 3 specific points.
-	go func() {
-		defer close(stopCh)
-		for got := 0; got < 3; {
-			data := <-ms.metrics
-
-			var vs otlptest.VisitorState
-			vs.Visit(context.Background(), func(
-				_ *otlpresource.Resource,
-				name string,
-				kind config.Kind,
-				_ bool,
-				point interface{},
-			) error {
-				switch name {
-				case "counter", "gauge", "correct":
-					require.InEpsilon(t, 100, point.(*otlpmetrics.DoubleDataPoint).Value, 0.01)
-					got++
-				}
-				return nil
-			}, data)
+	// Wait for 3 specific points, then 3 specific meta points.
+	var droppedPointsFound, droppedSeriesFound, invalidFound bool
+	var got = 0
+outer:
+	for got < 3 || !droppedPointsFound || !droppedSeriesFound || !invalidFound {
+		var data *metrics.ResourceMetrics
+		select {
+		case data = <-ms.metrics:
+		case <-timer.C:
+			break outer
 		}
-	}()
 
-	<-stopCh
-	stopCh = make(chan struct{})
+		var vs otlptest.VisitorState
+		vs.Visit(context.Background(), func(
+			_ *otlpresource.Resource,
+			name string,
+			kind config.Kind,
+			_ bool,
+			point interface{},
+		) error {
+			switch name {
+			case "counter", "gauge", "correct":
+				require.InEpsilon(t, 100, point.(*otlpmetrics.DoubleDataPoint).Value, 0.01)
+				got++
+			case config.DroppedPointsMetric:
+				droppedPointsFound = true
+				require.Equal(t, int64(2), point.(*otlpmetrics.IntDataPoint).Value)
+			case config.DroppedSeriesMetric:
+				droppedSeriesFound = true
+				require.Equal(t, int64(1), point.(*otlpmetrics.IntDataPoint).Value)
+			case config.InvalidMetricsMetric:
+				invalidFound = true
+				labels := point.(*otlpmetrics.IntDataPoint).Labels
+
+				var reason, mname string
+				for _, label := range labels {
+					switch label.Key {
+					case string(common.DroppedKeyReason):
+						reason = label.Value
+					case "metric_name":
+						mname = label.Value
+					}
+				}
+				invalid[reason+"/"+mname] = true
+			}
+			return nil
+		}, data)
+	}
 
 	_ = cmd.Process.Signal(os.Interrupt)
-
-	// Wait for invalid metrics.
-	invalid := map[string]bool{}
-	go func() {
-		defer close(stopCh)
-		var droppedPointsFound, droppedSeriesFound, invalidFound bool
-		for !droppedPointsFound || !droppedSeriesFound || !invalidFound {
-			data := <-ms.metrics
-
-			var vs otlptest.VisitorState
-			vs.Visit(context.Background(), func(
-				_ *otlpresource.Resource,
-				name string,
-				kind config.Kind,
-				_ bool,
-				point interface{},
-			) error {
-				switch name {
-				case config.DroppedPointsMetric:
-					droppedPointsFound = true
-					require.Equal(t, int64(2), point.(*otlpmetrics.IntDataPoint).Value)
-				case config.DroppedSeriesMetric:
-					droppedSeriesFound = true
-					require.Equal(t, int64(1), point.(*otlpmetrics.IntDataPoint).Value)
-				case config.InvalidMetricsMetric:
-					invalidFound = true
-					labels := point.(*otlpmetrics.IntDataPoint).Labels
-
-					var reason, mname string
-					for _, label := range labels {
-						switch label.Key {
-						case string(common.DroppedKeyReason):
-							reason = label.Value
-						case "metric_name":
-							mname = label.Value
-						}
-					}
-					invalid[reason+"/"+mname] = true
-				}
-				return nil
-			}, data)
-		}
-	}()
-
-	<-stopCh
-
 	_ = cmd.Wait()
 
 	t.Logf("stdout: %v\n", bout.String())
@@ -250,7 +230,6 @@ func TestValidationErrorReporting(t *testing.T) {
 		`reason=reason1 names=[count]`,
 		`reason=reason2 names="[gauge mistake]"`,
 	} {
-
 		require.Contains(t, berr.String(), expect)
 	}
 }

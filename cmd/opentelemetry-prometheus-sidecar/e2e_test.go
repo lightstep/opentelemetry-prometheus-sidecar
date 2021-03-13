@@ -1,12 +1,10 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"log"
 	"net"
@@ -16,10 +14,7 @@ import (
 	"path"
 	"path/filepath"
 	"sort"
-	"strings"
-	"sync"
 	"testing"
-	"time"
 
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	metricService "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/collector/metrics/v1"
@@ -44,7 +39,6 @@ import (
 
 type (
 	testServer struct {
-		lock     sync.Mutex
 		t        *testing.T
 		stops    chan func()
 		metrics  chan *metrics.ResourceMetrics
@@ -53,7 +47,6 @@ type (
 	}
 
 	traceServer struct {
-		lock  sync.Mutex
 		t     *testing.T
 		stops chan func()
 		spans chan *traces.ResourceSpans
@@ -92,6 +85,10 @@ const (
 	e2eMetricsPerScrape = 2
 	e2eTestScrapes      = 5
 
+	// largeQueue is set to be large enough to buffer all metric
+	// points/spans exported during a single test.
+	largeQueue = 10000
+
 	e2eTestScrapeResultFmt = `
 # HELP some_gauge Number of scrapes
 # TYPE some_gauge gauge
@@ -121,37 +118,23 @@ scrape_configs:
 )
 
 func TestE2E(t *testing.T) {
-	// Pipe for readiness check
-	pipeRead, pipeWrite := io.Pipe()
-	ready := make(chan struct{})
-	defer pipeWrite.Close()
+	if testing.Short() {
+		t.Skip("skipping test in short mode.")
+	}
 
-	go func() {
-		// TODO: Replace this with /-/ready check using code elsewhere in this repo.
-		defer pipeRead.Close()
-		for {
-			// This passes output to Stderr but signals
-			// when the Prometheus server is ready.
-			scanner := bufio.NewScanner(pipeRead)
-			for scanner.Scan() {
-				text := scanner.Text()
-				if strings.Contains(text, "Server is ready to receive web requests.") {
-					ready <- struct{}{}
-				}
-				_, _ = os.Stderr.WriteString(fmt.Sprintln(text))
-			}
-		}
-	}()
+	// Cancel-able context
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	// Create config file
 	var err error
 	var cfgDir, dataDir string
 
 	if cfgDir, err = ioutil.TempDir("", "e2e-test-cfg"); err != nil {
-		log.Fatal(err)
+		t.Fatal(err)
 	}
 	if dataDir, err = ioutil.TempDir("", "e2e-test-data"); err != nil {
-		log.Fatal(err)
+		t.Fatal(err)
 	}
 
 	defer os.RemoveAll(cfgDir)
@@ -159,17 +142,19 @@ func TestE2E(t *testing.T) {
 
 	cfgPath := filepath.Join(cfgDir, "prom.yaml")
 	if err := ioutil.WriteFile(cfgPath, []byte(e2eTestPromConfig), 0666); err != nil {
-		log.Fatal(err)
+		t.Fatal(err)
 	}
 
-	// Cancel-able context
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	walDir := path.Join(dataDir, "wal")
+
+	if err = os.MkdirAll(walDir, 0755); err != nil {
+		t.Fatal(err)
+	}
 
 	ts := newTestServer(t, nil)
 
 	// start gRPC service
-	go ts.runMetricsService()
+	ts.runMetricsService()
 
 	// Run prometheus
 	promCmd := exec.CommandContext(
@@ -181,29 +166,21 @@ func TestE2E(t *testing.T) {
 		cfgPath,
 		"--web.listen-address=0.0.0.0:19093",
 	)
-	promCmd.Stderr = pipeWrite
+	promCmd.Stderr = os.Stderr
 	promCmd.Stdout = os.Stdout
 	if err := promCmd.Start(); err != nil {
-		log.Fatal(err)
+		t.Fatal(err)
 	}
 	defer promCmd.Wait()
 	defer promCmd.Process.Kill()
-
-	// Wait for Prometheus to be ready:
-	select {
-	case <-ready:
-		// Good!
-	case <-time.After(10 * time.Second):
-		// Bad!
-		log.Fatal("Prometheus did not start")
-	}
 
 	// Start sidecar
 	sideCmd := exec.CommandContext(
 		ctx,
 		os.Args[0],
 		append(e2eTestMainCommonFlags,
-			"--prometheus.wal", path.Join(dataDir, "wal"),
+			"--startup.timeout=15s",
+			"--prometheus.wal", walDir,
 			"--destination.attribute=service.name=Service",
 		)...,
 	)
@@ -315,6 +292,9 @@ func TestE2E(t *testing.T) {
 	}
 }
 
+// TODO: Move everything from here down into a separate file of test
+// support (along with runPrometheusService from main_test.go).
+
 func (ts *testServer) runMetricsService() {
 	certificate, err := tls.LoadX509KeyPair(
 		"testdata/certs/sidecar.test.crt",
@@ -347,13 +327,19 @@ func (ts *testServer) runMetricsService() {
 	grpcServer := grpc.NewServer(serverOption)
 	metricService.RegisterMetricsServiceServer(grpcServer, ts)
 
-	ts.lock.Lock()
-	ts.stops <- grpcServer.Stop
-	ts.lock.Unlock()
+	ctx, cancel := context.WithCancel(context.Background())
+	ts.stops <- cancel
 
-	if err := grpcServer.Serve(listener); err != nil {
-		log.Fatalf("failed to serve: %s", err)
-	}
+	go func() {
+		if err := grpcServer.Serve(listener); err != nil {
+			log.Fatalf("failed to serve: %s", err)
+		}
+	}()
+
+	go func() {
+		<-ctx.Done()
+		grpcServer.Stop()
+	}()
 }
 
 // runDiagnosticsService is like runMetricService, but uses the
@@ -370,13 +356,19 @@ func (ms *testServer) runDiagnosticsService(ts *traceServer) {
 		traceService.RegisterTraceServiceServer(grpcServer, ts)
 	}
 
-	ms.lock.Lock()
-	ms.stops <- grpcServer.Stop
-	ms.lock.Unlock()
+	ctx, cancel := context.WithCancel(context.Background())
+	ms.stops <- cancel
 
-	if err := grpcServer.Serve(listener); err != nil {
-		log.Fatalf("failed to serve: %s", err)
-	}
+	go func() {
+		if err := grpcServer.Serve(listener); err != nil {
+			log.Fatalf("failed to serve: %s", err)
+		}
+	}()
+
+	go func() {
+		<-ctx.Done()
+		grpcServer.Stop()
+	}()
 }
 
 func (s *testServer) Export(ctx context.Context, req *metricService.ExportMetricsServiceRequest) (*metricService.ExportMetricsServiceResponse, error) {
@@ -424,9 +416,6 @@ func (s *traceServer) Export(ctx context.Context, req *traceService.ExportTraceS
 }
 
 func (s *testServer) Stop() {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-
 	close(s.stops)
 
 	for stop := range s.stops {
@@ -438,15 +427,12 @@ func newTestServer(t *testing.T, trailers grpcmeta.MD) *testServer {
 	return &testServer{
 		t:        t,
 		stops:    make(chan func(), 3), // 3 = max number of stop functions registered
-		metrics:  make(chan *metrics.ResourceMetrics, e2eTestScrapes),
+		metrics:  make(chan *metrics.ResourceMetrics, largeQueue),
 		trailers: trailers,
 	}
 }
 
 func (s *traceServer) Stop() {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-
 	close(s.stops)
 
 	for stop := range s.stops {
@@ -458,6 +444,6 @@ func newTraceServer(t *testing.T) *traceServer {
 	return &traceServer{
 		t:     t,
 		stops: make(chan func(), 3), // 3 = max number of stop functions registered
-		spans: make(chan *traces.ResourceSpans, e2eTestScrapes),
+		spans: make(chan *traces.ResourceSpans, largeQueue),
 	}
 }

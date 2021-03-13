@@ -116,6 +116,10 @@ func (i *InvalidSet) observeLocked(result metric.Int64ObserverResult) stateMap {
 	}
 	i.short = stateMap{}
 
+	if len(i.long) == 0 {
+		return nil
+	}
+
 	now := time.Now()
 	if now.Sub(i.lastSummary) < invalidMetricSummaryInterval {
 		return nil
