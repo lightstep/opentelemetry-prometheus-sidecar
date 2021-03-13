@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -27,10 +28,12 @@ import (
 	metrics "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
 	traces "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/trace/v1"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/semconv"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	grpcMetadata "google.golang.org/grpc/metadata"
+	grpcmeta "google.golang.org/grpc/metadata"
 	messagediff "gopkg.in/d4l3k/messagediff.v1"
 )
 
@@ -41,13 +44,16 @@ import (
 
 type (
 	testServer struct {
-		t       *testing.T
-		stops   chan func()
-		metrics chan *metrics.ResourceMetrics
+		lock     sync.Mutex
+		t        *testing.T
+		stops    chan func()
+		metrics  chan *metrics.ResourceMetrics
+		trailers grpcmeta.MD
 		metricService.UnimplementedMetricsServiceServer
 	}
 
 	traceServer struct {
+		lock  sync.Mutex
 		t     *testing.T
 		stops chan func()
 		spans chan *traces.ResourceSpans
@@ -62,8 +68,6 @@ var (
 	// test gRPC server's Export().
 	e2eTestMainSupervisorFlags = []string{
 		"--security.root-certificate=testdata/certs/root_ca.crt",
-		"--destination.endpoint=https://127.0.0.1:19001",
-		"--diagnostics.endpoint=http://127.0.0.1:19000",
 		"--prometheus.endpoint=http://0.0.0.0:19093",
 		"--destination.header",
 		fmt.Sprint(e2eTestHeaderName, "=", e2eTestHeaderValue),
@@ -75,6 +79,8 @@ var (
 	e2eTestMainCommonFlags = append(e2eTestMainSupervisorFlags,
 		"--disable-supervisor",
 		"--disable-diagnostics",
+		"--destination.endpoint=https://127.0.0.1:19001",
+		"--diagnostics.endpoint=http://127.0.0.1:19000",
 	)
 
 	e2eReadyURL = "http://0.0.0.0:9093" + config.HealthCheckURI
@@ -160,10 +166,10 @@ func TestE2E(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	ts := newTestServer(t)
+	ts := newTestServer(t, nil)
 
 	// start gRPC service
-	go runMetricsService(ts)
+	go ts.runMetricsService()
 
 	// Run prometheus
 	promCmd := exec.CommandContext(
@@ -309,7 +315,7 @@ func TestE2E(t *testing.T) {
 	}
 }
 
-func runMetricsService(ts *testServer) {
+func (ts *testServer) runMetricsService() {
 	certificate, err := tls.LoadX509KeyPair(
 		"testdata/certs/sidecar.test.crt",
 		"testdata/certs/sidecar.test.key",
@@ -341,14 +347,18 @@ func runMetricsService(ts *testServer) {
 	grpcServer := grpc.NewServer(serverOption)
 	metricService.RegisterMetricsServiceServer(grpcServer, ts)
 
+	ts.lock.Lock()
 	ts.stops <- grpcServer.Stop
+	ts.lock.Unlock()
 
 	if err := grpcServer.Serve(listener); err != nil {
 		log.Fatalf("failed to serve: %s", err)
 	}
 }
 
-func runDiagnosticsService(ms *testServer, ts *traceServer) {
+// runDiagnosticsService is like runMetricService, but uses the
+// insecure port and supports both trace and metrics.
+func (ms *testServer) runDiagnosticsService(ts *traceServer) {
 	listener, err := net.Listen("tcp", "127.0.0.1:19000")
 	if err != nil {
 		log.Fatalf("failed to listen: %s", err)
@@ -356,9 +366,13 @@ func runDiagnosticsService(ms *testServer, ts *traceServer) {
 
 	grpcServer := grpc.NewServer()
 	metricService.RegisterMetricsServiceServer(grpcServer, ms)
-	traceService.RegisterTraceServiceServer(grpcServer, ts)
+	if ts != nil {
+		traceService.RegisterTraceServiceServer(grpcServer, ts)
+	}
 
-	ts.stops <- grpcServer.Stop
+	ms.lock.Lock()
+	ms.stops <- grpcServer.Stop
+	ms.lock.Unlock()
 
 	if err := grpcServer.Serve(listener); err != nil {
 		log.Fatalf("failed to serve: %s", err)
@@ -382,6 +396,8 @@ func (s *testServer) Export(ctx context.Context, req *metricService.ExportMetric
 	for _, rm := range req.ResourceMetrics {
 		s.metrics <- rm
 	}
+
+	require.NoError(s.t, grpc.SetTrailer(ctx, s.trailers))
 
 	return &emptyValue, nil
 }
@@ -408,31 +424,34 @@ func (s *traceServer) Export(ctx context.Context, req *traceService.ExportTraceS
 }
 
 func (s *testServer) Stop() {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
 	close(s.stops)
 
 	for stop := range s.stops {
 		stop()
 	}
-
-	//close(s.metrics)
 }
 
-func newTestServer(t *testing.T) *testServer {
+func newTestServer(t *testing.T, trailers grpcmeta.MD) *testServer {
 	return &testServer{
-		t:       t,
-		stops:   make(chan func(), 3), // 3 = max number of stop functions registered
-		metrics: make(chan *metrics.ResourceMetrics, e2eTestScrapes),
+		t:        t,
+		stops:    make(chan func(), 3), // 3 = max number of stop functions registered
+		metrics:  make(chan *metrics.ResourceMetrics, e2eTestScrapes),
+		trailers: trailers,
 	}
 }
 
 func (s *traceServer) Stop() {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
 	close(s.stops)
 
 	for stop := range s.stops {
 		stop()
 	}
-
-	//close(s.spans)
 }
 
 func newTraceServer(t *testing.T) *traceServer {

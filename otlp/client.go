@@ -21,15 +21,19 @@ import (
 	"io/ioutil"
 	"net"
 	"net/url"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/common"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	metricsService "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/collector/metrics/v1"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry/doevery"
+	"go.opentelemetry.io/otel/attribute"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	grpcMetadata "google.golang.org/grpc/metadata"
@@ -63,6 +67,10 @@ const (
 		}
 	}]
 }`
+
+	metricNameKey attribute.Key = "metric_name"
+
+	invalidTrailerPrefix = "otlp-invalid-"
 )
 
 var (
@@ -75,6 +83,11 @@ var (
 		"sidecar.connect.duration",
 		"duration of the grpc.Dial() call",
 	)
+
+	droppedMetricsCounter = common.DroppedSeries
+	droppedPointsCounter  = common.DroppedPoints
+
+	errNoSingleCount = fmt.Errorf("no single count")
 )
 
 // Client allows reading and writing from/to a remote gRPC endpoint. The
@@ -88,6 +101,7 @@ type Client struct {
 	headers          grpcMetadata.MD
 	compressor       string
 	prometheus       config.PromConfig
+	invalidSet       *InvalidSet
 
 	conn *grpc.ClientConn
 }
@@ -101,6 +115,7 @@ type ClientConfig struct {
 	Headers          grpcMetadata.MD
 	Compressor       string
 	Prometheus       config.PromConfig
+	InvalidSet       *InvalidSet
 }
 
 // NewClient creates a new Client.
@@ -117,6 +132,7 @@ func NewClient(conf ClientConfig) *Client {
 		headers:          conf.Headers,
 		compressor:       conf.Compressor,
 		prometheus:       conf.Prometheus,
+		invalidSet:       conf.InvalidSet,
 	}
 }
 
@@ -284,6 +300,8 @@ func (c *Client) Store(req *metricsService.ExportMetricsServiceRequest) error {
 			// following a successful Export when any points or
 			// metrics were dropped.
 
+			c.parseResponseMetadata(ctx, md)
+
 			doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
 				level.Debug(c.logger).Log(
 					"msg", "successful write",
@@ -300,6 +318,44 @@ func (c *Client) Store(req *metricsService.ExportMetricsServiceRequest) error {
 		return err
 	}
 	return nil
+}
+
+func singleCount(values []string) (int, error) {
+	if len(values) != 1 {
+		return 0, errNoSingleCount
+	}
+	return strconv.Atoi(values[0])
+}
+
+func (c *Client) parseResponseMetadata(ctx context.Context, md grpcMetadata.MD) {
+	for key, values := range md {
+		key = strings.ToLower(key)
+		if !strings.HasPrefix(key, "otlp-") {
+			continue
+		}
+		if key == "otlp-points-dropped" {
+			if points, err := singleCount(values); err == nil {
+				droppedPointsCounter.Add(ctx, int64(points))
+			}
+		} else if key == "otlp-metrics-dropped" {
+			if points, err := singleCount(values); err == nil {
+				droppedMetricsCounter.Add(ctx, int64(points))
+			}
+		} else if strings.HasPrefix(key, invalidTrailerPrefix) {
+			key = key[len(invalidTrailerPrefix):]
+			for _, metricName := range values {
+				c.invalidSet.Set(key, metricName)
+			}
+		} else {
+			doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
+				level.Info(c.logger).Log(
+					"msg", "unrecognized trailer",
+					"key", key,
+					"values", values,
+				)
+			})
+		}
+	}
 }
 
 func (c *Client) Close() error {

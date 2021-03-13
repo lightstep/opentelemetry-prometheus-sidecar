@@ -172,7 +172,7 @@ func Main() bool {
 		ScrapeIntervals: intervals,
 	}
 
-	metadataURL, err := promURL.Parse(metadata.DefaultEndpointPath)
+	metadataURL, err := promURL.Parse(config.PrometheusMetadataEndpointPath)
 	if err != nil {
 		panic(err)
 	}
@@ -208,6 +208,7 @@ func Main() bool {
 		Headers:          grpcMetadata.New(cfg.Destination.Headers),
 		Compressor:       cfg.Destination.Compression,
 		Prometheus:       cfg.Prometheus,
+		InvalidSet:       otlp.NewInvalidSet(log.With(logger, "component", "validation")),
 	})
 
 	queueManager, err := otlp.NewQueueManager(

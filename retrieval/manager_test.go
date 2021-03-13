@@ -21,11 +21,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	metric_pb "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
 	resource_pb "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/resource/v1"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/internal/otlptest"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/internal/promtest"
-	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -68,7 +68,7 @@ func TestReader_Progress(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	prom := promtest.NewFakePrometheus()
+	prom := promtest.NewFakePrometheus(promtest.Config{})
 
 	tailer, err := tail.Tail(ctx, telemetry.DefaultLogger(), dir, prom.ReadyConfig())
 	if err != nil {
@@ -90,8 +90,8 @@ func TestReader_Progress(t *testing.T) {
 		"namespace", "ns1", "location", "loc1",
 		"job", "job1", "__address__", "inst1")
 
-	metadataMap := metadataMap{
-		"job1/inst1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, Help: "help"},
+	metadataMap := promtest.MetadataMap{
+		"job1/inst1/metric1": &config.MetadataEntry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, Help: "help"},
 	}
 
 	r := NewPrometheusReader(nil, dir, tailer, nil, nil, metadataMap, &nopAppender{}, "", 0, extraLabels)
@@ -187,7 +187,7 @@ func TestReader_Progress(t *testing.T) {
 		vs.Visit(ctx, func(
 			resource *resource_pb.Resource,
 			metricName string,
-			kind metadata.Kind,
+			kind config.Kind,
 			monotonic bool,
 			point interface{},
 		) error {

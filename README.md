@@ -322,6 +322,15 @@ When multiple scrape intervals are in use, all intervals should be
 monitored.  Use the `--prometheus.scrape-interval=DURATION` flag to
 set scrape intervals to monitor at startup.
 
+#### Validation errors
+
+The sidecar reports validation errors using conventions established by
+Lightstep for conveying information about _partial success_ when
+writing to the OTLP destination.  These errors are returned using gRPC
+"trailers" (a.k.a. http2 response headers) and are output as metrics
+and logs.  See `sidecar.points.dropped`, `sidecar.series.dropped`, and
+`sidecar.metrics.invalid` metrics to diagnose validation errors.
+
 #### Resources
 
 Use the `--destination.attribute=KEY=VALUE` flag to add additional resource attributes to all exported timeseries.
@@ -442,20 +451,22 @@ Metrics from the subordinate process can help identify issues once the first met
 
 **Internal Metrics**
 
-| Metric Name | Metric Type | Description | Additional Tags |
+| Metric Name | Metric Type | Description | Additional Attributes |
 | --- | --- | --- | ---|
-| sidecar.connect.duration | histogram | how many attempts to connect (and how long) | (error:true/false) |
-| sidecar.export.duration | histogram | how many attempts to export (and how long) | (error:true/false) |
-| sidecar.monitor.duration | histogram | how many attempts to scrape Prometheus /metrics (and how long) | (error:true/false) |
-| sidecar.metadata.fetch.duration | histogram | how many attempts to fetch metadata from Prometheus (and how long) | (error:true/false) |
-| sidecar.queue.outcome | counter | outcome of the sample in the queue | (outcome: success, failed, retry, aborted) |
+| sidecar.connect.duration | histogram | how many attempts to connect (and how long) | `error`: true, false |
+| sidecar.export.duration | histogram | how many attempts to export (and how long) | `error`: true, false |
+| sidecar.monitor.duration | histogram | how many attempts to scrape Prometheus /metrics (and how long) | `error`: true, false |
+| sidecar.metadata.fetch.duration | histogram | how many attempts to fetch metadata from Prometheus (and how long) | `error`: true, false |
+| sidecar.queue.outcome | counter | outcome of the sample in the queue | `outcome`: success, failed, retry, aborted |
 | sidecar.queue.capacity | gauge | number of available slots for samples (i.e., points) in the queue, counts buffer size times current number of shards | |
 | sidecar.queue.running | gauge | number of running shards, those which have not exited | |
 | sidecar.queue.shards | gauge | number of current shards, as set by the queue manager | |
 | sidecar.queue.size | gauge | number of samples (i.e., points) standing in a queue waiting to export | |
 | sidecar.samples.processed | histogram | number of samples (i.e., points) read in a prometheus WAL batch | |
 | sidecar.samples.produced | counter | number of samples (i.e., points) read from the prometheus WAL | |
-| sidecar.series.dropped | counter | number of points dropped because of missing metadata | |
+| sidecar.series.dropped | counter | number of series or metrics dropped | `key_reason`: various |
+| sidecar.points.dropped | counter | number of points dropped because | `key_reason`: various |
+| sidecar.metrics.invalid | gauge | constant value for invalid metrics | `key_reason`: various, `metric_name`: name of invalid metric instrument |
 | sidecar.wal.size | gauge | size of the prometheus WAL | |
 | sidecar.wal.offset | gauge | current offset in the prometheus WAL | |
 | sidecar.segment.opens | counter | number of WAL segment open() calls | |

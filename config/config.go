@@ -24,7 +24,6 @@ import (
 
 	"github.com/ghodss/yaml"
 	"github.com/go-kit/kit/log"
-	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/snappy"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -83,11 +82,13 @@ an OpenTelemetry (https://opentelemetry.io) Protocol endpoint.
 
 	// Some metric names are shared across packages, for healthchecking.
 
-	SidecarPrefix       = "sidecar."
-	ProcessedMetric     = "sidecar.samples.processed"
-	ProducedMetric      = "sidecar.samples.produced"
-	OutcomeMetric       = "sidecar.queue.outcome"
-	DroppedSeriesMetric = "sidecar.dropped.series"
+	SidecarPrefix        = "sidecar."
+	ProcessedMetric      = "sidecar.samples.processed"
+	ProducedMetric       = "sidecar.samples.produced"
+	OutcomeMetric        = "sidecar.queue.outcome"
+	DroppedSeriesMetric  = "sidecar.series.dropped"
+	DroppedPointsMetric  = "sidecar.points.dropped"
+	InvalidMetricsMetric = "sidecar.metrics.invalid"
 
 	OutcomeKey          = attribute.Key("outcome")
 	OutcomeSuccessValue = "success"
@@ -104,8 +105,8 @@ an OpenTelemetry (https://opentelemetry.io) Protocol endpoint.
 
 	// PrometheusBuildInfoName provides prometheus version information
 	PrometheusBuildInfoName = "prometheus_build_info"
-	// PromethuesMinVersion is the minimum supported version
-	PromethuesMinVersion = "2.10.0"
+	// PrometheusMinVersion is the minimum supported version
+	PrometheusMinVersion = "2.10.0"
 )
 
 var (
@@ -127,12 +128,6 @@ type MetricRenamesConfig struct {
 	From string `json:"from"`
 	To   string `json:"to"`
 }
-
-// TODO: Note that the ../metadata package cannot depend on this package
-// because of a cycle involving this type, which is _nearly_ identical to
-// the Entry{} type of that package.  If that package would use _this_ type
-// it would help greatly, and then that package could refer to this one for
-// configuration.
 type StaticMetadataConfig struct {
 	Metric    string               `json:"metric"`
 	Type      textparse.MetricType `json:"type"`
@@ -266,7 +261,7 @@ func DefaultMainConfig() MainConfig {
 }
 
 // Configure is a separate unit of code for testing purposes.
-func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]string, []*metadata.Entry, error) {
+func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]string, []*MetadataEntry, error) {
 	cfg := DefaultMainConfig()
 
 	a := kingpin.New(filepath.Base(args[0]), briefDescription)
@@ -364,7 +359,7 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 
 	var (
 		metricRenames  map[string]string
-		staticMetadata []*metadata.Entry
+		staticMetadata []*MetadataEntry
 	)
 
 	if cfg.ConfigFilename != "" {
@@ -481,22 +476,22 @@ func sanitizeValues(kind string, downcaseKeys bool, values map[string]string) er
 	return nil
 }
 
-func parseConfigFile(data []byte, cfg *MainConfig) (map[string]string, []*metadata.Entry, error) {
+func parseConfigFile(data []byte, cfg *MainConfig) (map[string]string, []*MetadataEntry, error) {
 	if err := yaml.Unmarshal(data, cfg); err != nil {
 		return nil, nil, errors.Wrap(err, "invalid YAML")
 	}
 	return processMainConfig(cfg)
 }
 
-func processMainConfig(cfg *MainConfig) (map[string]string, []*metadata.Entry, error) {
+func processMainConfig(cfg *MainConfig) (map[string]string, []*MetadataEntry, error) {
 	renameMapping := map[string]string{}
 	for _, r := range cfg.MetricRenames {
 		renameMapping[r.From] = r.To
 	}
-	staticMetadata := []*metadata.Entry{}
+	staticMetadata := []*MetadataEntry{}
 	for _, sm := range cfg.StaticMetadata {
 		switch sm.Type {
-		case metadata.MetricTypeUntyped:
+		case MetricTypeUntyped:
 			// Convert "untyped" to the "unknown" type used internally as of Prometheus 2.5.
 			sm.Type = textparse.MetricTypeUnknown
 		case textparse.MetricTypeCounter, textparse.MetricTypeGauge, textparse.MetricTypeHistogram,
@@ -504,20 +499,20 @@ func processMainConfig(cfg *MainConfig) (map[string]string, []*metadata.Entry, e
 		default:
 			return nil, nil, errors.Errorf("invalid metric type %q", sm.Type)
 		}
-		var valueType metadata.ValueType
+		var valueType ValueType
 		switch sm.ValueType {
 		case "double", "":
-			valueType = metadata.DOUBLE
+			valueType = DOUBLE
 		case "int64":
-			valueType = metadata.INT64
+			valueType = INT64
 		default:
 			return nil, nil, errors.Errorf("invalid value type %q", sm.ValueType)
 		}
 		staticMetadata = append(
 			staticMetadata,
-			&metadata.Entry{
+			&MetadataEntry{
 				Metric:     sm.Metric,
-				MetricType: textparse.MetricType(sm.Type),
+				MetricType: sm.Type,
 				ValueType:  valueType,
 				Help:       sm.Help,
 			},
@@ -553,4 +548,40 @@ type PromReady struct {
 	Logger          log.Logger
 	PromURL         *url.URL
 	ScrapeIntervals []time.Duration
+}
+
+// TODO: The use of Kind and ValueType are Stackdriver terms that
+// relate confusingly with OTLP data point types and temporality.
+// See https://github.com/open-telemetry/opentelemetry-proto/issues/274#issuecomment-790844633
+
+type (
+	Kind      int
+	ValueType int
+)
+
+const (
+	GAUGE      Kind = 1
+	CUMULATIVE Kind = 2
+	DELTA      Kind = 3
+
+	DOUBLE       ValueType = 1
+	INT64        ValueType = 2
+	DISTRIBUTION ValueType = 3
+	HISTOGRAM    ValueType = 4
+)
+
+// DefaultEndpointPath is the default HTTP path on which Prometheus serves
+// the target metadata endpoint.
+const PrometheusMetadataEndpointPath = "api/v1/targets/metadata"
+
+// The old metric type value for textparse.MetricTypeUnknown that is used in
+// Prometheus 2.4 and earlier.
+const MetricTypeUntyped = "untyped"
+
+// MetadataEntry is the parsed and checked form of StaticMetadataConfig
+type MetadataEntry struct {
+	Metric     string
+	MetricType textparse.MetricType
+	ValueType  ValueType
+	Help       string
 }

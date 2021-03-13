@@ -14,15 +14,17 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Print metadata from gRPC response trailers. (#151)
 - Added `sidecar.segment.skipped` counter to keep track of the number of times an
   event has caused the WAL to be skipped. (#155)
+- Parsing and reporting on dropped metric points due to validation errors
+  using Lightstep's conventions. (#157)
 
 ### Changed
-- Fix metadata type conflict causing infinite loop due to change of instrument 
+- Fix metadata type conflict causing infinite loop due to change of instrument
   from histogram to another kind. (#151)
 - Update Prometheus go.mod dependencies to match the 2.24.1 release. (#152)
 - Update to [OTel-Go 0.18](https://github.com/open-telemetry/opentelemetry-go/releases/tag/v0.18.0). (#153)
 - PrometheusReader handles truncated segment errors by raising an `ErrSkipSegment` which
   will trigger the tailer to skip to the next segment in process. (#155)
-- Update to google.golang.org/protobuf v1.25.0, remove gogo dependency. (#156)  
+- Update to google.golang.org/protobuf v1.25.0, remove gogo dependency. (#156)
 
 ### Removed
 - Field `corrupt-segment` has been removed from the progress file as the state is
@@ -51,7 +53,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [0.18.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.18.0) - 2021-02-26
 
 ### Added
-- Sidecar waits for the first scrapes to complete before entering its 
+- Sidecar waits for the first scrapes to complete before entering its
   run state. (#134)
 - New setting `--prometheus.scrape-interval` supports configuring scrape
   interval(s) to wait for at startup. (#134)
@@ -61,9 +63,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   that the WAL's first segment after a checkpoint was truncated. The reader will
   now record the `corrupt-segment` in the progress log and skip the recorded
   segment on next restart (#136)
-  
+
 ### Removed
-- The `--startup.delay` setting has been removed in favor of monitoring when 
+- The `--startup.delay` setting has been removed in favor of monitoring when
   Prometheus actually finishes its first scrapes. (#134)
 
 ## [0.17.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.17.0) - 2021-02-23
@@ -82,7 +84,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - The sidecar's WAL-reader addresses several race conditions by monitoring
   Prometheus for readiness and the current segment number during WAL segment
   transitions. (#118)
-- The yaml section named "log_config" was inconsistent, has been renamed "log". ()  
+- The yaml section named "log_config" was inconsistent, has been renamed "log". ()
 
 ### Removed
 - Remove the use_meta_labels parameter. (#125)
@@ -112,7 +114,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - Timeouts and diagnostics for Prometheus API calls (#100)
 - Snappy compression support enabled by default (#97)
-- Supervisor will kill the sidecar when there are no successful writes after 
+- Supervisor will kill the sidecar when there are no successful writes after
   repeated healthchecks. (#101)
 - Print the number of dropped series in the supervisor health report. (#102)
 
@@ -124,7 +126,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - Add `supervisor=true` in logs from the supervisor process. (#90)
 - Add real `/-/health` health-checking implementation, with these criteria:
-  sidecar.samples.produced should not stall over 5m 
+  sidecar.samples.produced should not stall over 5m
   sidecar.queue.outcome{outcome=success} divided by total {*} > 0.5 (#94)
 
 ## [0.12.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.12.0) - 2021-02-01
@@ -211,7 +213,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [0.3.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.3.0) - 2020-12-08
 
-- Change several metric names to use `.` instead of `_` for 
+- Change several metric names to use `.` instead of `_` for
   OpenTelemetry consistency. (#43)
 - Update to OpenTelemetry-Go SDK version 0.14. (#41)
 - Removed unnecessary code that reduced batching capability. (#45)

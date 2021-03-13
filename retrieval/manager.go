@@ -25,7 +25,6 @@ import (
 	"github.com/go-kit/kit/log/level"
 	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
-	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry/doevery"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -48,7 +47,7 @@ var (
 )
 
 type MetadataGetter interface {
-	Get(ctx context.Context, job, instance, metric string) (*metadata.Entry, error)
+	Get(ctx context.Context, job, instance, metric string) (*config.MetadataEntry, error)
 }
 
 // NewPrometheusReader is the PrometheusReader constructor

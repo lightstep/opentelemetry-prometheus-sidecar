@@ -40,8 +40,8 @@ func TestMain(m *testing.M) {
 	main()
 }
 
-func runPrometheusService(ts *testServer) {
-	fp := promtest.NewFakePrometheus()
+func (ts *testServer) runPrometheusService(cfg promtest.Config) {
+	fp := promtest.NewFakePrometheus(cfg)
 	address := fmt.Sprint("0.0.0.0:19093")
 	server := &http.Server{
 		Addr:    address,
@@ -49,14 +49,16 @@ func runPrometheusService(ts *testServer) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 
+	ts.lock.Lock()
+	ts.stops <- cancel
+	ts.lock.Unlock()
+
 	go server.ListenAndServe()
 
 	go func() {
 		<-ctx.Done()
 		server.Shutdown(ctx)
 	}()
-
-	ts.stops <- cancel
 }
 
 // As soon as prometheus starts responding to http request should be able to accept Interrupt signals for a gracefull shutdown.
@@ -216,9 +218,9 @@ func TestStartupUnhealthyEndpoint(t *testing.T) {
 	defer cmd.Wait()
 	defer cmd.Process.Kill()
 
-	ts := newTestServer(t)
+	ts := newTestServer(t, nil)
 	defer ts.Stop()
-	runPrometheusService(ts)
+	ts.runPrometheusService(promtest.Config{})
 
 	cmd.Wait()
 
@@ -238,17 +240,23 @@ func TestSuperStackDump(t *testing.T) {
 	cmd := exec.Command(
 		os.Args[0],
 		append(e2eTestMainSupervisorFlags,
+			"--destination.endpoint=http://127.0.0.1:19000",
+			"--diagnostics.endpoint=http://127.0.0.1:19000",
 			"--prometheus.wal=testdata/wal",
 			"--healthcheck.period=1s",
 			"--log.level=debug",
 		)...)
 
-	ms := newTestServer(t)
-	go runMetricsService(ms)
-	runPrometheusService(ms) // Note: there's no metadata api here, we'll see failures.
+	ms := newTestServer(t, nil)
+	go ms.runMetricsService()
+
+	// Note: there's no metadata api here, we'll see a "metadata
+	// not found" failure in the log. We could fix this by configuring
+	// matching metadata to what's in testdata/wal here.
+	ms.runPrometheusService(promtest.Config{})
 
 	ts := newTraceServer(t)
-	go runDiagnosticsService(ms, ts)
+	go ms.runDiagnosticsService(ts)
 
 	cmd.Env = append(os.Environ(), "RUN_MAIN=1")
 	var bout, berr bytes.Buffer
@@ -337,6 +345,7 @@ func TestSuperStackDump(t *testing.T) {
 	}
 
 	require.True(t, foundCrash, "expected to find a crash report")
+	require.Contains(t, berr.String(), "metadata not found")
 }
 
 type fakePrometheusReader struct {

@@ -21,29 +21,18 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/common"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
-	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry/doevery"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/textparse"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wal"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/metric"
 )
 
-var (
-	droppedSeries = sidecar.OTelMeterMust.NewInt64Counter(
-		config.DroppedSeriesMetric,
-		metric.WithDescription("Number of series that were dropped, not exported"),
-	)
-	keyReason = attribute.Key("key_reason")
-
-	droppedSeriesMetadataNotFound = droppedSeries.Bind(
-		keyReason.String("metadata_not_found"),
-	)
+var droppedSeriesMetadataNotFound = common.DroppedSeries.Bind(
+	common.DroppedKeyReason.String("metadata_not_found"),
 )
 
 // tsDesc has complete, proto-independent data about a metric data
@@ -52,8 +41,8 @@ type tsDesc struct {
 	Name      string
 	Labels    labels.Labels // Sorted
 	Resource  labels.Labels // Sorted
-	Kind      metadata.Kind
-	ValueType metadata.ValueType
+	Kind      config.Kind
+	ValueType config.ValueType
 }
 
 type seriesGetter interface {
@@ -93,7 +82,7 @@ type seriesCache struct {
 
 type seriesCacheEntry struct {
 	desc     *tsDesc
-	metadata *metadata.Entry
+	metadata *config.MetadataEntry
 	lset     labels.Labels
 	suffix   string
 	hash     uint64
@@ -401,8 +390,8 @@ func (c *seriesCache) refresh(ctx context.Context, ref uint64) error {
 
 	switch meta.MetricType {
 	case textparse.MetricTypeCounter:
-		ts.Kind = metadata.CUMULATIVE
-		ts.ValueType = metadata.DOUBLE
+		ts.Kind = config.CUMULATIVE
+		ts.ValueType = config.DOUBLE
 		if meta.ValueType != 0 {
 			ts.ValueType = meta.ValueType
 		}
@@ -410,29 +399,29 @@ func (c *seriesCache) refresh(ctx context.Context, ref uint64) error {
 			ts.Name = c.getMetricName(c.metricsPrefix, baseMetricName)
 		}
 	case textparse.MetricTypeGauge, textparse.MetricTypeUnknown:
-		ts.Kind = metadata.GAUGE
-		ts.ValueType = metadata.DOUBLE
+		ts.Kind = config.GAUGE
+		ts.ValueType = config.DOUBLE
 		if meta.ValueType != 0 {
 			ts.ValueType = meta.ValueType
 		}
 	case textparse.MetricTypeSummary:
 		switch suffix {
 		case metricSuffixSum:
-			ts.Kind = metadata.CUMULATIVE
-			ts.ValueType = metadata.DOUBLE
+			ts.Kind = config.CUMULATIVE
+			ts.ValueType = config.DOUBLE
 		case metricSuffixCount:
-			ts.Kind = metadata.CUMULATIVE
-			ts.ValueType = metadata.INT64
+			ts.Kind = config.CUMULATIVE
+			ts.ValueType = config.INT64
 		case "": // Actual quantiles.
-			ts.Kind = metadata.GAUGE
-			ts.ValueType = metadata.DOUBLE
+			ts.Kind = config.GAUGE
+			ts.ValueType = config.DOUBLE
 		default:
 			return errors.Errorf("unexpected metric name suffix %q", suffix)
 		}
 	case textparse.MetricTypeHistogram:
 		ts.Name = c.getMetricName(c.metricsPrefix, baseMetricName)
-		ts.Kind = metadata.CUMULATIVE
-		ts.ValueType = metadata.DISTRIBUTION
+		ts.Kind = config.CUMULATIVE
+		ts.ValueType = config.DISTRIBUTION
 	default:
 		return errors.Errorf("unexpected metric type %s", meta.MetricType)
 	}

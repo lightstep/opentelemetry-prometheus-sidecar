@@ -22,13 +22,13 @@ import (
 	"time"
 
 	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
-	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/version"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/textparse"
 	"github.com/prometheus/prometheus/tsdb/record"
 
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	common_pb "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/common/v1"
 	metric_pb "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
 	resource_pb "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/resource/v1"
@@ -105,7 +105,7 @@ func (b *sampleBuilder) next(ctx context.Context, samples []record.RefSample) (*
 			return nil, 0, tailSamples, nil
 		}
 
-		if entry.metadata.ValueType == metadata.INT64 {
+		if entry.metadata.ValueType == config.INT64 {
 			point.Data = &metric_pb.Metric_IntSum{
 				IntSum: monotonicIntegerPoint(labels, resetTimestamp, sample.T, value),
 			}
@@ -116,7 +116,7 @@ func (b *sampleBuilder) next(ctx context.Context, samples []record.RefSample) (*
 		}
 
 	case textparse.MetricTypeGauge, textparse.MetricTypeUnknown:
-		if entry.metadata.ValueType == metadata.INT64 {
+		if entry.metadata.ValueType == config.INT64 {
 			point.Data = &metric_pb.Metric_IntGauge{
 				IntGauge: intGauge(labels, sample.T, sample.V),
 			}

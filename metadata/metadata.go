@@ -25,6 +25,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/common"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/textparse"
@@ -46,55 +48,20 @@ type Cache struct {
 
 	metadata       map[string]*cacheEntry
 	seenJobs       map[string]struct{}
-	staticMetadata map[string]*Entry
-}
-
-type (
-	Kind      int
-	ValueType int
-)
-
-const (
-	GAUGE      Kind = 1
-	CUMULATIVE Kind = 2
-	DELTA      Kind = 3
-
-	DOUBLE       ValueType = 1
-	INT64        ValueType = 2
-	DISTRIBUTION ValueType = 3
-	HISTOGRAM    ValueType = 4
-
-	// The following should refer to config.DefaultPrometheusTimeout,
-	// except for an unnecessary cyclic dependency.
-	defaultPrometheusTimeout = time.Minute
-)
-
-// DefaultEndpointPath is the default HTTP path on which Prometheus serves
-// the target metadata endpoint.
-const DefaultEndpointPath = "api/v1/targets/metadata"
-
-// The old metric type value for textparse.MetricTypeUnknown that is used in
-// Prometheus 2.4 and earlier.
-const MetricTypeUntyped = "untyped"
-
-type Entry struct {
-	Metric     string
-	MetricType textparse.MetricType
-	ValueType  ValueType
-	Help       string
+	staticMetadata map[string]*config.MetadataEntry
 }
 
 // NewCache returns a new cache that gets populated by the metadata endpoint
 // at the given URL.
 // It uses the default endpoint path if no specific path is provided.
-func NewCache(client *http.Client, promURL *url.URL, staticMetadata []*Entry) *Cache {
+func NewCache(client *http.Client, promURL *url.URL, staticMetadata []*config.MetadataEntry) *Cache {
 	if client == nil {
 		client = http.DefaultClient
 	}
 	c := &Cache{
 		promURL:        promURL,
 		client:         client,
-		staticMetadata: map[string]*Entry{},
+		staticMetadata: map[string]*config.MetadataEntry{},
 		metadata:       map[string]*cacheEntry{},
 		seenJobs:       map[string]struct{}{},
 	}
@@ -107,7 +74,7 @@ func NewCache(client *http.Client, promURL *url.URL, staticMetadata []*Entry) *C
 const retryInterval = 30 * time.Second
 
 type cacheEntry struct {
-	*Entry
+	Entry     *config.MetadataEntry
 	found     bool
 	lastFetch time.Time
 }
@@ -121,7 +88,7 @@ func (e *cacheEntry) shouldRefetch() bool {
 // is not in the cache, it blocks until we have retrieved it from the Prometheus server.
 // If no metadata is found in the Prometheus server, a matching entry from the
 // static metadata or nil is returned.
-func (c *Cache) Get(ctx context.Context, job, instance, metric string) (*Entry, error) {
+func (c *Cache) Get(ctx context.Context, job, instance, metric string) (*config.MetadataEntry, error) {
 	if md, ok := c.staticMetadata[metric]; ok {
 		return md, nil
 	}
@@ -137,8 +104,8 @@ func (c *Cache) Get(ctx context.Context, job, instance, metric string) (*Entry, 
 			for _, md := range mds {
 				// Only set if we haven't seen the metric before. Changes to metadata
 				// are discouraged.
-				if _, ok := c.metadata[md.Metric]; !ok {
-					c.metadata[md.Metric] = md
+				if _, ok := c.metadata[md.Entry.Metric]; !ok {
+					c.metadata[md.Entry.Metric] = md
 				}
 			}
 			c.seenJobs[job] = struct{}{}
@@ -158,14 +125,14 @@ func (c *Cache) Get(ctx context.Context, job, instance, metric string) (*Entry, 
 	// contain at least one `:` character. In that case we can generally assume that
 	// it is a gauge. We leave the help text empty.
 	if strings.Contains(metric, ":") {
-		entry := &Entry{Metric: metric, MetricType: textparse.MetricTypeGauge}
+		entry := &config.MetadataEntry{Metric: metric, MetricType: textparse.MetricTypeGauge}
 		return entry, nil
 	}
 	return nil, nil
 }
 
-func (c *Cache) fetch(ctx context.Context, typ string, q url.Values) (_ *apiResponse, retErr error) {
-	ctx, cancel := context.WithTimeout(ctx, defaultPrometheusTimeout)
+func (c *Cache) fetch(ctx context.Context, typ string, q url.Values) (_ *common.APIResponse, retErr error) {
+	ctx, cancel := context.WithTimeout(ctx, config.DefaultPrometheusTimeout)
 	defer cancel()
 
 	defer fetchTimer.Start(ctx).Stop(&retErr)
@@ -184,7 +151,7 @@ func (c *Cache) fetch(ctx context.Context, typ string, q url.Values) (_ *apiResp
 	}
 	defer resp.Body.Close()
 
-	var apiResp apiResponse
+	var apiResp common.APIResponse
 	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
 		return nil, errors.Wrap(err, "decode response")
 	}
@@ -216,11 +183,11 @@ func (c *Cache) fetchMetric(ctx context.Context, job, instance, metric string) (
 	d := apiResp.Data[0]
 
 	// Convert legacy "untyped" type used before Prometheus 2.5.
-	if d.Type == MetricTypeUntyped {
+	if d.Type == config.MetricTypeUntyped {
 		d.Type = textparse.MetricTypeUnknown
 	}
 	return &cacheEntry{
-		Entry:     &Entry{Metric: metric, MetricType: d.Type, Help: d.Help},
+		Entry:     &config.MetadataEntry{Metric: metric, MetricType: d.Type, Help: d.Help},
 		lastFetch: now,
 		found:     true,
 	}, nil
@@ -252,11 +219,11 @@ func (c *Cache) fetchBatch(ctx context.Context, job, instance string) (map[strin
 
 	for _, md := range apiResp.Data {
 		// Convert legacy "untyped" type used before Prometheus 2.5.
-		if md.Type == MetricTypeUntyped {
+		if md.Type == config.MetricTypeUntyped {
 			md.Type = textparse.MetricTypeUnknown
 		}
 		result[md.Metric] = &cacheEntry{
-			Entry:     &Entry{Metric: md.Metric, MetricType: md.Type, Help: md.Help},
+			Entry:     &config.MetadataEntry{Metric: md.Metric, MetricType: md.Type, Help: md.Help},
 			lastFetch: now,
 			found:     true,
 		}
@@ -269,46 +236,32 @@ func (c *Cache) fetchBatch(ctx context.Context, job, instance string) (map[strin
 	return result, nil
 }
 
-var internalMetrics = map[string]*Entry{
-	"up": &Entry{
+var internalMetrics = map[string]*config.MetadataEntry{
+	"up": &config.MetadataEntry{
 		Metric:     "up",
 		MetricType: textparse.MetricTypeGauge,
-		ValueType:  DOUBLE,
+		ValueType:  config.DOUBLE,
 		Help:       "Up indicates whether the last target scrape was successful"},
-	"scrape_samples_scraped": &Entry{
+	"scrape_samples_scraped": &config.MetadataEntry{
 		Metric:     "scrape_samples_scraped",
 		MetricType: textparse.MetricTypeGauge,
-		ValueType:  DOUBLE,
+		ValueType:  config.DOUBLE,
 		Help:       "How many samples were scraped during the last successful scrape"},
-	"scrape_duration_seconds": &Entry{
+	"scrape_duration_seconds": &config.MetadataEntry{
 		Metric:     "scrape_duration_seconds",
 		MetricType: textparse.MetricTypeGauge,
-		ValueType:  DOUBLE,
+		ValueType:  config.DOUBLE,
 		Help:       "Duration of the last scrape"},
-	"scrape_samples_post_metric_relabeling": &Entry{
+	"scrape_samples_post_metric_relabeling": &config.MetadataEntry{
 		Metric:     "scrape_samples_post_metric_relabeling",
 		MetricType: textparse.MetricTypeGauge,
-		ValueType:  DOUBLE,
+		ValueType:  config.DOUBLE,
 		Help:       "How many samples were ingested after relabeling"},
-	"scrape_series_added": &Entry{
+	"scrape_series_added": &config.MetadataEntry{
 		Metric:     "scrape_series_added",
 		MetricType: textparse.MetricTypeGauge,
-		ValueType:  DOUBLE,
+		ValueType:  config.DOUBLE,
 		Help:       "Number of new series in the last successful scrape"},
-}
-
-type apiResponse struct {
-	Status    string        `json:"status"`
-	Data      []apiMetadata `json:"data"`
-	Error     string        `json:"error"`
-	ErrorType string        `json:"errorType"`
-}
-
-type apiMetadata struct {
-	// We do not decode the target information.
-	Metric string               `json:"metric"`
-	Help   string               `json:"help"`
-	Type   textparse.MetricType `json:"type"`
 }
 
 var lvalReplacer = strings.NewReplacer(
