@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -43,6 +44,7 @@ import (
 
 type (
 	testServer struct {
+		lock     sync.Mutex
 		t        *testing.T
 		stops    chan func()
 		metrics  chan *metrics.ResourceMetrics
@@ -51,6 +53,7 @@ type (
 	}
 
 	traceServer struct {
+		lock  sync.Mutex
 		t     *testing.T
 		stops chan func()
 		spans chan *traces.ResourceSpans
@@ -417,6 +420,9 @@ func (s *traceServer) Export(ctx context.Context, req *traceService.ExportTraceS
 }
 
 func (s *testServer) Stop() {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
 	close(s.stops)
 
 	for stop := range s.stops {
@@ -434,6 +440,9 @@ func newTestServer(t *testing.T, trailers grpcmeta.MD) *testServer {
 }
 
 func (s *traceServer) Stop() {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
 	close(s.stops)
 
 	for stop := range s.stops {
