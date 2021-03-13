@@ -142,7 +142,7 @@ func TestValidationErrorReporting(t *testing.T) {
 			"--prometheus.wal", dir,
 			"--startup.timeout=5s",
 			"--destination.timeout=1s",
-			"--log.level=info",
+			"--log.level=debug",
 		)...)
 
 	cmd.Env = append(os.Environ(), "RUN_MAIN=1")
