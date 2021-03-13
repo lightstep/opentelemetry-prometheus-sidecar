@@ -17,6 +17,7 @@ package otlp
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -93,6 +94,7 @@ func (i *InvalidSet) observe(_ context.Context, result metric.Int64ObserverResul
 		for name := range nm {
 			names = append(names, name)
 		}
+		sort.Strings(names)
 		level.Warn(i.logger).Log(
 			"reason", strings.ReplaceAll(reason, "-", " "),
 			"names", fmt.Sprint(names),
