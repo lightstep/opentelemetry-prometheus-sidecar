@@ -49,14 +49,16 @@ func (ts *testServer) runPrometheusService(cfg promtest.Config) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 
+	ts.lock.Lock()
+	ts.stops <- cancel
+	ts.lock.Unlock()
+
 	go server.ListenAndServe()
 
 	go func() {
 		<-ctx.Done()
 		server.Shutdown(ctx)
 	}()
-
-	ts.stops <- cancel
 }
 
 // As soon as prometheus starts responding to http request should be able to accept Interrupt signals for a gracefull shutdown.

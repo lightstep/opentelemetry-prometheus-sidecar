@@ -37,7 +37,9 @@ import (
 )
 
 func TestValidationErrorReporting(t *testing.T) {
-	t.Skip("skipping test does not pass in CI.")
+	if testing.Short() {
+		t.Skip("skipping test in short mode.")
+	}
 
 	// Create a WAL with 3 series, 5 points.  Two of them are
 	// counters, so after resets we have 3 series, 3 points.

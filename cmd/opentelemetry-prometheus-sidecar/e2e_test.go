@@ -347,7 +347,9 @@ func (ts *testServer) runMetricsService() {
 	grpcServer := grpc.NewServer(serverOption)
 	metricService.RegisterMetricsServiceServer(grpcServer, ts)
 
+	ts.lock.Lock()
 	ts.stops <- grpcServer.Stop
+	ts.lock.Unlock()
 
 	if err := grpcServer.Serve(listener); err != nil {
 		log.Fatalf("failed to serve: %s", err)
@@ -368,7 +370,9 @@ func (ms *testServer) runDiagnosticsService(ts *traceServer) {
 		traceService.RegisterTraceServiceServer(grpcServer, ts)
 	}
 
+	ms.lock.Lock()
 	ms.stops <- grpcServer.Stop
+	ms.lock.Unlock()
 
 	if err := grpcServer.Serve(listener); err != nil {
 		log.Fatalf("failed to serve: %s", err)
