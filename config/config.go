@@ -82,12 +82,13 @@ an OpenTelemetry (https://opentelemetry.io) Protocol endpoint.
 
 	// Some metric names are shared across packages, for healthchecking.
 
-	SidecarPrefix       = "sidecar."
-	ProcessedMetric     = "sidecar.samples.processed"
-	ProducedMetric      = "sidecar.samples.produced"
-	OutcomeMetric       = "sidecar.queue.outcome"
-	DroppedSeriesMetric = "sidecar.series.dropped"
-	DroppedPointsMetric = "sidecar.points.dropped"
+	SidecarPrefix        = "sidecar."
+	ProcessedMetric      = "sidecar.samples.processed"
+	ProducedMetric       = "sidecar.samples.produced"
+	OutcomeMetric        = "sidecar.queue.outcome"
+	DroppedSeriesMetric  = "sidecar.series.dropped"
+	DroppedPointsMetric  = "sidecar.points.dropped"
+	InvalidMetricsMetric = "sidecar.metrics.invalid"
 
 	OutcomeKey          = attribute.Key("outcome")
 	OutcomeSuccessValue = "success"

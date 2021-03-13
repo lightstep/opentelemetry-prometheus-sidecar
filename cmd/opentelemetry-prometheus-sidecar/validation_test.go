@@ -22,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/common"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	metrics "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
 	otlpmetrics "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
@@ -222,14 +223,14 @@ func TestValidationErrorReporting(t *testing.T) {
 				case config.DroppedSeriesMetric:
 					droppedSeriesFound = true
 					require.Equal(t, int64(1), point.(*otlpmetrics.IntDataPoint).Value)
-				case "sidecar.metrics.invalid":
+				case config.InvalidMetricsMetric:
 					invalidFound = true
 					labels := point.(*otlpmetrics.IntDataPoint).Labels
 
 					var reason, mname string
 					for _, label := range labels {
 						switch label.Key {
-						case "key_reason":
+						case string(common.DroppedKeyReason):
 							reason = label.Value
 						case "metric_name":
 							mname = label.Value
