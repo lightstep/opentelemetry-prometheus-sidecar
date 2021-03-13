@@ -2,6 +2,7 @@ package promtest
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math/rand"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/common"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 )
@@ -104,6 +106,24 @@ func NewFakePrometheus(cfg Config) *FakePrometheus {
 				panic(err)
 			}
 		}
+	})
+
+	var metaResp common.APIResponse
+	for _, entry := range cfg.Metadata {
+		metaResp.Data = append(metaResp.Data, common.APIMetadata{
+			Metric: entry.Metric,
+			Help:   "helpful",
+			Type:   entry.MetricType,
+		})
+	}
+	metaRespData, err := json.Marshal(metaResp)
+	if err != nil {
+		panic(err)
+	}
+
+	fp.mux.HandleFunc("/"+config.PrometheusMetadataEndpointPath, func(w http.ResponseWriter, r *http.Request) {
+
+		_, _ = w.Write(metaRespData)
 	})
 	return fp
 }

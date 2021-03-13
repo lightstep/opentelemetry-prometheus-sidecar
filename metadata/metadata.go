@@ -25,8 +25,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/common"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
-	"github.com/lightstep/opentelemetry-prometheus-sidecar/prometheus"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/textparse"
@@ -131,7 +131,7 @@ func (c *Cache) Get(ctx context.Context, job, instance, metric string) (*config.
 	return nil, nil
 }
 
-func (c *Cache) fetch(ctx context.Context, typ string, q url.Values) (_ *prometheus.APIResponse, retErr error) {
+func (c *Cache) fetch(ctx context.Context, typ string, q url.Values) (_ *common.APIResponse, retErr error) {
 	ctx, cancel := context.WithTimeout(ctx, config.DefaultPrometheusTimeout)
 	defer cancel()
 
@@ -151,7 +151,7 @@ func (c *Cache) fetch(ctx context.Context, typ string, q url.Values) (_ *prometh
 	}
 	defer resp.Body.Close()
 
-	var apiResp prometheus.APIResponse
+	var apiResp common.APIResponse
 	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
 		return nil, errors.Wrap(err, "decode response")
 	}

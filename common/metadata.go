@@ -1,4 +1,4 @@
-package prometheus
+package common
 
 import "github.com/prometheus/prometheus/pkg/textparse"
 
