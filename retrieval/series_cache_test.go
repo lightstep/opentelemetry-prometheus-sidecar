@@ -24,8 +24,8 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/internal/promtest"
-	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/textparse"
 	"github.com/prometheus/prometheus/tsdb/record"
@@ -53,7 +53,7 @@ func TestScrapeCache_GarbageCollect(t *testing.T) {
 	}()
 	logger := log.NewLogfmtLogger(logBuffer)
 	c := newSeriesCache(logger, dir, nil, nil,
-		promtest.MetadataMap{"//": &metadata.Entry{MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE}},
+		promtest.MetadataMap{"//": &config.MetadataEntry{MetricType: textparse.MetricTypeGauge, ValueType: config.DOUBLE}},
 		"",
 		labels.FromStrings(),
 	)
@@ -204,7 +204,7 @@ func TestSeriesCache_Refresh(t *testing.T) {
 		t.Fatalf("unexpected series entry found: %v", entry)
 	}
 
-	// Set a series but the metadata.
+	// Set a series but the config.
 	if err := c.set(ctx, refID, labels.FromStrings("__name__", "metric1", "job", "job1", "instance", "inst1"), 5); err != nil {
 		t.Fatalf("unexpected error: %s", err)
 	}
@@ -219,7 +219,7 @@ func TestSeriesCache_Refresh(t *testing.T) {
 
 	// Populate the getters with data.
 	extraLabels = labels.FromStrings("__resource_a", "resource2_a")
-	metadataMap["job1/inst1/metric1"] = &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE}
+	metadataMap["job1/inst1/metric1"] = &config.MetadataEntry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: config.DOUBLE}
 
 	// Hack the timestamp of the last update to be sufficiently in the past that a refresh
 	// will be triggered.
@@ -270,7 +270,7 @@ func TestSeriesCache_Filter(t *testing.T) {
 	// Populate the getters with data.
 	extraLabels := labels.FromStrings("__resource_a", "resource2_a")
 	metadataMap := promtest.MetadataMap{
-		"job1/inst1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
+		"job1/inst1/metric1": &config.MetadataEntry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: config.DOUBLE},
 	}
 	logBuffer := &bytes.Buffer{}
 	defer func() {
@@ -320,8 +320,8 @@ func TestSeriesCache_Filter_Complex(t *testing.T) {
 	// Populate the getters with data.
 	extraLabels := labels.FromStrings("__resource_a", "resource2_a")
 	metadataMap := promtest.MetadataMap{
-		"job1/inst1/github_metric": &metadata.Entry{Metric: "github_metric", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
-		"job1/inst1/slack_metric":  &metadata.Entry{Metric: "slack_metric", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
+		"job1/inst1/github_metric": &config.MetadataEntry{Metric: "github_metric", MetricType: textparse.MetricTypeGauge, ValueType: config.DOUBLE},
+		"job1/inst1/slack_metric":  &config.MetadataEntry{Metric: "slack_metric", MetricType: textparse.MetricTypeGauge, ValueType: config.DOUBLE},
 	}
 	logBuffer := &bytes.Buffer{}
 	defer func() {
@@ -373,8 +373,8 @@ func TestSeriesCache_RenameMetric(t *testing.T) {
 	// Populate the getters with data.
 	extraLabels := labels.FromStrings("__resource_a", "resource2_a")
 	metadataMap := promtest.MetadataMap{
-		"job1/inst1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
-		"job1/inst1/metric2": &metadata.Entry{Metric: "metric2", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
+		"job1/inst1/metric1": &config.MetadataEntry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: config.DOUBLE},
+		"job1/inst1/metric2": &config.MetadataEntry{Metric: "metric2", MetricType: textparse.MetricTypeGauge, ValueType: config.DOUBLE},
 	}
 	logBuffer := &bytes.Buffer{}
 	defer func() {
@@ -430,7 +430,7 @@ func TestSeriesCache_ResetBehavior(t *testing.T) {
 	logger := log.NewLogfmtLogger(logBuffer)
 	extraLabels := labels.FromStrings("__resource_a", "resource2_a")
 	metadataMap := promtest.MetadataMap{
-		"job1/inst1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
+		"job1/inst1/metric1": &config.MetadataEntry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: config.DOUBLE},
 	}
 	c := newSeriesCache(logger, "", nil, nil, metadataMap, "", extraLabels)
 

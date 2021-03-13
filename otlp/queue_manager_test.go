@@ -32,7 +32,6 @@ import (
 	resource_pb "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/resource/v1"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/internal/otlptest"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/internal/promtest"
-	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/prometheus/common/model"
@@ -95,7 +94,7 @@ func (c *TestStorageClient) expectSamples(samples []*metric_pb.ResourceMetrics) 
 		vs.Visit(ctx, func(
 			resource *resource_pb.Resource,
 			metricName string,
-			kind metadata.Kind,
+			kind config.Kind,
 			monotonic bool,
 			point interface{},
 		) error {
@@ -142,7 +141,7 @@ func (c *TestStorageClient) Store(req *metricsService.ExportMetricsServiceReques
 		vs.Visit(ctx, func(
 			resource *resource_pb.Resource,
 			metricName string,
-			kind metadata.Kind,
+			kind config.Kind,
 			monotonic bool,
 			point interface{},
 		) error {

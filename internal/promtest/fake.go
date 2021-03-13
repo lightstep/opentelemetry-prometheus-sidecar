@@ -11,14 +11,13 @@ import (
 	"time"
 
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
-	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 )
 
 // MetadataMap implements a MetadataGetter for exact matches of "job/instance/metric" inputs.
-type MetadataMap map[string]*metadata.Entry
+type MetadataMap map[string]*config.MetadataEntry
 
-func (m MetadataMap) Get(ctx context.Context, job, instance, metric string) (*metadata.Entry, error) {
+func (m MetadataMap) Get(ctx context.Context, job, instance, metric string) (*config.MetadataEntry, error) {
 	return m[job+"/"+instance+"/"+metric], nil
 }
 

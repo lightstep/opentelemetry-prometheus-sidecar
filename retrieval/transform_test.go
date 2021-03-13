@@ -21,17 +21,19 @@ import (
 	"time"
 
 	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	common_pb "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/common/v1"
 	metric_pb "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/internal/otlptest"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/internal/promtest"
-	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
 	"github.com/prometheus/common/version"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/textparse"
 	"github.com/prometheus/prometheus/tsdb/record"
 	messagediff "gopkg.in/d4l3k/messagediff.v1"
 )
+
+type metadataEntry = config.MetadataEntry
 
 // seriesMap implements seriesGetter.
 type seriesMap map[uint64]labels.Labels
@@ -215,20 +217,20 @@ func TestSampleBuilder(t *testing.T) {
 			resourceLabels: labels.FromStrings("resource_a", "abc"),
 			metadata: promtest.MetadataMap{
 				// Gauge as double.
-				"job1/instance1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
+				"job1/instance1/metric1": &metadataEntry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: config.DOUBLE},
 				// Gauge as integer.
-				"job1/instance1/metric3": &metadata.Entry{Metric: "metric3", MetricType: textparse.MetricTypeGauge, ValueType: metadata.INT64},
+				"job1/instance1/metric3": &metadataEntry{Metric: "metric3", MetricType: textparse.MetricTypeGauge, ValueType: config.INT64},
 				// Gauge as default value type (double).
-				"job1/instance1/metric5": &metadata.Entry{Metric: "metric5", MetricType: textparse.MetricTypeGauge},
+				"job1/instance1/metric5": &metadataEntry{Metric: "metric5", MetricType: textparse.MetricTypeGauge},
 				// Counter as double.
-				"job1/instance1/metric2": &metadata.Entry{Metric: "metric2", MetricType: textparse.MetricTypeCounter, ValueType: metadata.DOUBLE},
+				"job1/instance1/metric2": &metadataEntry{Metric: "metric2", MetricType: textparse.MetricTypeCounter, ValueType: config.DOUBLE},
 				// Counter as integer.
-				"job1/instance1/metric4": &metadata.Entry{Metric: "metric4", MetricType: textparse.MetricTypeCounter, ValueType: metadata.INT64},
+				"job1/instance1/metric4": &metadataEntry{Metric: "metric4", MetricType: textparse.MetricTypeCounter, ValueType: config.INT64},
 				// Counter as default value type (double).
-				"job1/instance1/metric6":              &metadata.Entry{Metric: "metric6", MetricType: textparse.MetricTypeCounter},
-				"job1/instance1/labelnum_ok":          &metadata.Entry{Metric: "labelnum_ok", MetricType: textparse.MetricTypeUnknown, ValueType: metadata.DOUBLE},
-				"job1/instance1/labelnum_11k":         &metadata.Entry{Metric: "labelnum_11k", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
-				"job2/instance1/resource_from_metric": &metadata.Entry{Metric: "resource_from_metric", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
+				"job1/instance1/metric6":              &metadataEntry{Metric: "metric6", MetricType: textparse.MetricTypeCounter},
+				"job1/instance1/labelnum_ok":          &metadataEntry{Metric: "labelnum_ok", MetricType: textparse.MetricTypeUnknown, ValueType: config.DOUBLE},
+				"job1/instance1/labelnum_11k":         &metadataEntry{Metric: "labelnum_11k", MetricType: textparse.MetricTypeGauge, ValueType: config.DOUBLE},
+				"job2/instance1/resource_from_metric": &metadataEntry{Metric: "resource_from_metric", MetricType: textparse.MetricTypeGauge, ValueType: config.DOUBLE},
 			},
 			input: []record.RefSample{
 				{Ref: 2, T: 2000, V: 5.5}, // 0
@@ -401,7 +403,7 @@ func TestSampleBuilder(t *testing.T) {
 			name:           "absence of data",
 			resourceLabels: labels.FromStrings("resource_a", "abc"),
 			metadata: promtest.MetadataMap{
-				"job1/instance1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
+				"job1/instance1/metric1": &metadataEntry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: config.DOUBLE},
 			},
 			series: seriesMap{
 				1: labels.FromStrings("job", "job1", "instance", "instance_notfound", "__name__", "metric1"),
@@ -420,7 +422,7 @@ func TestSampleBuilder(t *testing.T) {
 			name:           "summary",
 			resourceLabels: labels.FromStrings("resource_a", "abc"),
 			metadata: promtest.MetadataMap{
-				"job1/instance1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeSummary, ValueType: metadata.DOUBLE},
+				"job1/instance1/metric1": &metadataEntry{Metric: "metric1", MetricType: textparse.MetricTypeSummary, ValueType: config.DOUBLE},
 			},
 			series: seriesMap{
 				1: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_sum"),
@@ -490,8 +492,8 @@ func TestSampleBuilder(t *testing.T) {
 			name:           "histogram",
 			resourceLabels: labels.FromStrings("resource_a", "abc"),
 			metadata: promtest.MetadataMap{
-				"job1/instance1/metric1":         &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeHistogram, ValueType: metadata.DOUBLE},
-				"job1/instance1/metric1_a_count": &metadata.Entry{Metric: "metric1_a_count", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
+				"job1/instance1/metric1":         &metadataEntry{Metric: "metric1", MetricType: textparse.MetricTypeHistogram, ValueType: config.DOUBLE},
+				"job1/instance1/metric1_a_count": &metadataEntry{Metric: "metric1_a_count", MetricType: textparse.MetricTypeGauge, ValueType: config.DOUBLE},
 			},
 			series: seriesMap{
 				1: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_sum"),
@@ -590,7 +592,7 @@ func TestSampleBuilder(t *testing.T) {
 			// Both instances map to the same monitored resource and will thus produce the same series.
 			resourceLabels: labels.FromStrings("resource_a", "abc"),
 			metadata: promtest.MetadataMap{
-				"job1/instance1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeCounter, ValueType: metadata.DOUBLE},
+				"job1/instance1/metric1": &metadataEntry{Metric: "metric1", MetricType: textparse.MetricTypeCounter, ValueType: config.DOUBLE},
 			},
 			input: []record.RefSample{
 				// First sample for both series will define the reset timestamp.
@@ -641,7 +643,7 @@ func TestSampleBuilder(t *testing.T) {
 			},
 			resourceLabels: labels.FromStrings("resource_a", "abc"),
 			metadata: promtest.MetadataMap{
-				"job1/instance1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
+				"job1/instance1/metric1": &metadataEntry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: config.DOUBLE},
 			},
 			metricsPrefix: "test.otel.io/",
 			input: []record.RefSample{
@@ -670,7 +672,7 @@ func TestSampleBuilder(t *testing.T) {
 			},
 			resourceLabels: labels.FromStrings("resource_a", "abc"),
 			metadata: promtest.MetadataMap{
-				"job1/instance1/metric1_total": &metadata.Entry{Metric: "metric1_total", MetricType: textparse.MetricTypeCounter, ValueType: metadata.DOUBLE},
+				"job1/instance1/metric1_total": &metadataEntry{Metric: "metric1_total", MetricType: textparse.MetricTypeCounter, ValueType: config.DOUBLE},
 			},
 			input: []record.RefSample{
 				{Ref: 1, T: 2000, V: 5.5},
@@ -702,7 +704,7 @@ func TestSampleBuilder(t *testing.T) {
 			},
 			resourceLabels: labels.FromStrings("resource_a", "abc"),
 			metadata: promtest.MetadataMap{
-				"job1/instance1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeCounter, ValueType: metadata.DOUBLE},
+				"job1/instance1/metric1": &metadataEntry{Metric: "metric1", MetricType: textparse.MetricTypeCounter, ValueType: config.DOUBLE},
 			},
 			input: []record.RefSample{
 				{Ref: 1, T: 2000, V: 5.5},
@@ -734,7 +736,7 @@ func TestSampleBuilder(t *testing.T) {
 			},
 			resourceLabels: labels.FromStrings("resource_a", "abc"),
 			metadata: promtest.MetadataMap{
-				"job1/instance1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
+				"job1/instance1/metric1": &metadataEntry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: config.DOUBLE},
 			},
 			input: []record.RefSample{
 				{Ref: 1, T: 3000, V: 8},
@@ -760,7 +762,7 @@ func TestSampleBuilder(t *testing.T) {
 				1: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_count"),
 			},
 			metadata: promtest.MetadataMap{
-				"job1/instance1/metric1": &metadata.Entry{Metric: "metric1_count", MetricType: textparse.MetricTypeSummary, ValueType: metadata.DOUBLE},
+				"job1/instance1/metric1": &metadataEntry{Metric: "metric1_count", MetricType: textparse.MetricTypeSummary, ValueType: config.DOUBLE},
 			},
 			input: []record.RefSample{
 				// A first non-NaN sample is necessary to avoid false-positives, since the
@@ -780,7 +782,7 @@ func TestSampleBuilder(t *testing.T) {
 				1: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_count"),
 			},
 			metadata: promtest.MetadataMap{
-				"job1/instance1/metric1": &metadata.Entry{Metric: "metric1_count", MetricType: textparse.MetricTypeSummary, ValueType: metadata.DOUBLE},
+				"job1/instance1/metric1": &metadataEntry{Metric: "metric1_count", MetricType: textparse.MetricTypeSummary, ValueType: config.DOUBLE},
 			},
 			input: []record.RefSample{
 				// A first non-NaN sample is necessary to avoid false-positives, since the
@@ -812,7 +814,7 @@ func TestSampleBuilder(t *testing.T) {
 			},
 			resourceLabels: labels.FromStrings("resource_a", "abc"),
 			metadata: promtest.MetadataMap{
-				"job1/instance1/metric1": &metadata.Entry{Metric: "metric1", MetricType: textparse.MetricTypeHistogram, ValueType: metadata.DOUBLE},
+				"job1/instance1/metric1": &metadataEntry{Metric: "metric1", MetricType: textparse.MetricTypeHistogram, ValueType: config.DOUBLE},
 			},
 			input: []record.RefSample{
 				{Ref: 1, T: 2000, V: 5.5},

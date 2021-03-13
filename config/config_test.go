@@ -20,7 +20,6 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
-	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/snappy"
 	"github.com/prometheus/prometheus/pkg/textparse"
 	"github.com/stretchr/testify/require"
@@ -44,7 +43,7 @@ func TestProcessFileConfig(t *testing.T) {
 		name           string
 		yaml           string
 		renameMappings map[string]string
-		staticMetadata []*metadata.Entry
+		staticMetadata []*config.MetadataEntry
 		errText        string
 	}{
 		{
@@ -75,10 +74,10 @@ static_metadata:
   value_type: double
 `,
 			map[string]string{"from": "to"},
-			[]*metadata.Entry{
-				&metadata.Entry{Metric: "int64_counter", MetricType: textparse.MetricTypeCounter, ValueType: metadata.INT64, Help: "help1"},
-				&metadata.Entry{Metric: "double_gauge", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE, Help: "help2"},
-				&metadata.Entry{Metric: "default_gauge", MetricType: textparse.MetricTypeGauge, ValueType: metadata.DOUBLE},
+			[]*config.MetadataEntry{
+				&config.MetadataEntry{Metric: "int64_counter", MetricType: textparse.MetricTypeCounter, ValueType: config.INT64, Help: "help1"},
+				&config.MetadataEntry{Metric: "double_gauge", MetricType: textparse.MetricTypeGauge, ValueType: config.DOUBLE, Help: "help2"},
+				&config.MetadataEntry{Metric: "default_gauge", MetricType: textparse.MetricTypeGauge, ValueType: config.DOUBLE},
 			},
 			"",
 		},

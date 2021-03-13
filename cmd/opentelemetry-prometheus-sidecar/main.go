@@ -172,7 +172,7 @@ func Main() bool {
 		ScrapeIntervals: intervals,
 	}
 
-	metadataURL, err := promURL.Parse(metadata.DefaultEndpointPath)
+	metadataURL, err := promURL.Parse(config.PrometheusMetadataEndpointPath)
 	if err != nil {
 		panic(err)
 	}
