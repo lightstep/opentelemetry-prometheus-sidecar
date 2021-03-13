@@ -17,7 +17,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -44,7 +43,6 @@ import (
 
 type (
 	testServer struct {
-		lock     sync.Mutex
 		t        *testing.T
 		stops    chan func()
 		metrics  chan *metrics.ResourceMetrics
@@ -53,7 +51,6 @@ type (
 	}
 
 	traceServer struct {
-		lock  sync.Mutex
 		t     *testing.T
 		stops chan func()
 		spans chan *traces.ResourceSpans
@@ -169,7 +166,7 @@ func TestE2E(t *testing.T) {
 	ts := newTestServer(t, nil)
 
 	// start gRPC service
-	go ts.runMetricsService()
+	ts.runMetricsService()
 
 	// Run prometheus
 	promCmd := exec.CommandContext(
@@ -347,13 +344,19 @@ func (ts *testServer) runMetricsService() {
 	grpcServer := grpc.NewServer(serverOption)
 	metricService.RegisterMetricsServiceServer(grpcServer, ts)
 
-	ts.lock.Lock()
-	ts.stops <- grpcServer.Stop
-	ts.lock.Unlock()
+	ctx, cancel := context.WithCancel(context.Background())
+	ts.stops <- cancel
 
-	if err := grpcServer.Serve(listener); err != nil {
-		log.Fatalf("failed to serve: %s", err)
-	}
+	go func() {
+		if err := grpcServer.Serve(listener); err != nil {
+			log.Fatalf("failed to serve: %s", err)
+		}
+	}()
+
+	go func() {
+		<-ctx.Done()
+		grpcServer.Stop()
+	}()
 }
 
 // runDiagnosticsService is like runMetricService, but uses the
@@ -370,13 +373,19 @@ func (ms *testServer) runDiagnosticsService(ts *traceServer) {
 		traceService.RegisterTraceServiceServer(grpcServer, ts)
 	}
 
-	ms.lock.Lock()
-	ms.stops <- grpcServer.Stop
-	ms.lock.Unlock()
+	ctx, cancel := context.WithCancel(context.Background())
+	ms.stops <- cancel
 
-	if err := grpcServer.Serve(listener); err != nil {
-		log.Fatalf("failed to serve: %s", err)
-	}
+	go func() {
+		if err := grpcServer.Serve(listener); err != nil {
+			log.Fatalf("failed to serve: %s", err)
+		}
+	}()
+
+	go func() {
+		<-ctx.Done()
+		grpcServer.Stop()
+	}()
 }
 
 func (s *testServer) Export(ctx context.Context, req *metricService.ExportMetricsServiceRequest) (*metricService.ExportMetricsServiceResponse, error) {
@@ -424,9 +433,6 @@ func (s *traceServer) Export(ctx context.Context, req *traceService.ExportTraceS
 }
 
 func (s *testServer) Stop() {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-
 	close(s.stops)
 
 	for stop := range s.stops {
@@ -444,9 +450,6 @@ func newTestServer(t *testing.T, trailers grpcmeta.MD) *testServer {
 }
 
 func (s *traceServer) Stop() {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-
 	close(s.stops)
 
 	for stop := range s.stops {

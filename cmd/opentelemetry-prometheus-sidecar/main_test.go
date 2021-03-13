@@ -49,9 +49,7 @@ func (ts *testServer) runPrometheusService(cfg promtest.Config) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 
-	ts.lock.Lock()
 	ts.stops <- cancel
-	ts.lock.Unlock()
 
 	go server.ListenAndServe()
 
@@ -248,7 +246,7 @@ func TestSuperStackDump(t *testing.T) {
 		)...)
 
 	ms := newTestServer(t, nil)
-	go ms.runMetricsService()
+	ms.runMetricsService()
 
 	// Note: there's no metadata api here, we'll see a "metadata
 	// not found" failure in the log. We could fix this by configuring
@@ -256,7 +254,7 @@ func TestSuperStackDump(t *testing.T) {
 	ms.runPrometheusService(promtest.Config{})
 
 	ts := newTraceServer(t)
-	go ms.runDiagnosticsService(ts)
+	ms.runDiagnosticsService(ts)
 
 	cmd.Env = append(os.Environ(), "RUN_MAIN=1")
 	var bout, berr bytes.Buffer

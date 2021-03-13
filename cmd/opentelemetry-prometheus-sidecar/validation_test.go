@@ -37,9 +37,8 @@ import (
 )
 
 func TestValidationErrorReporting(t *testing.T) {
-	if true { // testing.Short()
-		// t.Skip("skipping test in short mode.")
-		t.Skip("skipping test TODO(jmacd): times out in CI, passes reliably in dev.")
+	if testing.Short() {
+		t.Skip("skipping test in short mode.")
 	}
 
 	// Create a WAL with 3 series, 5 points.  Two of them are
@@ -111,8 +110,8 @@ func TestValidationErrorReporting(t *testing.T) {
 		"otlp-invalid-reason2": {"gauge", "mistake"},
 	})
 	defer ms.Stop()
-	go ms.runDiagnosticsService(nil)
-	go ms.runPrometheusService(promtest.Config{
+	ms.runDiagnosticsService(nil)
+	ms.runPrometheusService(promtest.Config{
 		// Conflicting types for "counter" and "gauge".
 		Metadata: promtest.MetadataMap{
 			"job1/inst1/counter": &config.MetadataEntry{
