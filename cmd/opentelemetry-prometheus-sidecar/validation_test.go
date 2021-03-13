@@ -24,7 +24,6 @@ import (
 
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/common"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
-	metrics "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
 	otlpmetrics "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
 	otlpresource "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/resource/v1"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/internal/otlptest"
@@ -158,17 +157,10 @@ func TestValidationErrorReporting(t *testing.T) {
 	stopCh := make(chan struct{})
 
 	// Wait for 3 specific points.
-	timer := time.NewTimer(time.Second * 10)
 	go func() {
 		defer close(stopCh)
 		for got := 0; got < 3; {
-			var data *metrics.ResourceMetrics
-
-			select {
-			case data = <-ms.metrics:
-			case <-timer.C:
-				return
-			}
+			data := <-ms.metrics
 
 			var vs otlptest.VisitorState
 			vs.Visit(context.Background(), func(
@@ -194,19 +186,12 @@ func TestValidationErrorReporting(t *testing.T) {
 	_ = cmd.Process.Signal(os.Interrupt)
 
 	// Wait for invalid metrics.
-	timer = time.NewTimer(time.Second * 10)
 	invalid := map[string]bool{}
 	go func() {
 		defer close(stopCh)
 		var droppedPointsFound, droppedSeriesFound, invalidFound bool
 		for !droppedPointsFound || !droppedSeriesFound || !invalidFound {
-			var data *metrics.ResourceMetrics
-
-			select {
-			case data = <-ms.metrics:
-			case <-timer.C:
-				return
-			}
+			data := <-ms.metrics
 
 			var vs otlptest.VisitorState
 			vs.Visit(context.Background(), func(
