@@ -451,7 +451,7 @@ Metrics from the subordinate process can help identify issues once the first met
 
 **Internal Metrics**
 
-| Metric Name | Metric Type | Description | Additional Tags |
+| Metric Name | Metric Type | Description | Additional Attributes |
 | --- | --- | --- | ---|
 | sidecar.connect.duration | histogram | how many attempts to connect (and how long) | `error`: true, false |
 | sidecar.export.duration | histogram | how many attempts to export (and how long) | `error`: true, false |
