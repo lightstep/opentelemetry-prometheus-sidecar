@@ -55,17 +55,22 @@ func NewFakePrometheus(cfg Config) *FakePrometheus {
 	}
 
 	fp.mux.HandleFunc("/-/ready", func(w http.ResponseWriter, r *http.Request) {
+
 		fp.lock.Lock()
 		defer fp.lock.Unlock()
+		telemetry.DefaultLogger().Log("msg", "fake prometheus readiness", "ready", fp.ready)
 		if fp.ready {
 			w.WriteHeader(http.StatusOK)
 		} else {
 			w.WriteHeader(http.StatusServiceUnavailable)
 		}
 	})
+
 	fp.mux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
 		fp.lock.Lock()
 		defer fp.lock.Unlock()
+
+		telemetry.DefaultLogger().Log("msg", "fake prometheus /metrics")
 
 		_, err := w.Write([]byte(fmt.Sprintf(`
 # HELP %s A metric with a constant '1' value labeled by version, revision, branch, and goversion from which prometheus was built.
@@ -111,8 +116,12 @@ func NewFakePrometheus(cfg Config) *FakePrometheus {
 	// Serve instrument metadata
 	fp.mux.HandleFunc("/"+config.PrometheusMetadataEndpointPath,
 		func(w http.ResponseWriter, r *http.Request) {
+			telemetry.DefaultLogger().Log("msg", "fake prometheus /metrics")
+
 			var metaResp common.APIResponse
 			for _, entry := range cfg.Metadata {
+				// Note: This does not restrict to the results for the
+				// specific target.
 				metaResp.Data = append(metaResp.Data, common.APIMetadata{
 					Metric: entry.Metric,
 					Help:   "helpful",

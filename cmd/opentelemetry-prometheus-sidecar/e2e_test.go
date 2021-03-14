@@ -26,6 +26,7 @@ import (
 	common "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/common/v1"
 	metrics "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
 	traces "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/trace/v1"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/semconv"
@@ -348,6 +349,7 @@ func (ts *testServer) runMetricsService() {
 	ts.stops <- cancel
 
 	go func() {
+		telemetry.DefaultLogger().Log("msg", "starting test trace server")
 		if err := grpcServer.Serve(listener); err != nil {
 			log.Fatalf("failed to serve: %s", err)
 		}
@@ -377,6 +379,7 @@ func (ms *testServer) runDiagnosticsService(ts *traceServer) {
 	ms.stops <- cancel
 
 	go func() {
+		telemetry.DefaultLogger().Log("msg", "starting test metrics server")
 		if err := grpcServer.Serve(listener); err != nil {
 			log.Fatalf("failed to serve: %s", err)
 		}
@@ -389,6 +392,8 @@ func (ms *testServer) runDiagnosticsService(ts *traceServer) {
 }
 
 func (s *testServer) Export(ctx context.Context, req *metricService.ExportMetricsServiceRequest) (*metricService.ExportMetricsServiceResponse, error) {
+	telemetry.DefaultLogger().Log("msg", "test metrics export")
+
 	var emptyValue = metricService.ExportMetricsServiceResponse{}
 	md, ok := grpcMetadata.FromIncomingContext(ctx)
 
@@ -412,6 +417,8 @@ func (s *testServer) Export(ctx context.Context, req *metricService.ExportMetric
 }
 
 func (s *traceServer) Export(ctx context.Context, req *traceService.ExportTraceServiceRequest) (*traceService.ExportTraceServiceResponse, error) {
+	telemetry.DefaultLogger().Log("msg", "test trace export")
+
 	var emptyValue = traceService.ExportTraceServiceResponse{}
 	md, ok := grpcMetadata.FromIncomingContext(ctx)
 
@@ -433,6 +440,7 @@ func (s *traceServer) Export(ctx context.Context, req *traceService.ExportTraceS
 }
 
 func (s *testServer) Stop() {
+	telemetry.DefaultLogger().Log("msg", "stopping test metrics server")
 	close(s.stops)
 
 	for stop := range s.stops {
@@ -450,6 +458,8 @@ func newTestServer(t *testing.T, trailers grpcmeta.MD) *testServer {
 }
 
 func (s *traceServer) Stop() {
+	telemetry.DefaultLogger().Log("msg", "stopping test trace server")
+
 	close(s.stops)
 
 	for stop := range s.stops {
