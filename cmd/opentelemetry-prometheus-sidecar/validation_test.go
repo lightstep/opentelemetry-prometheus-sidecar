@@ -199,7 +199,7 @@ func TestValidationErrorReporting(t *testing.T) {
 		for !droppedPointsFound || !droppedSeriesFound || !invalidFound {
 			fmt.Println("WAITING FOR A METRIC")
 			data := <-ms.metrics
-			fmt.Println("GOT A METRIC")
+			fmt.Println("GOT A METRIC", data)
 
 			var vs otlptest.VisitorState
 			vs.Visit(context.Background(), func(
@@ -209,6 +209,7 @@ func TestValidationErrorReporting(t *testing.T) {
 				_ bool,
 				point interface{},
 			) error {
+				fmt.Println("NAME IS", name)
 				switch name {
 				case config.DroppedPointsMetric:
 					droppedPointsFound = true
