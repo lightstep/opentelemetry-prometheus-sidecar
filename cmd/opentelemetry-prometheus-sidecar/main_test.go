@@ -307,8 +307,8 @@ func TestSuperStackDump(t *testing.T) {
 
 	cancel()
 	wg.Wait()
-	ms.Stop()
-	ts.Stop()
+	defer ms.Stop()
+	defer ts.Stop()
 
 	lock.Lock()
 	defer lock.Unlock()
