@@ -70,6 +70,8 @@ func (m *Monitor) Get(ctx context.Context) (_ Result, retErr error) {
 		}
 	}()
 
+	telemetry.DefaultLogger().Log("msg", "ISSUE A METRICS GET")
+
 	// Note: copied from FetchMetricFamilies, Context added; this code path closes `ch`.
 	target := m.target.String()
 	req, err := http.NewRequestWithContext(ctx, "GET", target, nil)

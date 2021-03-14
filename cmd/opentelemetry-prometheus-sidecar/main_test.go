@@ -313,6 +313,9 @@ func TestSuperStackDump(t *testing.T) {
 	lock.Lock()
 	defer lock.Unlock()
 
+	t.Logf("stdout: %v\n", bout.String())
+	t.Logf("stderr: %v\n", berr.String())
+
 	foundCrash := false
 	for _, rs := range diagSpans {
 		for _, span := range rs.InstrumentationLibrarySpans[0].Spans {

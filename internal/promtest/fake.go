@@ -116,7 +116,7 @@ func NewFakePrometheus(cfg Config) *FakePrometheus {
 	// Serve instrument metadata
 	fp.mux.HandleFunc("/"+config.PrometheusMetadataEndpointPath,
 		func(w http.ResponseWriter, r *http.Request) {
-			telemetry.DefaultLogger().Log("msg", "fake prometheus /metrics")
+			telemetry.DefaultLogger().Log("msg", "fake prometheus targets api", "url", r.URL.String())
 
 			var metaResp common.APIResponse
 			for _, entry := range cfg.Metadata {
