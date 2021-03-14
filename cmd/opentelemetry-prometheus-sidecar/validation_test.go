@@ -179,7 +179,7 @@ func TestValidationErrorReporting(t *testing.T) {
 					require.InEpsilon(t, 100, point.(*otlpmetrics.DoubleDataPoint).Value, 0.01)
 					got++
 				default:
-					t.Errorf("unknown metric", name)
+					t.Errorf("unknown metric %v", name)
 				}
 				return nil
 			}, data)
