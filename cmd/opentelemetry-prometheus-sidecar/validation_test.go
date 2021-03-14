@@ -16,6 +16,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -177,6 +178,8 @@ func TestValidationErrorReporting(t *testing.T) {
 				case "counter", "gauge", "correct":
 					require.InEpsilon(t, 100, point.(*otlpmetrics.DoubleDataPoint).Value, 0.01)
 					got++
+				default:
+					t.Errorf("unknown metric", name)
 				}
 				return nil
 			}, data)
@@ -194,7 +197,9 @@ func TestValidationErrorReporting(t *testing.T) {
 		defer close(stopCh)
 		var droppedPointsFound, droppedSeriesFound, invalidFound bool
 		for !droppedPointsFound || !droppedSeriesFound || !invalidFound {
+			fmt.Println("WAITING FOR A METRIC")
 			data := <-ms.metrics
+			fmt.Println("GOT A METRIC")
 
 			var vs otlptest.VisitorState
 			vs.Visit(context.Background(), func(
@@ -236,11 +241,13 @@ func TestValidationErrorReporting(t *testing.T) {
 	// Keep taking data until the process shuts down.
 	go func() {
 		for {
+			fmt.Println("WAITING FOR A METRIC (2)")
 			select {
 			case <-ms.metrics:
 			case <-ctx.Done():
 				return
 			}
+			fmt.Println("GOT A METRIC (2)")
 		}
 	}()
 

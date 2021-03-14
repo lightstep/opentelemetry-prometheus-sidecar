@@ -408,7 +408,9 @@ func (s *testServer) Export(ctx context.Context, req *metricService.ExportMetric
 	}
 
 	for _, rm := range req.ResourceMetrics {
+		fmt.Println("PRODUCING A METRIC")
 		s.metrics <- rm
+		fmt.Println("PRODUCED A METRIC")
 	}
 
 	require.NoError(s.t, grpc.SetTrailer(ctx, s.trailers))
