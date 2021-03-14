@@ -102,6 +102,9 @@ func TestValidationErrorReporting(t *testing.T) {
 
 	require.NoError(t, w.Close())
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	// Create an OTLP server that returns the following gRPC Trailers
 	ms := newTestServer(t, grpcmeta.MD{
 		"otlp-points-dropped":  {"2"},
@@ -225,6 +228,17 @@ func TestValidationErrorReporting(t *testing.T) {
 				}
 				return nil
 			}, data)
+		}
+	}()
+
+	// Keep taking data until the process shuts down.
+	go func() {
+		for {
+			select {
+			case <-ms.metrics:
+			case <-ctx.Done():
+				return
+			}
 		}
 	}()
 
