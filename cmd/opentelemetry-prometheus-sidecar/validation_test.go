@@ -231,6 +231,8 @@ func TestValidationErrorReporting(t *testing.T) {
 		}
 	}()
 
+	<-stopCh
+
 	// Keep taking data until the process shuts down.
 	go func() {
 		for {
@@ -241,8 +243,6 @@ func TestValidationErrorReporting(t *testing.T) {
 			}
 		}
 	}()
-
-	<-stopCh
 
 	_ = cmd.Wait()
 
