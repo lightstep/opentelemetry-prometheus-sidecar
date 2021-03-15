@@ -299,7 +299,6 @@ func (c *Client) Store(req *metricsService.ExportMetricsServiceRequest) error {
 			// to return information about validation errors
 			// following a successful Export when any points or
 			// metrics were dropped.
-
 			c.parseResponseMetadata(ctx, md)
 
 			doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
