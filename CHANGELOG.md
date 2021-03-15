@@ -8,6 +8,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+## [0.19.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.19.0) - 2021-03-15
+
 ### Added
 - Adding `--healthcheck.threshold-ratio` to support tuning the acceptable error ratio
   when exporting metrics to a backend. (#146)
