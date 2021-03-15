@@ -90,6 +90,10 @@ const (
 	e2eMetricsPerScrape = 2
 	e2eTestScrapes      = 5
 
+	// largeQueue is set to be large enough to buffer all metric
+	// points/spans exported during a single test.
+	largeQueue = 10000
+
 	e2eTestScrapeResultFmt = `
 # HELP some_gauge Number of scrapes
 # TYPE some_gauge gauge
@@ -454,7 +458,7 @@ func newTestServer(t *testing.T, trailers grpcmeta.MD) *testServer {
 	return &testServer{
 		t:        t,
 		stops:    make(chan func(), 3), // 3 = max number of stop functions registered
-		metrics:  make(chan *metrics.ResourceMetrics, e2eTestScrapes),
+		metrics:  make(chan *metrics.ResourceMetrics, largeQueue),
 		trailers: trailers,
 	}
 }
@@ -473,6 +477,6 @@ func newTraceServer(t *testing.T) *traceServer {
 	return &traceServer{
 		t:     t,
 		stops: make(chan func(), 3), // 3 = max number of stop functions registered
-		spans: make(chan *traces.ResourceSpans, e2eTestScrapes),
+		spans: make(chan *traces.ResourceSpans, largeQueue),
 	}
 }
