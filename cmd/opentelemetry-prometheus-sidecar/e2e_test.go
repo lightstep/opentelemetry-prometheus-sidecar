@@ -416,6 +416,7 @@ func (s *testServer) Export(ctx context.Context, req *metricService.ExportMetric
 		s.metrics <- rm
 	}
 
+	fmt.Println("RETURNING THESE HEADERS", s.trailers)
 	require.NoError(s.t, grpc.SetTrailer(ctx, s.trailers))
 
 	return &emptyValue, nil
