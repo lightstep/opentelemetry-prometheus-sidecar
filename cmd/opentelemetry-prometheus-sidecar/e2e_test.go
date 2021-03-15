@@ -122,6 +122,10 @@ scrape_configs:
 )
 
 func TestE2E(t *testing.T) {
+	// Cancel-able context
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	// Pipe for readiness check
 	pipeRead, pipeWrite := io.Pipe()
 	ready := make(chan struct{})
@@ -135,6 +139,12 @@ func TestE2E(t *testing.T) {
 			// when the Prometheus server is ready.
 			scanner := bufio.NewScanner(pipeRead)
 			for scanner.Scan() {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
+
 				text := scanner.Text()
 				if strings.Contains(text, "Server is ready to receive web requests.") {
 					ready <- struct{}{}
@@ -162,10 +172,6 @@ func TestE2E(t *testing.T) {
 	if err := ioutil.WriteFile(cfgPath, []byte(e2eTestPromConfig), 0666); err != nil {
 		log.Fatal(err)
 	}
-
-	// Cancel-able context
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	ts := newTestServer(t, nil)
 

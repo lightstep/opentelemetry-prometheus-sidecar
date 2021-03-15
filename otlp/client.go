@@ -299,6 +299,7 @@ func (c *Client) Store(req *metricsService.ExportMetricsServiceRequest) error {
 			// to return information about validation errors
 			// following a successful Export when any points or
 			// metrics were dropped.
+			fmt.Println("METADATA RESP", md)
 
 			c.parseResponseMetadata(ctx, md)
 
