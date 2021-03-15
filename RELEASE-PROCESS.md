@@ -1,22 +1,9 @@
 # Release Process
 
-TODO(jmacd): The following repository does not exist, and this test does not run; run this test in CI.
-Make sure the [end-to-end test](https://github.com/lightstep/opentelemetry-prometheus-e2e) passes:
-```sh
-export KUBE_CLUSTER=integration-cluster
-# Random namespace name in the form e2e-xxxxxxxx.
-export KUBE_NAMESPACE="e2e-$(cat /dev/urandom | tr -dc 'a-z0-9' | fold -w 8 | head -n 1)"
-export GCP_PROJECT=prometheus-to-sd
-export GCP_REGION=us-central1-a
-
-make DOCKER_IMAGE_TAG=$USER push
-( cd kube/full ; SIDECAR_IMAGE_TAG=$USER ./deploy.sh )
-( cd ../lightstep-prometheus-e2e ; make )
-kubectl delete namespace ${KUBE_NAMESPACE}
-```
-
-Test the docker image built from main:
-docker pull lightstep/opentelemetry-prometheus-sidecar:main
-
-Once validated, create a release:
-git tag v0.1.2 && git push v0.1.2
+1. Once a change has been pushed to `main`, the [publish GitHub action](https://github.com/lightstep/opentelemetry-prometheus-sidecar/blob/main/.github/workflows/publish.yml) automatically publishes a new Docker image. See an example [here](https://github.com/lightstep/opentelemetry-prometheus-sidecar/actions/runs/654707395).
+2. Validate the changes by testing the new image.
+3. Update [VERSION](https://github.com/lightstep/opentelemetry-prometheus-sidecar/blob/main/VERSION) and [CHANGELOG.md](https://github.com/lightstep/opentelemetry-prometheus-sidecar/blob/main/CHANGELOG.md) to the updated version.
+4. Create a pull request for the update to the new version
+5. When the pull request is merged, create a tag for the new release. This will trigger the [release GitHub action](https://github.com/lightstep/opentelemetry-prometheus-sidecar/blob/main/.github/workflows/release.yml) which tags the build with the correct version number.
+    `git tag v0.1.2 && git push v0.1.2`
+6. Copy and paste the CHANGELOG section for the new version into the [release](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.19.0).
