@@ -23,7 +23,6 @@ func scrapeMetrics(inCtx context.Context, cfg config.PromReady) (Result, error) 
 	ctx, cancel := context.WithTimeout(inCtx, config.DefaultHealthCheckTimeout)
 	defer cancel()
 
-	cfg.Logger.Log("msg", "get prom startup interval")
 	mon := NewMonitor(&u)
 	return mon.Get(ctx)
 }

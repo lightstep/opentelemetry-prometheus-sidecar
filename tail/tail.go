@@ -254,7 +254,6 @@ func (t *Tailer) getPrometheusSegment() (int, error) {
 	ctx, cancel := context.WithTimeout(t.ctx, config.DefaultHealthCheckTimeout)
 	defer cancel()
 
-	t.logger.Log("msg", "get current prom segment")
 	res, err := t.monitor.Get(ctx)
 	if err != nil {
 		return 0, errors.Wrap(err, "prometheus /metrics")

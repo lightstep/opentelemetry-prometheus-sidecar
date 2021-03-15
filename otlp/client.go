@@ -250,10 +250,6 @@ func (c *Client) Selftest(ctx context.Context) error {
 // Store sends a batch of samples to the endpoint.
 func (c *Client) Store(req *metricsService.ExportMetricsServiceRequest) error {
 	tss := req.ResourceMetrics
-	level.Info(c.logger).Log(
-		"msg", "STORE",
-		"how", len(tss),
-	)
 	if len(tss) == 0 {
 		// Nothing to do, return silently.
 		return nil
@@ -332,7 +328,6 @@ func singleCount(values []string) (int, error) {
 }
 
 func (c *Client) parseResponseMetadata(ctx context.Context, md grpcMetadata.MD) {
-	level.Info(c.logger).Log("msg", "parsing response trailers", "metadata", fmt.Sprint(md))
 	for key, values := range md {
 		key = strings.ToLower(key)
 		if !strings.HasPrefix(key, "otlp-") {
