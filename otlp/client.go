@@ -250,6 +250,10 @@ func (c *Client) Selftest(ctx context.Context) error {
 // Store sends a batch of samples to the endpoint.
 func (c *Client) Store(req *metricsService.ExportMetricsServiceRequest) error {
 	tss := req.ResourceMetrics
+	level.Info(c.logger).Log(
+		"msg", "STORE",
+		"how", len(tss),
+	)
 	if len(tss) == 0 {
 		// Nothing to do, return silently.
 		return nil

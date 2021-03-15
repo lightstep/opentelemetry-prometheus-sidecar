@@ -157,6 +157,12 @@ Outer:
 				continue
 			}
 			for _, s := range series {
+				level.Error(r.logger).Log(
+					"msg", "read series",
+					"ref", s.Ref,
+					"err", s.Labels,
+				)
+
 				err = seriesCache.set(ctx, s.Ref, s.Labels, r.tailer.CurrentSegment())
 				if err != nil {
 					doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
@@ -184,6 +190,11 @@ Outer:
 				continue
 			}
 			processed, produced := len(samples), 0
+
+			level.Error(r.logger).Log(
+				"msg", "read samples",
+				"processed", processed,
+			)
 
 			for len(samples) > 0 {
 				select {
