@@ -16,7 +16,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -103,9 +102,6 @@ func TestValidationErrorReporting(t *testing.T) {
 
 	require.NoError(t, w.Close())
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	// Create an OTLP server that returns the following gRPC Trailers
 	ms := newTestServer(t, grpcmeta.MD{
 		"otlp-points-dropped":  {"2"},
@@ -146,7 +142,7 @@ func TestValidationErrorReporting(t *testing.T) {
 			"--prometheus.wal", dir,
 			"--startup.timeout=5s",
 			"--destination.timeout=1s",
-			"--log.level=debug",
+			"--log.level=info",
 		)...)
 
 	cmd.Env = append(os.Environ(), "RUN_MAIN=1")
@@ -197,9 +193,7 @@ func TestValidationErrorReporting(t *testing.T) {
 		defer close(stopCh)
 		var droppedPointsFound, droppedSeriesFound, invalidFound bool
 		for !droppedPointsFound || !droppedSeriesFound || !invalidFound {
-			fmt.Println("WAITING FOR A METRIC")
 			data := <-ms.metrics
-			fmt.Println("GOT A METRIC", data)
 
 			var vs otlptest.VisitorState
 			vs.Visit(context.Background(), func(
@@ -209,7 +203,6 @@ func TestValidationErrorReporting(t *testing.T) {
 				_ bool,
 				point interface{},
 			) error {
-				fmt.Println("NAME IS", name)
 				switch name {
 				case config.DroppedPointsMetric:
 					droppedPointsFound = true
@@ -238,19 +231,6 @@ func TestValidationErrorReporting(t *testing.T) {
 	}()
 
 	<-stopCh
-
-	// Keep taking data until the process shuts down.
-	go func() {
-		for {
-			fmt.Println("WAITING FOR A METRIC (2)")
-			select {
-			case <-ms.metrics:
-			case <-ctx.Done():
-				return
-			}
-			fmt.Println("GOT A METRIC (2)")
-		}
-	}()
 
 	_ = cmd.Wait()
 

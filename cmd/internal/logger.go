@@ -8,7 +8,12 @@ import (
 )
 
 func NewLogger(cfg config.MainConfig, isSupervisor bool) log.Logger {
-	if vlevel := cfg.LogConfig.Verbose; vlevel > 0 {
+	vlevel := cfg.LogConfig.Verbose
+	if cfg.LogConfig.Level == "debug" {
+		vlevel++
+	}
+
+	if vlevel > 0 {
 		telemetry.SetVerboseLevel(vlevel)
 	}
 

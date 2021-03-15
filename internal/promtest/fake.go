@@ -57,14 +57,12 @@ func NewFakePrometheus(cfg Config) *FakePrometheus {
 	fp.mux.HandleFunc("/-/ready", func(w http.ResponseWriter, r *http.Request) {
 		fp.lock.Lock()
 		defer fp.lock.Unlock()
-
 		if fp.ready {
 			w.WriteHeader(http.StatusOK)
 		} else {
 			w.WriteHeader(http.StatusServiceUnavailable)
 		}
 	})
-
 	fp.mux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
 		fp.lock.Lock()
 		defer fp.lock.Unlock()
@@ -115,8 +113,10 @@ func NewFakePrometheus(cfg Config) *FakePrometheus {
 		func(w http.ResponseWriter, r *http.Request) {
 			var metaResp common.APIResponse
 			for _, entry := range cfg.Metadata {
-				// Note: This does not restrict to the results for the
-				// specific target.
+				// Note: This endpoitn is used to request metadata
+				// for a specific target.  It does not use the target
+				// details and returns constant metadata for testing
+				// purposes.
 				metaResp.Data = append(metaResp.Data, common.APIMetadata{
 					Metric: entry.Metric,
 					Help:   "helpful",
