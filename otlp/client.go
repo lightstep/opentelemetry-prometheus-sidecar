@@ -328,6 +328,7 @@ func singleCount(values []string) (int, error) {
 }
 
 func (c *Client) parseResponseMetadata(ctx context.Context, md grpcMetadata.MD) {
+	level.Info(c.logger).Log("msg", "parsing response trailers", "metadata", fmt.Sprint(md))
 	for key, values := range md {
 		key = strings.ToLower(key)
 		if !strings.HasPrefix(key, "otlp-") {
