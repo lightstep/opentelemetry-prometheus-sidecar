@@ -113,7 +113,7 @@ func NewFakePrometheus(cfg Config) *FakePrometheus {
 		func(w http.ResponseWriter, r *http.Request) {
 			var metaResp common.APIResponse
 			for _, entry := range cfg.Metadata {
-				// Note: This endpoitn is used to request metadata
+				// Note: This endpoint is used to request metadata
 				// for a specific target.  It does not use the target
 				// details and returns constant metadata for testing
 				// purposes.
