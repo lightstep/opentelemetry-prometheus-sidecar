@@ -113,21 +113,33 @@ scrape_configs:
 
 	go func() {
 		time.Sleep(5 * time.Second)
-		// fs.SetIntervals(20 * time.Second)
-
-		// time.Sleep(1 * time.Second)
-		// fs.SetIntervals(20*time.Second, 40*time.Second)
-
-		// time.Sleep(1 * time.Second)
-		// fs.SetIntervals(20*time.Second, 40*time.Second, 60*time.Second)
-
-		// time.Sleep(1 * time.Second)
-		//fs.SetIntervals(20*time.Second, 40*time.Second, 60*time.Second, interval)
+		fs.SetIntervals(interval)
 	}()
 	ctx, cancel := context.WithCancel(context.Background())
 	err := checker.WaitForReady(ctx, cancel)
 
-	// @@@ This is not failing
+	require.NoError(t, err)
+}
+
+func TestReadySpecificNoInterval(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping test in short mode.")
+	}
+	fs := promtest.NewFakePrometheus(promtest.Config{})
+	fs.SetIntervals() // None set
+	fs.SetPromConfigYaml("")
+
+	checker := NewMonitor(fs.ReadyConfig())
+
+	go func() {
+		time.Sleep(5 * time.Second)
+		fs.SetIntervals(88 * time.Second) // unknown to the sidecar; not default
+	}()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	err := checker.WaitForReady(ctx, cancel)
+
 	require.NoError(t, err)
 }
 
@@ -159,4 +171,19 @@ scrape_configs:
 
 	require.Error(t, err)
 	require.Equal(t, context.DeadlineExceeded, err)
+}
+
+func TestReadyConfigParseError(t *testing.T) {
+	fs := promtest.NewFakePrometheus(promtest.Config{})
+	fs.SetIntervals() // None set
+	fs.SetPromConfigYaml("sdf")
+
+	checker := NewMonitor(fs.ReadyConfig())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	err := checker.WaitForReady(ctx, cancel)
+
+	require.Error(t, err)
+	require.Equal(t, context.Canceled, err)
 }

@@ -71,14 +71,12 @@ func (m *Monitor) completedFirstScrapes(res Result, promcfg promconfig.Config) e
 	summary := res.Summary(scrapeIntervalName)
 	foundLabelSets := summary.AllLabels()
 	if len(foundLabelSets) == 0 {
-		fmt.Println("WOMP WOMP")
 		return errors.New("waiting for the first scrape(s) to complete")
 	}
 
 	// Prometheus doesn't report zero counts. We expect absent
 	// timeseries, not zero counts, but we test for Count() != 0 on
 	// the retrieved metrics for added safety below.
-	fmt.Println("HERE", scrapeIntervals)
 
 	if len(scrapeIntervals) == 0 {
 		// If no intervals are configured, wait for the first one.
@@ -182,7 +180,8 @@ func (m *Monitor) WaitForReady(inCtx context.Context, inCtxCancel context.Cancel
 			respOK := err == nil && resp.StatusCode/100 == 2
 
 			if respOK {
-				result, err := m.scrapeMetrics(inCtx)
+				var result Result
+				result, err = m.scrapeMetrics(inCtx)
 				if err != nil {
 					return false
 				}
@@ -194,14 +193,18 @@ func (m *Monitor) WaitForReady(inCtx context.Context, inCtxCancel context.Cancel
 					inCtxCancel()
 					return false
 				}
-				promCfg, err := m.getConfig(inCtx)
-				if err == nil {
-					// Great! We also need it to have completed
-					// a full round of scrapes.
-					err = m.completedFirstScrapes(result, promCfg)
-					if err == nil {
-						return true
-					}
+				var promCfg promconfig.Config
+				promCfg, err = m.getConfig(inCtx)
+				if err != nil {
+					level.Warn(m.cfg.Logger).Log("msg", "invalid Prometheus config", "err", err)
+					inCtxCancel()
+					return false
+				}
+
+				// Great! We also need it to have completed
+				// a full round of scrapes.
+				if err = m.completedFirstScrapes(result, promCfg); err == nil {
+					return true
 				}
 			}
 
