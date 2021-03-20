@@ -2,32 +2,33 @@ package prometheus
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"path"
 	"time"
 
 	"github.com/go-kit/kit/log/level"
 	goversion "github.com/hashicorp/go-version"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/common"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/pkg/errors"
+	promconfig "github.com/prometheus/prometheus/config"
+	"gopkg.in/yaml.v2"
 )
 
 const (
 	scrapeIntervalName = config.PrometheusTargetIntervalLengthName
 )
 
-func scrapeMetrics(inCtx context.Context, cfg config.PromReady) (Result, error) {
-	u := *cfg.PromURL
-	u.Path = path.Join(u.Path, "/metrics")
-
+func (m *Monitor) scrapeMetrics(inCtx context.Context) (Result, error) {
 	ctx, cancel := context.WithTimeout(inCtx, config.DefaultHealthCheckTimeout)
 	defer cancel()
 
-	mon := NewMonitor(&u)
-	return mon.Get(ctx)
+	return m.GetMetrics(ctx)
 }
 
-func checkPrometheusVersion(res Result) error {
+func (m *Monitor) checkPrometheusVersion(res Result) error {
 	minVersion, _ := goversion.NewVersion(config.PrometheusMinVersion)
 	var prometheusVersion *goversion.Version
 	err := errors.New("version not found")
@@ -48,26 +49,39 @@ func checkPrometheusVersion(res Result) error {
 	return nil
 }
 
-func completedFirstScrapes(res Result, cfg config.PromReady) error {
+func (m *Monitor) scrapeIntervals(promcfg promconfig.Config) []time.Duration {
+	ds := map[time.Duration]struct{}{}
+	for _, sc := range promcfg.ScrapeConfigs {
+		si := sc.ScrapeInterval
+		if si == 0 {
+			si = promcfg.GlobalConfig.ScrapeInterval
+		}
+		ds[time.Duration(si)] = struct{}{}
+	}
+	var res []time.Duration
+	for d := range ds {
+		res = append(res, d)
+	}
+	return res
+}
+
+func (m *Monitor) completedFirstScrapes(res Result, promcfg promconfig.Config) error {
+	scrapeIntervals := m.scrapeIntervals(promcfg)
 
 	summary := res.Summary(scrapeIntervalName)
 	foundLabelSets := summary.AllLabels()
 	if len(foundLabelSets) == 0 {
+		fmt.Println("WOMP WOMP")
 		return errors.New("waiting for the first scrape(s) to complete")
 	}
 
 	// Prometheus doesn't report zero counts. We expect absent
 	// timeseries, not zero counts, but we test for Count() != 0 on
 	// the retrieved metrics for added safety below.
+	fmt.Println("HERE", scrapeIntervals)
 
-	if len(cfg.ScrapeIntervals) == 0 {
+	if len(scrapeIntervals) == 0 {
 		// If no intervals are configured, wait for the first one.
-		//
-		// TODO: We can't be sure there are only one interval.
-		// After time passes, we can check again--if any new
-		// intervals are discovered, print a warning about
-		// configuring intervals via --prometheus.scrape-interval
-		// to ensure safe startup.
 		for _, ls := range foundLabelSets {
 			if summary.For(ls).Count() != 0 {
 				return nil
@@ -88,7 +102,7 @@ func completedFirstScrapes(res Result, cfg config.PromReady) error {
 		}
 	}
 
-	for _, si := range cfg.ScrapeIntervals {
+	for _, si := range scrapeIntervals {
 		ts := si.String()
 		if !foundWhich[ts] {
 			return errors.Errorf("waiting for scrape interval %s", ts)
@@ -98,8 +112,48 @@ func completedFirstScrapes(res Result, cfg config.PromReady) error {
 	return nil
 }
 
-func WaitForReady(inCtx context.Context, inCtxCancel context.CancelFunc, cfg config.PromReady) error {
-	u := *cfg.PromURL
+func (m *Monitor) getConfig(inCtx context.Context) (promconfig.Config, error) {
+	ctx, cancel := context.WithTimeout(inCtx, config.DefaultHealthCheckTimeout)
+	defer cancel()
+
+	return m.GetConfig(ctx)
+}
+
+func (m *Monitor) GetConfig(ctx context.Context) (promconfig.Config, error) {
+	endpoint := *m.cfg.PromURL
+	endpoint.Path = path.Join(endpoint.Path, config.PrometheusConfigEndpointPath)
+	target := endpoint.String()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", target, nil)
+	if err != nil {
+		return promconfig.Config{}, fmt.Errorf("config request: %v", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return promconfig.Config{}, fmt.Errorf("config get: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return promconfig.Config{}, fmt.Errorf("config get status %s", resp.Status)
+	}
+
+	var apiResp common.ConfigAPIResponse
+	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
+		return promconfig.Config{}, errors.Wrap(err, "config json decode")
+	}
+
+	// This sets the default interval as Prometheus would.
+	promCfg := promconfig.DefaultConfig
+	if err := yaml.Unmarshal([]byte(apiResp.Data.YAML), &promCfg); err != nil {
+		return promconfig.Config{}, errors.Wrap(err, "config yaml decode")
+	}
+
+	return promCfg, nil
+
+}
+
+func (m *Monitor) WaitForReady(inCtx context.Context, inCtxCancel context.CancelFunc) error {
+	u := *m.cfg.PromURL
 	u.Path = path.Join(u.Path, "/-/ready")
 
 	// warnSkipped prevents logging on the first failure, since we
@@ -128,23 +182,26 @@ func WaitForReady(inCtx context.Context, inCtxCancel context.CancelFunc, cfg con
 			respOK := err == nil && resp.StatusCode/100 == 2
 
 			if respOK {
-				result, err := scrapeMetrics(inCtx, cfg)
+				result, err := m.scrapeMetrics(inCtx)
 				if err != nil {
 					return false
 				}
-				err = checkPrometheusVersion(result)
+				err = m.checkPrometheusVersion(result)
 				if err != nil {
 					// invalid prometheus version is unrecoverable
 					// cancel the caller's context and exit
-					level.Warn(cfg.Logger).Log("msg", "Invalid Prometheus version", "err", err)
+					level.Warn(m.cfg.Logger).Log("msg", "invalid Prometheus version", "err", err)
 					inCtxCancel()
 					return false
 				}
-				// Great! We also need it to have completed
-				// a full round of scrapes.
-				err = completedFirstScrapes(result, cfg)
+				promCfg, err := m.getConfig(inCtx)
 				if err == nil {
-					return true
+					// Great! We also need it to have completed
+					// a full round of scrapes.
+					err = m.completedFirstScrapes(result, promCfg)
+					if err == nil {
+						return true
+					}
 				}
 			}
 
@@ -152,12 +209,10 @@ func WaitForReady(inCtx context.Context, inCtxCancel context.CancelFunc, cfg con
 				warnSkipped = true
 				return false
 			}
-			if respOK {
-				level.Warn(cfg.Logger).Log("msg", "Prometheus /metrics scrape", "err", err)
-			} else if err != nil {
-				level.Warn(cfg.Logger).Log("msg", "Prometheus readiness check", "err", err)
+			if respOK || err != nil {
+				level.Warn(m.cfg.Logger).Log("msg", "Prometheus readiness", "err", err)
 			} else {
-				level.Warn(cfg.Logger).Log("msg", "Prometheus is not ready", "status", resp.Status)
+				level.Warn(m.cfg.Logger).Log("msg", "Prometheus is not ready", "status", resp.Status)
 			}
 			return false
 		}()

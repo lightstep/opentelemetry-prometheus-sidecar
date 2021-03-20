@@ -21,7 +21,6 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
-	"path"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -88,9 +87,8 @@ type Tailer struct {
 	dir string
 	cur io.ReadCloser
 
-	logger   log.Logger
-	readyCfg config.PromReady
-	monitor  *prometheus.Monitor
+	logger  log.Logger
+	monitor *prometheus.Monitor
 
 	mtx         sync.Mutex
 	nextSegment int
@@ -101,15 +99,12 @@ type Tailer struct {
 // are read before reading any WAL segments.
 // Tailing may fail if we are racing with the DB itself in deleting obsolete checkpoints
 // and segments. The caller should implement relevant logic to retry in those cases.
-func Tail(ctx context.Context, logger log.Logger, dir string, readyCfg config.PromReady) (*Tailer, error) {
-	mu := *readyCfg.PromURL
-	mu.Path = path.Join(mu.Path, "metrics")
+func Tail(ctx context.Context, logger log.Logger, dir string, promMon *prometheus.Monitor) (*Tailer, error) {
 	t := &Tailer{
-		ctx:      ctx,
-		dir:      dir,
-		logger:   logger,
-		readyCfg: readyCfg,
-		monitor:  prometheus.NewMonitor(&mu),
+		ctx:     ctx,
+		dir:     dir,
+		logger:  logger,
+		monitor: promMon,
 	}
 	cpdir, k, err := wal.LastCheckpoint(dir)
 	if errors.Cause(err) == record.ErrNotFound {
@@ -247,14 +242,14 @@ func (t *Tailer) CurrentSegment() int {
 func (t *Tailer) waitForReadiness() error {
 	// Note: no timeout on the context, we're really waiting.
 	ctx, cancel := context.WithCancel(t.ctx)
-	return prometheus.WaitForReady(ctx, cancel, t.readyCfg)
+	return t.monitor.WaitForReady(ctx, cancel)
 }
 
 func (t *Tailer) getPrometheusSegment() (int, error) {
 	ctx, cancel := context.WithTimeout(t.ctx, config.DefaultHealthCheckTimeout)
 	defer cancel()
 
-	res, err := t.monitor.Get(ctx)
+	res, err := t.monitor.GetMetrics(ctx)
 	if err != nil {
 		return 0, errors.Wrap(err, "prometheus /metrics")
 	}

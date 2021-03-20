@@ -157,20 +157,13 @@ func Main() bool {
 		return false
 	}
 
-	intervals, err := parseIntervals(cfg.Prometheus.ScrapeIntervals)
-	if err != nil {
-		level.Error(logger).Log("msg", "error parsing --prometheus.scrape-interval", "err", err)
-		return false
-	}
-
 	// Parse was validated already, ignore error.
 	promURL, _ := url.Parse(cfg.Prometheus.Endpoint)
 
-	readyCfg := config.PromReady{
-		Logger:          log.With(logger, "component", "prom_ready"),
-		PromURL:         promURL,
-		ScrapeIntervals: intervals,
-	}
+	promMon := prometheus.NewMonitor(config.PromReady{
+		Logger:  log.With(logger, "component", "prom_ready"),
+		PromURL: promURL,
+	})
 
 	metadataURL, err := promURL.Parse(config.PrometheusMetadataEndpointPath)
 	if err != nil {
@@ -189,7 +182,7 @@ func Main() bool {
 		ctx,
 		log.With(logger, "component", "wal_reader"),
 		cfg.Prometheus.WAL,
-		readyCfg,
+		promMon,
 	)
 	if err != nil {
 		level.Error(logger).Log("msg", "tailing WAL failed", "err", err)
@@ -258,7 +251,7 @@ func Main() bool {
 	logStartup(cfg, logger)
 
 	// Test for Prometheus and Outbound dependencies before starting.
-	if err := selfTest(ctx, scf, cfg.StartupTimeout.Duration, logger, readyCfg); err != nil {
+	if err := selfTest(ctx, scf, cfg.StartupTimeout.Duration, logger, promMon); err != nil {
 		level.Error(logger).Log("msg", "selftest failed, not starting", "err", err)
 		return false
 	}
@@ -346,7 +339,7 @@ func createResourceLabels(svcInstanceId string, extraLabels map[string]string) l
 	return labels.FromMap(extraLabels)
 }
 
-func selfTest(ctx context.Context, scf otlp.StorageClientFactory, timeout time.Duration, logger log.Logger, readyCfg config.PromReady) error {
+func selfTest(ctx context.Context, scf otlp.StorageClientFactory, timeout time.Duration, logger log.Logger, promMon *prometheus.Monitor) error {
 	client := scf.New()
 
 	ctx, cancel := context.WithTimeout(ctx, timeout)
@@ -357,7 +350,7 @@ func selfTest(ctx context.Context, scf otlp.StorageClientFactory, timeout time.D
 	// These tests are performed sequentially, to keep the logs simple.
 	// Note WaitForReady loops until success or stop if the context is canceled
 	// or an unsupported version of prometheus is identified
-	if err := prometheus.WaitForReady(ctx, cancel, readyCfg); err != nil {
+	if err := promMon.WaitForReady(ctx, cancel); err != nil {
 		return errors.Wrap(err, "Prometheus is not ready")
 	}
 
@@ -432,15 +425,4 @@ func readWriteStartOffset(cfg config.MainConfig, logger log.Logger) (int, error)
 
 	err = retrieval.SaveProgressFile(cfg.Prometheus.WAL, startOffset)
 	return startOffset, err
-}
-
-func parseIntervals(ss []string) (dd []time.Duration, _ error) {
-	for _, s := range ss {
-		d, err := time.ParseDuration(s)
-		if err != nil {
-			return nil, errors.Wrap(err, "parse duration "+s)
-		}
-		dd = append(dd, d)
-	}
-	return
 }

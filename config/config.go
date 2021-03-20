@@ -163,7 +163,6 @@ type PromConfig struct {
 	MaxPointAge             DurationConfig `json:"max_point_age"`
 	MaxTimeseriesPerRequest int            `json:"max_timeseries_per_request"`
 	MaxShards               int            `json:"max_shards"`
-	ScrapeIntervals         []string       `json:"scrape_intervals"`
 }
 
 type OTelConfig struct {
@@ -229,7 +228,6 @@ func DefaultMainConfig() MainConfig {
 			MaxPointAge:             DurationConfig{DefaultMaxPointAge},
 			MaxTimeseriesPerRequest: DefaultMaxTimeseriesPerRequest,
 			MaxShards:               DefaultMaxShards,
-			ScrapeIntervals:         nil,
 		},
 		Admin: AdminConfig{
 			Port:                      DefaultAdminPort,
@@ -313,9 +311,6 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 	a.Flag("prometheus.max-shards", fmt.Sprintf("Max number of shards, i.e. amount of concurrency. Default: %d", DefaultMaxShards)).
 		IntVar(&cfg.Prometheus.MaxShards)
 
-	a.Flag("prometheus.scrape-interval", "Delay at startup until Prometheus completes a scrape for this interval. Default waits for the first scrape to complete, multiple intervals can be set").
-		StringsVar(&cfg.Prometheus.ScrapeIntervals)
-
 	a.Flag("admin.port", "Administrative port this process listens on. Default: "+fmt.Sprint(DefaultAdminPort)).
 		IntVar(&cfg.Admin.Port)
 	a.Flag("admin.listen-ip", "Administrative IP address this process listens on. Default: "+DefaultAdminListenIP).
@@ -333,9 +328,6 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 	a.Flag("startup.timeout", "Timeout at startup to allow the endpoint to become available. Default: "+DefaultStartupTimeout.String()).
 		DurationVar(&cfg.StartupTimeout.Duration)
 
-	// TODO: The warning about how to set healthcheck.period can
-	// be verified once Prometheus starts - it exports a metric
-	// with actual scrape intervals labeled by intended interval.
 	a.Flag("healthcheck.period", "Period for internal health checking; set at a minimum to the shortest Promethues scrape period").
 		DurationVar(&cfg.Admin.HealthCheckPeriod.Duration)
 	a.Flag("healthcheck.threshold-ratio", "Threshold ratio for internal health checking. Default: 0.5").
@@ -545,9 +537,8 @@ func (d DurationConfig) MarshalJSON() ([]byte, error) {
 // places.  It is not parsed from the config file or command-line, it
 // is here to avoid a test package cycle, primarily.
 type PromReady struct {
-	Logger          log.Logger
-	PromURL         *url.URL
-	ScrapeIntervals []time.Duration
+	Logger  log.Logger
+	PromURL *url.URL
 }
 
 // TODO: The use of Kind and ValueType are Stackdriver terms that
@@ -572,7 +563,10 @@ const (
 
 // DefaultEndpointPath is the default HTTP path on which Prometheus serves
 // the target metadata endpoint.
-const PrometheusMetadataEndpointPath = "api/v1/targets/metadata"
+const (
+	PrometheusMetadataEndpointPath = "api/v1/targets/metadata"
+	PrometheusConfigEndpointPath   = "api/v1/status/config"
+)
 
 // The old metric type value for textparse.MetricTypeUnknown that is used in
 // Prometheus 2.4 and earlier.

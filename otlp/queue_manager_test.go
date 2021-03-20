@@ -32,6 +32,7 @@ import (
 	resource_pb "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/resource/v1"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/internal/otlptest"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/internal/promtest"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/prometheus"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/prometheus/common/model"
@@ -224,7 +225,7 @@ func TestSampleDeliverySimple(t *testing.T) {
 
 	prom := promtest.NewFakePrometheus(promtest.Config{})
 
-	tailer, err := tail.Tail(context.Background(), telemetry.DefaultLogger(), dir, prom.ReadyConfig())
+	tailer, err := tail.Tail(context.Background(), telemetry.DefaultLogger(), dir, prometheus.NewMonitor(prom.ReadyConfig()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,7 +274,7 @@ func TestSampleDeliveryMultiShard(t *testing.T) {
 
 	prom := promtest.NewFakePrometheus(promtest.Config{})
 
-	tailer, err := tail.Tail(context.Background(), telemetry.DefaultLogger(), dir, prom.ReadyConfig())
+	tailer, err := tail.Tail(context.Background(), telemetry.DefaultLogger(), dir, prometheus.NewMonitor(prom.ReadyConfig()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -329,7 +330,7 @@ func TestSampleDeliveryTimeout(t *testing.T) {
 
 	prom := promtest.NewFakePrometheus(promtest.Config{})
 
-	tailer, err := tail.Tail(context.Background(), telemetry.DefaultLogger(), dir, prom.ReadyConfig())
+	tailer, err := tail.Tail(context.Background(), telemetry.DefaultLogger(), dir, prometheus.NewMonitor(prom.ReadyConfig()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -384,7 +385,7 @@ func TestSampleDeliveryOrder(t *testing.T) {
 
 	prom := promtest.NewFakePrometheus(promtest.Config{})
 
-	tailer, err := tail.Tail(context.Background(), telemetry.DefaultLogger(), dir, prom.ReadyConfig())
+	tailer, err := tail.Tail(context.Background(), telemetry.DefaultLogger(), dir, prometheus.NewMonitor(prom.ReadyConfig()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -499,7 +500,7 @@ func TestSpawnNotMoreThanMaxConcurrentSendsGoroutines(t *testing.T) {
 
 	prom := promtest.NewFakePrometheus(promtest.Config{})
 
-	tailer, err := tail.Tail(context.Background(), telemetry.DefaultLogger(), dir, prom.ReadyConfig())
+	tailer, err := tail.Tail(context.Background(), telemetry.DefaultLogger(), dir, prometheus.NewMonitor(prom.ReadyConfig()))
 	if err != nil {
 		t.Fatal(err)
 	}
