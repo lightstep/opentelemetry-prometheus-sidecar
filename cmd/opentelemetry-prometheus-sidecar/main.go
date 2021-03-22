@@ -46,7 +46,6 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/tsdb/wal"
-	"go.opentelemetry.io/otel/semconv"
 	grpcMetadata "google.golang.org/grpc/metadata"
 
 	// register grpc compressors
@@ -67,6 +66,11 @@ import (
 // be useful after other matters are resolved.
 
 const supervisorEnv = "MAIN_SUPERVISOR"
+
+// externalLabelPrefix is a non-standard convention for indicating
+// external labels in the Prometheus data model, which are not
+// semantically defined in OTel, as recognized by Lightstep.
+const externalLabelPrefix = "__external_"
 
 func main() {
 	if !Main() {
@@ -226,7 +230,7 @@ func Main() bool {
 		queueManager,
 		cfg.OpenTelemetry.MetricsPrefix,
 		cfg.Prometheus.MaxPointAge.Duration,
-		createResourceLabels(svcInstanceId, cfg.Destination.Attributes),
+		createPrimaryDestinationResourceLabels(svcInstanceId, cfg.Destination.Attributes),
 	)
 
 	// Start the admin server.
@@ -334,8 +338,16 @@ func parseFilters(logger log.Logger, filters []string) ([][]*labels.Matcher, err
 	return matchers, nil
 }
 
-func createResourceLabels(svcInstanceId string, extraLabels map[string]string) labels.Labels {
-	extraLabels[string(semconv.ServiceInstanceIDKey)] = svcInstanceId
+// createPrimaryDestinationResourceLabels returns the OTLP resources
+// to use for the primary destination.
+func createPrimaryDestinationResourceLabels(svcInstanceId string, extraLabels map[string]string) labels.Labels {
+	// Note: there is minor benefit in including an external label
+	// to indicate the process ID here.  See
+	// https://github.com/lightstep/opentelemetry-prometheus-sidecar/issues/44
+	// Until resources are serialized once per request, leave this
+	// commented out (and a test in e2e_test.go):
+	// extraLabels[externalLabelPrefix+string(semconv.ServiceInstanceIDKey)]
+	// = svcInstanceId
 	return labels.FromMap(extraLabels)
 }
 
