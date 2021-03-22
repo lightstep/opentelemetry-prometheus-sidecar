@@ -256,6 +256,9 @@ Flags:
       --prometheus.max-shards=PROMETHEUS.MAX-SHARDS
                                  Max number of shards, i.e. amount of
                                  concurrency. Default: 200
+      --prometheus.scrape-interval=PROMETHEUS.SCRAPE-INTERVAL ...
+                                 Ignored. This is inferred from the Prometheus
+                                 via api/v1/status/config
       --admin.port=ADMIN.PORT    Administrative port this process listens on.
                                  Default: 9091
       --admin.listen-ip=ADMIN.LISTEN-IP
@@ -305,6 +308,18 @@ where command-line parameter values override configuration-file
 parameter values, with one exception.  Configurations that support
 a map from string to string, including both request headers and
 resource attributes, are combined from both sources.
+
+#### Startup safety
+
+The sidecar waits until Prometheus finishes its first scrape(s) to
+begin processing the WAL, to ensure that target information is
+available before the sidecar tries loading its metadata cache.
+
+This information is obtained through the Prometheus
+`api/v1/status/config` endpoint.  The sidecar will log which intervals
+it is waiting for during startup.  When using very long scrape
+intervals, raise the `--startup.timeout` setting so the sidecar will
+wait long enough to begin running.
 
 #### Validation errors
 

@@ -311,6 +311,10 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 	a.Flag("prometheus.max-shards", fmt.Sprintf("Max number of shards, i.e. amount of concurrency. Default: %d", DefaultMaxShards)).
 		IntVar(&cfg.Prometheus.MaxShards)
 
+	var ignoredScrapeIntervals []string
+	a.Flag("prometheus.scrape-interval", "Ignored. This is inferred from the Prometheus via api/v1/status/config").
+		StringsVar(&ignoredScrapeIntervals)
+
 	a.Flag("admin.port", "Administrative port this process listens on. Default: "+fmt.Sprint(DefaultAdminPort)).
 		IntVar(&cfg.Admin.Port)
 	a.Flag("admin.listen-ip", "Administrative IP address this process listens on. Default: "+DefaultAdminListenIP).

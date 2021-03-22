@@ -560,6 +560,21 @@ static_metadata:
 			config.MainConfig{},
 			"invalid newline",
 		},
+		{
+			"ignored flags", ``,
+			[]string{
+				"--destination.endpoint=http://localhost:9000",
+
+				// ignored
+				"--prometheus.scrape-interval", "1333s",
+			},
+			func() config.MainConfig {
+				cfg := config.DefaultMainConfig()
+				cfg.Destination.Endpoint = "http://localhost:9000"
+				return cfg
+			}(),
+			"",
+		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			const cfgFile = "testFileDotYaml"
