@@ -29,6 +29,7 @@ import (
 
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/internal/promtest"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/prometheus"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/tsdb/wal"
@@ -68,7 +69,7 @@ func TestCorruption(t *testing.T) {
 
 	prom := promtest.NewFakePrometheus(promtest.Config{})
 
-	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir, prom.ReadyConfig())
+	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir, prometheus.NewMonitor(prom.ReadyConfig()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +105,7 @@ func TestInvalidSegment(t *testing.T) {
 	prom := promtest.NewFakePrometheus(promtest.Config{})
 	prom.SetSegment(2)
 
-	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir, prom.ReadyConfig())
+	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir, prometheus.NewMonitor(prom.ReadyConfig()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +143,7 @@ func TestTailFuzz(t *testing.T) {
 
 	prom := promtest.NewFakePrometheus(promtest.Config{})
 
-	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir, prom.ReadyConfig())
+	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir, prometheus.NewMonitor(prom.ReadyConfig()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -275,7 +276,7 @@ func TestSlowFsync(t *testing.T) {
 
 	w.Log(rec)
 
-	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir, prom.ReadyConfig())
+	rc, err := Tail(ctx, telemetry.DefaultLogger(), dir, prometheus.NewMonitor(prom.ReadyConfig()))
 	if err != nil {
 		t.Fatal(err)
 	}
