@@ -48,7 +48,7 @@ const (
 	DefaultReadinessPeriod           = time.Second * 5
 	DefaultMaxPointAge               = time.Hour * 25
 	DefaultShutdownDelay             = time.Minute
-	DefaultStartupTimeout            = time.Minute * 5
+	DefaultStartupTimeout            = time.Minute * 10
 	DefaultNoisyLogPeriod            = time.Second * 5
 	DefaultPrometheusTimeout         = time.Second * 60
 
@@ -59,6 +59,15 @@ const (
 	DefaultMaxTimeseriesPerRequest = 500
 	// Max number of shards, i.e. amount of concurrency
 	DefaultMaxShards = 200
+
+	// TODO: This was 1 minute; it's not clear how often it should
+	// happen bit it's a suspiciously short timeout given that it
+	// can race with startup.  Should we wait until the WAL reader
+	// reaches a current position before we begin garbage
+	// collection?
+	DefaultSeriesCacheGarbageCollectionPeriod = time.Minute * 15
+
+	DefaultSeriesCacheRefreshPeriod = time.Minute * 10
 
 	// TODO: The setting below is not configurable, it should be.
 
