@@ -118,14 +118,12 @@ type seriesCacheEntry struct {
 	exported bool
 }
 
-const refreshInterval = 3 * time.Minute
-
 func (e *seriesCacheEntry) populated() bool {
 	return e.desc != nil
 }
 
 func (e *seriesCacheEntry) shouldRefresh() bool {
-	return !e.populated() && time.Since(e.lastRefresh) > refreshInterval
+	return !e.populated() && time.Since(e.lastRefresh) > config.DefaultSeriesCacheRefreshPeriod
 }
 
 func newSeriesCache(
@@ -154,7 +152,7 @@ func newSeriesCache(
 }
 
 func (c *seriesCache) run(ctx context.Context) {
-	tick := time.NewTicker(time.Minute)
+	tick := time.NewTicker(config.DefaultSeriesCacheGarbageCollectionPeriod)
 	defer tick.Stop()
 
 	for {

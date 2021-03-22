@@ -13,6 +13,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Changed
 - Uses Prometheus `/api/v1/status/config` endpoint to read the Prometheus 
   config, to automatically determine the full set of scrape intervals. (#162)
+- The startup timeout is raised to 10 minutes. (#166)
 
 ### Removed
 - The `--prometheus.scrape-interval` option is ignored. (#162)
