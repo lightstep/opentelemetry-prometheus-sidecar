@@ -382,7 +382,7 @@ func logStartup(cfg config.MainConfig, logger log.Logger) {
 	)
 
 	if data, err := json.Marshal(cfg); err == nil {
-		level.Debug(logger).Log("config", string(data))
+		level.Info(logger).Log("config", string(data))
 	}
 
 	if !cfg.DisableSupervisor {
