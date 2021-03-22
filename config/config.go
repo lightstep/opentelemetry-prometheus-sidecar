@@ -67,7 +67,7 @@ const (
 	// collection?
 	DefaultSeriesCacheGarbageCollectionPeriod = time.Minute * 15
 
-	DefaultSeriesCacheRefreshPeriod = time.Minute * 10
+	DefaultSeriesCacheRefreshPeriod = time.Minute * 3
 
 	// TODO: The setting below is not configurable, it should be.
 
