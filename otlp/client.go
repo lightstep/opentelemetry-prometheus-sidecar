@@ -350,7 +350,7 @@ func (c *Client) parseResponseMetadata(ctx context.Context, md grpcMetadata.MD) 
 				level.Info(c.logger).Log(
 					"msg", "unrecognized trailer",
 					"key", key,
-					"values", values,
+					"values", fmt.Sprint(values),
 				)
 			})
 		}
