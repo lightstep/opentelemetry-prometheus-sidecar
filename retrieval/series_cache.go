@@ -15,6 +15,7 @@ package retrieval
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"sync"
 	"time"
@@ -81,11 +82,22 @@ type seriesCache struct {
 }
 
 type seriesCacheEntry struct {
-	desc     *tsDesc
+
+	// desc is non-nil for series with successful metadata an no
+	// semantic conflicts.
+	desc *tsDesc
+
+	// metadata is what Prometheus knows about this series,
+	// including the expected point kind.
 	metadata *config.MetadataEntry
-	lset     labels.Labels
-	suffix   string
-	hash     uint64
+
+	// lset is a non-nil set of labels for series being exported.
+	// This is nil for series that did not match the filter
+	// expressions.
+	lset labels.Labels
+
+	suffix string
+	hash   uint64
 
 	// Whether the series has been reset/initialized yet. This is false only for
 	// the first sample of a new series in the cache, which causes the initial
@@ -113,19 +125,15 @@ type seriesCacheEntry struct {
 
 	// Last time we attempted to populate meta information about the series.
 	lastRefresh time.Time
-
-	// Whether the series needs to be exported.
-	exported bool
 }
-
-const refreshInterval = 3 * time.Minute
 
 func (e *seriesCacheEntry) populated() bool {
 	return e.desc != nil
 }
 
 func (e *seriesCacheEntry) shouldRefresh() bool {
-	return !e.populated() && time.Since(e.lastRefresh) > refreshInterval
+	// We'll keep trying until populated.
+	return !e.populated() && time.Since(e.lastRefresh) > config.DefaultSeriesCacheRefreshPeriod
 }
 
 func newSeriesCache(
@@ -154,7 +162,7 @@ func newSeriesCache(
 }
 
 func (c *seriesCache) run(ctx context.Context) {
-	tick := time.NewTicker(time.Minute)
+	tick := time.NewTicker(config.DefaultSeriesCacheGarbageCollectionPeriod)
 	defer tick.Stop()
 
 	for {
@@ -172,6 +180,8 @@ func (c *seriesCache) run(ctx context.Context) {
 // garbageCollect drops obsolete cache entries based on the contents of the most
 // recent checkpoint.
 func (c *seriesCache) garbageCollect() error {
+	// Timing @@@ ? Should get some gauges out of this.
+
 	cpDir, cpNum, err := wal.LastCheckpoint(c.dir)
 	if errors.Cause(err) == record.ErrNotFound {
 		return nil // Nothing to do.
@@ -229,23 +239,27 @@ func (c *seriesCache) garbageCollect() error {
 	return nil
 }
 
-func (c *seriesCache) get(ctx context.Context, ref uint64) (*seriesCacheEntry, bool, error) {
+var errSeriesNotFound = fmt.Errorf("series ref not found")
+
+func (c *seriesCache) get(ctx context.Context, ref uint64) (*seriesCacheEntry, error) {
 	c.mtx.Lock()
 	e, ok := c.entries[ref]
 	c.mtx.Unlock()
 
 	if !ok {
-		return nil, false, nil
+		return nil, errSeriesNotFound
 	}
+
+	if e.lset == nil {
+		return nil, nil
+	}
+
 	if e.shouldRefresh() {
 		if err := c.refresh(ctx, ref); err != nil {
-			return nil, false, err
+			return nil, err
 		}
 	}
-	if !e.populated() {
-		return nil, false, nil
-	}
-	return e, true, nil
+	return e, nil
 }
 
 // updateSampleInterval attempts to set the new most recent time range for the series with given hash.
@@ -275,6 +289,9 @@ func (c *seriesCache) getResetAdjusted(ref uint64, t int64, v float64) (int64, f
 	e, ok := c.entries[ref]
 	c.mtx.Unlock()
 	if !ok {
+		// TODO: Can we distinguish these errors, which are
+		// dropped points, from the ordinary reset case below,
+		// which not the same as dropped points?
 		return 0, 0, false
 	}
 	hasReset := e.hasReset
@@ -303,18 +320,22 @@ func (c *seriesCache) getResetAdjusted(ref uint64, t int64, v float64) (int64, f
 
 // set the label set for the given reference.
 // maxSegment indicates the the highest segment at which the series was possibly defined.
+// lset cannot be empty, it must contain at least __name__, job, and instance labels.
 func (c *seriesCache) set(ctx context.Context, ref uint64, lset labels.Labels, maxSegment int) error {
 	exported := c.filters == nil || matchFilters(lset, c.filters)
 
 	if !exported {
-		return nil
+		// We can forget these labels forever, don't care b/c
+		// they didn't match.  We'll keep this in our entries
+		// map so that we can distinguish dropped points from
+		// filtered points.
+		lset = nil
 	}
 
 	c.mtx.Lock()
 	c.entries[ref] = &seriesCacheEntry{
 		maxSegment: maxSegment,
 		lset:       lset,
-		exported:   exported,
 	}
 	c.mtx.Unlock()
 	return c.refresh(ctx, ref)
@@ -323,9 +344,14 @@ func (c *seriesCache) set(ctx context.Context, ref uint64, lset labels.Labels, m
 func (c *seriesCache) refresh(ctx context.Context, ref uint64) error {
 	c.mtx.Lock()
 	entry := c.entries[ref]
+	entry.lastRefresh = time.Now()
 	c.mtx.Unlock()
 
-	entry.lastRefresh = time.Now()
+	if entry.lset == nil {
+		// in which case the entry did not match the filters
+		return nil
+	}
+
 	entryLabels := copyLabels(entry.lset)
 
 	// Remove __name__ label.
