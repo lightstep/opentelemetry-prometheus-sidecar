@@ -21,7 +21,7 @@ func TestReady(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), config.DefaultHealthCheckTimeout*4/3)
 	defer cancel()
 
-	require.NoError(t, WaitForReady(ctx, cancel, fs.ReadyConfig()))
+	require.NoError(t, NewMonitor(fs.ReadyConfig()).WaitForReady(ctx, cancel))
 }
 
 func TestInvalidVersion(t *testing.T) {
@@ -29,7 +29,7 @@ func TestInvalidVersion(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), config.DefaultHealthCheckTimeout*4/3)
 	defer cancel()
-	err := WaitForReady(ctx, cancel, fs.ReadyConfig())
+	err := NewMonitor(fs.ReadyConfig()).WaitForReady(ctx, cancel)
 	require.Error(t, err)
 	require.Equal(t, context.Canceled, err)
 }
@@ -48,7 +48,7 @@ func TestSlowStart(t *testing.T) {
 	}()
 	ctx, cancel := context.WithTimeout(context.Background(), config.DefaultHealthCheckTimeout*4/3)
 	defer cancel()
-	require.NoError(t, WaitForReady(ctx, cancel, fs.ReadyConfig()))
+	require.NoError(t, NewMonitor(fs.ReadyConfig()).WaitForReady(ctx, cancel))
 }
 
 func TestNotReady(t *testing.T) {
@@ -60,7 +60,7 @@ func TestNotReady(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*config.DefaultHealthCheckTimeout)
 	defer cancel()
-	err := WaitForReady(ctx, cancel, fs.ReadyConfig())
+	err := NewMonitor(fs.ReadyConfig()).WaitForReady(ctx, cancel)
 	require.Error(t, err)
 	require.Equal(t, context.DeadlineExceeded, err)
 }
@@ -75,10 +75,10 @@ func TestReadyFail(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*config.DefaultHealthCheckTimeout)
 	defer cancel()
-	err = WaitForReady(ctx, cancel, config.PromReady{
+	err = NewMonitor(config.PromReady{
 		Logger:  logger,
 		PromURL: tu,
-	})
+	}).WaitForReady(ctx, cancel)
 	require.Error(t, err)
 }
 
@@ -87,7 +87,7 @@ func TestReadyCancel(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // immediate
-	err := WaitForReady(ctx, cancel, fs.ReadyConfig())
+	err := NewMonitor(fs.ReadyConfig()).WaitForReady(ctx, cancel)
 
 	require.Error(t, err)
 	require.Equal(t, context.Canceled, err)
@@ -99,27 +99,46 @@ func TestReadySpecificInterval(t *testing.T) {
 	}
 	fs := promtest.NewFakePrometheus(promtest.Config{})
 	fs.SetIntervals() // None set
+	fs.SetPromConfigYaml(`
+scrape_configs:
+  - job_name: 'long'
+    scrape_interval: 79s
+    static_configs:
+    - targets: ['localhost:18000']
+`)
 
 	const interval = 79 * time.Second
 
-	rc := fs.ReadyConfig()
-	rc.ScrapeIntervals = []time.Duration{time.Minute, interval}
+	checker := NewMonitor(fs.ReadyConfig())
 
 	go func() {
-		time.Sleep(1 * time.Second)
-		fs.SetIntervals(20 * time.Second)
-
-		time.Sleep(1 * time.Second)
-		fs.SetIntervals(20*time.Second, 40*time.Second)
-
-		time.Sleep(1 * time.Second)
-		fs.SetIntervals(20*time.Second, 40*time.Second, 60*time.Second)
-
-		time.Sleep(1 * time.Second)
-		fs.SetIntervals(20*time.Second, 40*time.Second, 60*time.Second, interval)
+		time.Sleep(5 * time.Second)
+		fs.SetIntervals(interval)
 	}()
 	ctx, cancel := context.WithCancel(context.Background())
-	err := WaitForReady(ctx, cancel, rc)
+	err := checker.WaitForReady(ctx, cancel)
+
+	require.NoError(t, err)
+}
+
+func TestReadySpecificNoInterval(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping test in short mode.")
+	}
+	fs := promtest.NewFakePrometheus(promtest.Config{})
+	fs.SetIntervals() // None set
+	fs.SetPromConfigYaml("")
+
+	checker := NewMonitor(fs.ReadyConfig())
+
+	go func() {
+		time.Sleep(5 * time.Second)
+		fs.SetIntervals(88 * time.Second) // unknown to the sidecar; not default
+	}()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	err := checker.WaitForReady(ctx, cancel)
 
 	require.NoError(t, err)
 }
@@ -131,13 +150,40 @@ func TestReadySpecificIntervalWait(t *testing.T) {
 	fs := promtest.NewFakePrometheus(promtest.Config{})
 	fs.SetIntervals(19 * time.Second) // Not the one we want
 
-	rc := fs.ReadyConfig()
-	rc.ScrapeIntervals = []time.Duration{79 * time.Second, 19 * time.Second}
+	// Configure 19s and 79s intervals
+	fs.SetPromConfigYaml(`
+scrape_configs:
+  - job_name: 'short'
+    scrape_interval: 19s
+    static_configs:
+    - targets: ['localhost:18001']
+  - job_name: 'long'
+    scrape_interval: 79s
+    static_configs:
+    - targets: ['localhost:18000']
+`)
+
+	checker := NewMonitor(fs.ReadyConfig())
 
 	ctx, cancel := context.WithTimeout(context.Background(), config.DefaultHealthCheckTimeout*4/3)
 	defer cancel()
-	err := WaitForReady(ctx, cancel, rc)
+	err := checker.WaitForReady(ctx, cancel)
 
 	require.Error(t, err)
 	require.Equal(t, context.DeadlineExceeded, err)
+}
+
+func TestReadyConfigParseError(t *testing.T) {
+	fs := promtest.NewFakePrometheus(promtest.Config{})
+	fs.SetIntervals() // None set
+	fs.SetPromConfigYaml("sdf")
+
+	checker := NewMonitor(fs.ReadyConfig())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	err := checker.WaitForReady(ctx, cancel)
+
+	require.Error(t, err)
+	require.Equal(t, context.Canceled, err)
 }

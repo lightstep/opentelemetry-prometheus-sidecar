@@ -26,6 +26,7 @@ import (
 	resource_pb "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/resource/v1"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/internal/otlptest"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/internal/promtest"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/prometheus"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -70,7 +71,7 @@ func TestReader_Progress(t *testing.T) {
 
 	prom := promtest.NewFakePrometheus(promtest.Config{})
 
-	tailer, err := tail.Tail(ctx, telemetry.DefaultLogger(), dir, prom.ReadyConfig())
+	tailer, err := tail.Tail(ctx, telemetry.DefaultLogger(), dir, prometheus.NewMonitor(prom.ReadyConfig()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +154,7 @@ func TestReader_Progress(t *testing.T) {
 	ctx, cancel = context.WithCancel(context.Background())
 	defer cancel()
 
-	tailer, err = tail.Tail(ctx, telemetry.DefaultLogger(), dir, prom.ReadyConfig())
+	tailer, err = tail.Tail(ctx, telemetry.DefaultLogger(), dir, prometheus.NewMonitor(prom.ReadyConfig()))
 	if err != nil {
 		t.Fatal(err)
 	}

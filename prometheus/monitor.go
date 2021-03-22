@@ -4,9 +4,10 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"net/url"
+	"path"
 	"sync"
 
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/prom2json"
@@ -23,7 +24,7 @@ const acceptHeader = `application/vnd.google.protobuf;proto=io.prometheus.client
 
 type (
 	Monitor struct {
-		target *url.URL
+		cfg config.PromReady
 	}
 
 	Family struct {
@@ -43,13 +44,13 @@ type (
 	}
 )
 
-func NewMonitor(target *url.URL) *Monitor {
+func NewMonitor(cfg config.PromReady) *Monitor {
 	return &Monitor{
-		target: target,
+		cfg: cfg,
 	}
 }
 
-func (m *Monitor) Get(ctx context.Context) (_ Result, retErr error) {
+func (m *Monitor) GetMetrics(ctx context.Context) (_ Result, retErr error) {
 	var (
 		wg  sync.WaitGroup
 		ch  = make(chan *dto.MetricFamily)
@@ -57,6 +58,10 @@ func (m *Monitor) Get(ctx context.Context) (_ Result, retErr error) {
 			values: map[string]*dto.MetricFamily{},
 		}
 	)
+
+	scrape := *m.cfg.PromURL
+	scrape.Path = path.Join(scrape.Path, "/metrics")
+	target := scrape.String()
 
 	defer monitorDuration.Start(context.Background()).Stop(&retErr)
 	defer wg.Wait()
@@ -71,7 +76,6 @@ func (m *Monitor) Get(ctx context.Context) (_ Result, retErr error) {
 	}()
 
 	// Note: copied from FetchMetricFamilies, Context added; this code path closes `ch`.
-	target := m.target.String()
 	req, err := http.NewRequestWithContext(ctx, "GET", target, nil)
 	if err != nil {
 		close(ch)

@@ -131,7 +131,7 @@ func (c *Cache) Get(ctx context.Context, job, instance, metric string) (*config.
 	return nil, nil
 }
 
-func (c *Cache) fetch(ctx context.Context, typ string, q url.Values) (_ *common.APIResponse, retErr error) {
+func (c *Cache) fetch(ctx context.Context, typ string, q url.Values) (_ *common.MetadataAPIResponse, retErr error) {
 	ctx, cancel := context.WithTimeout(ctx, config.DefaultPrometheusTimeout)
 	defer cancel()
 
@@ -151,7 +151,11 @@ func (c *Cache) fetch(ctx context.Context, typ string, q url.Values) (_ *common.
 	}
 	defer resp.Body.Close()
 
-	var apiResp common.APIResponse
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("metadata request HTTP status %s", resp.Status)
+	}
+
+	var apiResp common.MetadataAPIResponse
 	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
 		return nil, errors.Wrap(err, "decode response")
 	}

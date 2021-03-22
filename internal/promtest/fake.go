@@ -33,6 +33,7 @@ type FakePrometheus struct {
 	ready     bool
 	segment   int
 	intervals []time.Duration
+	config    string
 	mux       *http.ServeMux
 }
 
@@ -111,7 +112,7 @@ func NewFakePrometheus(cfg Config) *FakePrometheus {
 	// Serve instrument metadata
 	fp.mux.HandleFunc("/"+config.PrometheusMetadataEndpointPath,
 		func(w http.ResponseWriter, r *http.Request) {
-			var metaResp common.APIResponse
+			var metaResp common.MetadataAPIResponse
 			for _, entry := range cfg.Metadata {
 				// Note: This endpoint is used to request metadata
 				// for a specific target.  It does not use the target
@@ -131,6 +132,25 @@ func NewFakePrometheus(cfg Config) *FakePrometheus {
 			_, _ = w.Write(metaRespData)
 		},
 	)
+
+	// Serve the server's configuration
+	fp.mux.HandleFunc("/"+config.PrometheusConfigEndpointPath,
+		func(w http.ResponseWriter, r *http.Request) {
+			fp.lock.Lock()
+			defer fp.lock.Unlock()
+
+			var cfg common.ConfigAPIResponse
+			cfg.Status = "ok"
+			cfg.Data.YAML = fp.config
+
+			data, err := json.Marshal(&cfg)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			_, _ = w.Write(data)
+		},
+	)
 	return fp
 }
 
@@ -147,9 +167,8 @@ func (fp *FakePrometheus) Test() *url.URL {
 
 func (fp *FakePrometheus) ReadyConfig() config.PromReady {
 	return config.PromReady{
-		Logger:          telemetry.DefaultLogger(),
-		PromURL:         fp.Test(),
-		ScrapeIntervals: nil,
+		Logger:  telemetry.DefaultLogger(),
+		PromURL: fp.Test(),
 	}
 }
 
@@ -172,6 +191,13 @@ func (fp *FakePrometheus) SetIntervals(is ...time.Duration) {
 	defer fp.lock.Unlock()
 
 	fp.intervals = is
+}
+
+func (fp *FakePrometheus) SetPromConfigYaml(config string) {
+	fp.lock.Lock()
+	defer fp.lock.Unlock()
+
+	fp.config = config
 }
 
 func (fp *FakePrometheus) ServeMux() *http.ServeMux {

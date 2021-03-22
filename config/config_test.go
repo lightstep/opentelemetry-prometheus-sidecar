@@ -174,9 +174,6 @@ startup_timeout: 1777s
 					},
 					MaxTimeseriesPerRequest: 500,
 					MaxShards:               200,
-					ScrapeIntervals: []string{
-						(1333 * time.Second).String(),
-					},
 				},
 				Admin: AdminConfig{
 					ListenIP:                  config.DefaultAdminListenIP,
@@ -269,7 +266,6 @@ log:
 				"--prometheus.max-point-age", "10h",
 				"--prometheus.max-timeseries-per-request", "5",
 				"--prometheus.max-shards", "10",
-				"--prometheus.scrape-interval=22m13s",
 				"--log.level=warning",
 				"--healthcheck.period=17s",
 				"--healthcheck.threshold-ratio=0.2",
@@ -287,9 +283,6 @@ log:
 					},
 					MaxTimeseriesPerRequest: 5,
 					MaxShards:               10,
-					ScrapeIntervals: []string{
-						(1333 * time.Second).String(),
-					},
 				},
 				Admin: AdminConfig{
 					ListenIP:                  config.DefaultAdminListenIP,
@@ -430,9 +423,6 @@ static_metadata:
 					},
 					MaxTimeseriesPerRequest: 10,
 					MaxShards:               20,
-					ScrapeIntervals: []string{
-						(30 * time.Second).String(),
-					},
 				},
 				OpenTelemetry: OTelConfig{
 					MetricsPrefix: "prefix.",
@@ -569,6 +559,21 @@ static_metadata:
 			withFlags("--destination.header=key=abc\ndef"),
 			config.MainConfig{},
 			"invalid newline",
+		},
+		{
+			"ignored flags", ``,
+			[]string{
+				"--destination.endpoint=http://localhost:9000",
+
+				// ignored
+				"--prometheus.scrape-interval", "1333s",
+			},
+			func() config.MainConfig {
+				cfg := config.DefaultMainConfig()
+				cfg.Destination.Endpoint = "http://localhost:9000"
+				return cfg
+			}(),
+			"",
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

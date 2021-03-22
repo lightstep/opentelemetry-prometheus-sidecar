@@ -7,6 +7,8 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
 )
@@ -29,10 +31,13 @@ utilization{} 123
 	tu, err := url.Parse(ts.URL)
 	require.NoError(t, err)
 
-	m := NewMonitor(tu)
+	m := NewMonitor(config.PromReady{
+		Logger:  telemetry.DefaultLogger(),
+		PromURL: tu,
+	})
 
 	ctx := context.Background()
-	res, err := m.Get(ctx)
+	res, err := m.GetMetrics(ctx)
 	require.NoError(t, err)
 
 	// Positive examples

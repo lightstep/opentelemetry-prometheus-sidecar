@@ -24,7 +24,7 @@ destination:
   # Compression format to be used, if any. Defaults to snappy:
   compression: snappy
 
-# Promehteus configuration:
+# Prometheus configuration:
 prometheus:
   # The primary HTTP endpoint:
   endpoint: http://127.0.0.1:19090
@@ -40,11 +40,6 @@ prometheus:
 
   # Max number of shards, i.e. amount of concurrency
   max_shards: 200
-
-  # Scrape intervals, when set, are used to delay startup.  If set, 
-  # the sidecar will wait until the first scrape completes with
-  # this interval
-  scrape_intervals: [30s, 60s]
 
 # OpenTelemetry settings:
 opentelemetry:

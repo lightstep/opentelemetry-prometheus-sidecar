@@ -145,7 +145,7 @@ To configure the sidecar using the Prometheus Operator via the [kube-prometheus-
 ```
 prometheus:
   prometheusSpec:
-    containers: 
+    containers:
       - name: otel-sidecar
         image: lightstep/opentelemetry-prometheus-sidecar:v0.18.3
         imagePullPolicy: Always
@@ -158,9 +158,9 @@ prometheus:
         #####
         ports:
         - name: admin-port
-          containerPort: 9091 
+          containerPort: 9091
 
-        ##### 
+        #####
         livenessProbe:
           httpGet:
             path: /-/health
@@ -256,11 +256,9 @@ Flags:
       --prometheus.max-shards=PROMETHEUS.MAX-SHARDS
                                  Max number of shards, i.e. amount of
                                  concurrency. Default: 200
-      --prometheus.scrape-interval=PROMETHEUS.SCRAPE-INTERVAL ...  
-                                 Delay at startup until Prometheus completes a
-                                 scrape for this interval. Default waits for the
-                                 first scrape to complete, multiple intervals
-                                 can be set
+      --prometheus.scrape-interval=PROMETHEUS.SCRAPE-INTERVAL ...
+                                 Ignored. This is inferred from the Prometheus
+                                 via api/v1/status/config
       --admin.port=ADMIN.PORT    Administrative port this process listens on.
                                  Default: 9091
       --admin.listen-ip=ADMIN.LISTEN-IP
@@ -273,10 +271,10 @@ Flags:
       --opentelemetry.metrics-prefix=OPENTELEMETRY.METRICS-PREFIX
                                  Customized prefix for exporter metrics. If not
                                  set, none will be used
-      --filter=FILTER ...        PromQL metric and label matcher which must pass
-                                 for a series to be forwarded to OpenTelemetry.
-                                 If repeated, the series must pass any of the
-                                 filter sets to be forwarded.
+      --filter=FILTER ...        PromQL metric and attribute matcher which must
+                                 pass for a series to be forwarded to
+                                 OpenTelemetry. If repeated, the series must
+                                 pass any of the filter sets to be forwarded.
       --startup.timeout=STARTUP.TIMEOUT
                                  Timeout at startup to allow the endpoint to
                                  become available. Default: 5m0s
@@ -299,7 +297,6 @@ Flags:
       --disable-diagnostics      Disable diagnostics by default; if unset,
                                  diagnostics will be auto-configured to the
                                  primary destination
-
 ```
 
 Two kinds of sidecar customization are available only through the
@@ -318,9 +315,11 @@ The sidecar waits until Prometheus finishes its first scrape(s) to
 begin processing the WAL, to ensure that target information is
 available before the sidecar tries loading its metadata cache.
 
-When multiple scrape intervals are in use, all intervals should be
-monitored.  Use the `--prometheus.scrape-interval=DURATION` flag to
-set scrape intervals to monitor at startup.
+This information is obtained through the Prometheus
+`api/v1/status/config` endpoint.  The sidecar will log which intervals
+it is waiting for during startup.  When using very long scrape
+intervals, raise the `--startup.timeout` setting so the sidecar will
+wait long enough to begin running.
 
 #### Validation errors
 

@@ -5,7 +5,6 @@ require (
 	github.com/ghodss/yaml v1.0.0
 	github.com/go-kit/kit v0.10.0
 	github.com/go-logfmt/logfmt v0.5.0
-	google.golang.org/protobuf v1.25.0
 	github.com/golang/protobuf v1.4.3
 	github.com/golang/snappy v0.0.2
 	github.com/google/go-cmp v0.5.4
@@ -43,8 +42,10 @@ require (
 	go.opentelemetry.io/otel/trace v0.18.0
 	google.golang.org/genproto v0.0.0-20201201144952-b05cb90ed32e
 	google.golang.org/grpc v1.36.0
+	google.golang.org/protobuf v1.25.0
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 	gopkg.in/d4l3k/messagediff.v1 v1.2.1
+	gopkg.in/yaml.v2 v2.4.0
 )
 
 go 1.15

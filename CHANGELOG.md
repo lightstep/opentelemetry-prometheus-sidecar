@@ -8,6 +8,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+### Added
+
+### Changed
+- Uses Prometheus `/api/v1/status/config` endpoint to read the Prometheus 
+  config, to automatically determine the full set of scrape intervals. (#162)
+
+### Removed
+- The `--prometheus.scrape-interval` option is ignored. (#162)
+
 ## [0.19.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.19.0) - 2021-03-15
 
 ### Added
