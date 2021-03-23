@@ -22,7 +22,6 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/lightstep/opentelemetry-prometheus-sidecar/common"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry/doevery"
 	"github.com/pkg/errors"
@@ -30,10 +29,6 @@ import (
 	"github.com/prometheus/prometheus/pkg/textparse"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wal"
-)
-
-var droppedSeriesMetadataNotFound = common.DroppedSeries.Bind(
-	common.DroppedKeyReason.String("metadata_not_found"),
 )
 
 // tsDesc has complete, proto-independent data about a metric data
@@ -48,7 +43,7 @@ type tsDesc struct {
 
 type seriesGetter interface {
 	// Same interface as the standard map getter.
-	get(ctx context.Context, ref uint64) (*seriesCacheEntry, bool, error)
+	get(ctx context.Context, ref uint64) (*seriesCacheEntry, error)
 
 	// Get the reset timestamp and adjusted value for the input sample.
 	// If false is returned, the sample should be skipped.
@@ -239,7 +234,10 @@ func (c *seriesCache) garbageCollect() error {
 	return nil
 }
 
-var errSeriesNotFound = fmt.Errorf("series ref not found")
+var (
+	errSeriesNotFound        = fmt.Errorf("series ref not found")
+	errSeriesMissingMetadata = fmt.Errorf("series ref missing metadata")
+)
 
 func (c *seriesCache) get(ctx context.Context, ref uint64) (*seriesCacheEntry, error) {
 	c.mtx.Lock()
@@ -259,6 +257,11 @@ func (c *seriesCache) get(ctx context.Context, ref uint64) (*seriesCacheEntry, e
 			return nil, err
 		}
 	}
+
+	if !e.populated() {
+		return nil, errSeriesMissingMetadata
+	}
+
 	return e, nil
 }
 
@@ -342,9 +345,10 @@ func (c *seriesCache) set(ctx context.Context, ref uint64, lset labels.Labels, m
 }
 
 func (c *seriesCache) refresh(ctx context.Context, ref uint64) error {
+	now := time.Now()
 	c.mtx.Lock()
 	entry := c.entries[ref]
-	entry.lastRefresh = time.Now()
+	entry.lastRefresh = now
 	c.mtx.Unlock()
 
 	if entry.lset == nil {
@@ -385,12 +389,11 @@ func (c *seriesCache) refresh(ctx context.Context, ref uint64) error {
 			}
 		}
 		if meta == nil {
-			droppedSeriesMetadataNotFound.Add(ctx, 1)
-
 			doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
 				level.Warn(c.logger).Log(
 					"msg", "metadata not found",
 					"metric_name", metricName,
+					"labels", fmt.Sprint(entry.lset),
 				)
 			})
 			return nil
@@ -442,7 +445,10 @@ func (c *seriesCache) refresh(ctx context.Context, ref uint64) error {
 			ts.Kind = config.GAUGE
 			ts.ValueType = config.DOUBLE
 		default:
-			return errors.Errorf("unexpected metric name suffix %q", suffix)
+			// Note: this branch has been seen for a
+			// _bucket suffix, indicating a mix of
+			// histogram and summary conventions.
+			return errors.Errorf("unexpected summary metric name suffix %q", suffix)
 		}
 	case textparse.MetricTypeHistogram:
 		ts.Name = c.getMetricName(c.metricsPrefix, baseMetricName)
