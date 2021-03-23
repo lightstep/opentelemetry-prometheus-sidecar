@@ -223,7 +223,7 @@ func TestSeriesCache_Refresh(t *testing.T) {
 
 	// Hack the timestamp of the last update to be sufficiently in the past that a refresh
 	// will be triggered.
-	c.entries[refID].lastRefresh = time.Now().Add(-2 * refreshInterval)
+	c.entries[refID].lastRefresh = time.Now().Add(-2 * config.DefaultSeriesCacheRefreshPeriod)
 
 	// Now another get should trigger a refresh, which now finds data.
 	entry, ok, err = c.get(ctx, refID)

@@ -271,7 +271,7 @@ func TestE2E(t *testing.T) {
 		// At this moment, the labels in static_configs are NOT
 		// passed to the Resource.
 		assert.Equal(t, rvals[string(semconv.ServiceNameKey)], "Service")
-		assert.NotEqual(t, rvals[string(semconv.ServiceInstanceIDKey)], "")
+		assert.Equal(t, rvals[string(semconv.ServiceInstanceIDKey)], "")
 
 		output[name] = append(output[name], val)
 	}
