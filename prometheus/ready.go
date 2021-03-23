@@ -65,7 +65,7 @@ func (m *Monitor) scrapeIntervals(promcfg promconfig.Config) []time.Duration {
 	return res
 }
 
-func (m *Monitor) completedFirstScrapes(res Result, promcfg promconfig.Config) error {
+func (m *Monitor) completedFirstScrapes(res Result, promcfg promconfig.Config, scrapeIntervalDeadline time.Time) error {
 	scrapeIntervals := m.scrapeIntervals(promcfg)
 
 	summary := res.Summary(scrapeIntervalName)
@@ -103,7 +103,13 @@ func (m *Monitor) completedFirstScrapes(res Result, promcfg promconfig.Config) e
 	for _, si := range scrapeIntervals {
 		ts := si.String()
 		if !foundWhich[ts] {
-			return errors.Errorf("waiting for scrape interval %s", ts)
+			// have we waited the max amount of time before moving on
+			if time.Now().After(scrapeIntervalDeadline.Add(si)) {
+				level.Warn(m.cfg.Logger).Log("msg", "waited until deadline for scrape interval", "missing-interval", ts)
+				break
+			} else {
+				return errors.Errorf("waiting for scrape interval %s", ts)
+			}
 		}
 	}
 
@@ -203,7 +209,7 @@ func (m *Monitor) WaitForReady(inCtx context.Context, inCtxCancel context.Cancel
 
 				// Great! We also need it to have completed
 				// a full round of scrapes.
-				if err = m.completedFirstScrapes(result, promCfg); err == nil {
+				if err = m.completedFirstScrapes(result, promCfg, m.cfg.ScrapeIntervalDeadline); err == nil {
 					return true
 				}
 			}

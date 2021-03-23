@@ -165,8 +165,9 @@ func Main() bool {
 	promURL, _ := url.Parse(cfg.Prometheus.Endpoint)
 
 	promMon := prometheus.NewMonitor(config.PromReady{
-		Logger:  log.With(logger, "component", "prom_ready"),
-		PromURL: promURL,
+		Logger:                 log.With(logger, "component", "prom_ready"),
+		PromURL:                promURL,
+		ScrapeIntervalDeadline: time.Now().Add(config.DefaultScrapeIntervalWaitPeriod),
 	})
 
 	metadataURL, err := promURL.Parse(config.PrometheusMetadataEndpointPath)
