@@ -164,6 +164,7 @@ scrape_configs:
 `)
 
 	checker := NewMonitor(fs.ReadyConfig())
+	checker.cfg.StartupDelayEffectiveStartTime = time.Now()
 
 	ctx, cancel := context.WithTimeout(context.Background(), config.DefaultHealthCheckTimeout*4/3)
 	defer cancel()
@@ -173,7 +174,7 @@ scrape_configs:
 	require.Equal(t, context.DeadlineExceeded, err)
 }
 
-func TestScrapeIntervalDeadline(t *testing.T) {
+func TestStartupDelayEffectiveStartTime(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping test in short mode.")
 	}
@@ -194,7 +195,7 @@ scrape_configs:
 `)
 
 	checker := NewMonitor(fs.ReadyConfig())
-	checker.cfg.ScrapeIntervalDeadline = time.Now().Add(-79 * time.Second)
+	checker.cfg.StartupDelayEffectiveStartTime = time.Now().Add(-(79*time.Second + config.DefaultScrapeIntervalWaitPeriod))
 
 	ctx, cancel := context.WithTimeout(context.Background(), config.DefaultHealthCheckTimeout*4/3)
 	defer cancel()

@@ -551,9 +551,9 @@ func (d DurationConfig) MarshalJSON() ([]byte, error) {
 // places.  It is not parsed from the config file or command-line, it
 // is here to avoid a test package cycle, primarily.
 type PromReady struct {
-	Logger                 log.Logger
-	PromURL                *url.URL
-	ScrapeIntervalDeadline time.Time
+	Logger                         log.Logger
+	PromURL                        *url.URL
+	StartupDelayEffectiveStartTime time.Time
 }
 
 // TODO: The use of Kind and ValueType are Stackdriver terms that
