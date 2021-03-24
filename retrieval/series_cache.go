@@ -15,6 +15,7 @@ package retrieval
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"sync"
 	"time"
@@ -363,6 +364,7 @@ func (c *seriesCache) refresh(ctx context.Context, ref uint64) error {
 				level.Warn(c.logger).Log(
 					"msg", "metadata not found",
 					"metric_name", metricName,
+					"labels", fmt.Sprint(entry.lset),
 				)
 			})
 			return nil
