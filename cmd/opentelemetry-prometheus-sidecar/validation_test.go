@@ -157,7 +157,7 @@ func TestValidationErrorReporting(t *testing.T) {
 	}
 
 	invalid := map[string]bool{}
-	timer := time.NewTimer(time.Second * 10)
+	timer := time.NewTimer(time.Second * 30)
 	defer timer.Stop()
 
 	// Wait for 3 specific points, then 3 specific meta points.
