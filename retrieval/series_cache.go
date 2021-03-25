@@ -137,10 +137,6 @@ var (
 		"sidecar.cumulative.missing_resets",
 		"Number of Metric series resets that were missing start time, causing gaps a series",
 	)
-	seriesCacheGarbageCollectTimer = telemetry.NewTimer(
-		"sidecar.garbage_collection.duration",
-		"Duration of the series cache garbage collection",
-	)
 
 	errSeriesNotFound        = fmt.Errorf("series ref not found")
 	errSeriesMissingMetadata = fmt.Errorf("series ref missing metadata")
@@ -228,9 +224,7 @@ func (c *seriesCache) run(ctx context.Context) {
 
 // garbageCollect drops obsolete cache entries based on the contents of the most
 // recent checkpoint.
-func (c *seriesCache) garbageCollect() (retErr error) {
-	defer seriesCacheGarbageCollectTimer.Start(context.Background()).Stop(&retErr)
-
+func (c *seriesCache) garbageCollect() error {
 	cpDir, cpNum, err := wal.LastCheckpoint(c.dir)
 	if errors.Cause(err) == record.ErrNotFound {
 		return nil // Nothing to do.

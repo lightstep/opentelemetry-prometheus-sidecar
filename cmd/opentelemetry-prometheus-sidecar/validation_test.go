@@ -144,7 +144,6 @@ func TestValidationErrorReporting(t *testing.T) {
 			"--startup.timeout=15s",
 			"--healthcheck.period=5s",
 			"--destination.timeout=5s",
-			"--log.level=debug",
 		)...)
 
 	cmd.Env = append(os.Environ(), "RUN_MAIN=1")
@@ -165,7 +164,7 @@ func TestValidationErrorReporting(t *testing.T) {
 	var droppedPointsFound, droppedSeriesFound, skippedPointsFound int64
 	var got = 0
 outer:
-	for got < 3 || droppedPointsFound == 0 || skippedPointsFound == 0 {
+	for got < 3 || droppedPointsFound == 0 || droppedSeriesFound == 0 || skippedPointsFound == 0 {
 		var data *metrics.ResourceMetrics
 		select {
 		case data = <-ms.metrics:
