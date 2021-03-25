@@ -164,6 +164,7 @@ scrape_configs:
 `)
 
 	checker := NewMonitor(fs.ReadyConfig())
+	checker.cfg.StartupDelayEffectiveStartTime = time.Now()
 
 	ctx, cancel := context.WithTimeout(context.Background(), config.DefaultHealthCheckTimeout*4/3)
 	defer cancel()
@@ -171,6 +172,37 @@ scrape_configs:
 
 	require.Error(t, err)
 	require.Equal(t, context.DeadlineExceeded, err)
+}
+
+func TestStartupDelayEffectiveStartTime(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping test in short mode.")
+	}
+	fs := promtest.NewFakePrometheus(promtest.Config{})
+	fs.SetIntervals(19 * time.Second) // Not the one we want
+
+	// Configure 19s and 79s intervals
+	fs.SetPromConfigYaml(`
+scrape_configs:
+  - job_name: 'short'
+    scrape_interval: 19s
+    static_configs:
+    - targets: ['localhost:18001']
+  - job_name: 'long'
+    scrape_interval: 79s
+    static_configs:
+    - targets: ['localhost:18000']
+`)
+
+	checker := NewMonitor(fs.ReadyConfig())
+	checker.cfg.StartupDelayEffectiveStartTime = time.Now().Add(-(79*time.Second + config.DefaultScrapeIntervalWaitPeriod))
+
+	ctx, cancel := context.WithTimeout(context.Background(), config.DefaultHealthCheckTimeout*4/3)
+	defer cancel()
+	err := checker.WaitForReady(ctx, cancel)
+
+	require.NoError(t, err)
+
 }
 
 func TestReadyConfigParseError(t *testing.T) {

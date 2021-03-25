@@ -14,6 +14,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Removed
 
+## [0.20.1](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.20.1) - 2021-03-23
+
+### Changed
+- The sidecar will no longer wait indefinitely when waiting for the initial scrape
+  to complete, it will wait 60s longer than the longest missing interval. (#171)
+
 ## [0.20.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.20.0) - 2021-03-22
 
 ### Changed

@@ -46,6 +46,7 @@ const (
 	DefaultHealthCheckPeriod         = time.Second * 60
 	DefaultHealthCheckThresholdRatio = 0.5
 	DefaultReadinessPeriod           = time.Second * 5
+	DefaultScrapeIntervalWaitPeriod  = time.Minute
 	DefaultMaxPointAge               = time.Hour * 25
 	DefaultShutdownDelay             = time.Minute
 	DefaultStartupTimeout            = time.Minute * 10
@@ -550,8 +551,9 @@ func (d DurationConfig) MarshalJSON() ([]byte, error) {
 // places.  It is not parsed from the config file or command-line, it
 // is here to avoid a test package cycle, primarily.
 type PromReady struct {
-	Logger  log.Logger
-	PromURL *url.URL
+	Logger                         log.Logger
+	PromURL                        *url.URL
+	StartupDelayEffectiveStartTime time.Time
 }
 
 // TODO: The use of Kind and ValueType are Stackdriver terms that
