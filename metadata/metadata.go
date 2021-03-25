@@ -52,6 +52,11 @@ type Cache struct {
 	staticMetadata map[string]*config.MetadataEntry
 }
 
+// TODO: This code could use metrics to report the current size of the
+// cache, similar to ../retrieval/series_cache.go has.
+//
+// TODO: Add garbage collection in this file, somehow.
+
 // NewCache returns a new cache that gets populated by the metadata endpoint
 // at the given URL.
 // It uses the default endpoint path if no specific path is provided.
@@ -81,7 +86,6 @@ type cacheEntry struct {
 }
 
 func (e *cacheEntry) shouldRefetch() bool {
-	// TODO(fabxc): how often does this happen? Do we need an exponential backoff?
 	return !e.found && time.Since(e.lastFetch) > retryInterval
 }
 
