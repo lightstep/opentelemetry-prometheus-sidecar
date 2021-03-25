@@ -157,7 +157,7 @@ func TestValidationErrorReporting(t *testing.T) {
 	}
 
 	invalid := map[string]bool{}
-	timer := time.NewTimer(time.Second * 30)
+	timer := time.NewTimer(time.Second * 10)
 	defer timer.Stop()
 
 	// Wait for 3 specific points, then 3 specific meta points.
@@ -169,6 +169,7 @@ outer:
 		select {
 		case data = <-ms.metrics:
 		case <-timer.C:
+			t.Errorf("test timeout")
 			break outer
 		}
 

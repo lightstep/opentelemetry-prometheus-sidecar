@@ -178,11 +178,13 @@ Outer:
 				})
 			}
 
-			common.DroppedSeries.Add(
-				ctx,
-				int64(failed),
-				common.DroppedKeyReason.String("metadata"),
-			)
+			if failed != 0 {
+				common.DroppedSeries.Add(
+					ctx,
+					int64(failed),
+					common.DroppedKeyReason.String("metadata"),
+				)
+			}
 			seriesDefined.Add(ctx, int64(success))
 
 		case record.Samples:
@@ -237,10 +239,11 @@ Outer:
 				produced++
 			}
 
-			common.DroppedPoints.Add(ctx, int64(droppedPoints),
-				common.DroppedKeyReason.String("metadata"),
-			)
-
+			if droppedPoints != 0 {
+				common.DroppedPoints.Add(ctx, int64(droppedPoints),
+					common.DroppedKeyReason.String("metadata"),
+				)
+			}
 			sidecar.OTelMeter.RecordBatch(
 				ctx,
 				nil,
