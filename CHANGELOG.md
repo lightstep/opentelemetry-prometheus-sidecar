@@ -10,6 +10,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- Added support for handling relabeling rules for `instance` label.
+
 ### Changed
 
 ### Removed

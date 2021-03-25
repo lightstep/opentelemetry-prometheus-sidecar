@@ -35,6 +35,7 @@ import (
 // Ports used here:
 // 19001: OTLP service
 // 19002: Scrape target
+// 19003: Scrape target with relabeling rules
 // 19093: Prometheus
 
 type (
@@ -82,7 +83,7 @@ var (
 const (
 	e2eTestHeaderName   = "custom-header"
 	e2eTestHeaderValue  = "Custom-Value"
-	e2eMetricsPerScrape = 2
+	e2eMetricsPerScrape = 4
 	e2eTestScrapes      = 5
 
 	// largeQueue is set to be large enough to buffer all metric
@@ -97,6 +98,15 @@ some_gauge{kind="gauge"} %d
 # HELP some_counter Number of scrapes
 # TYPE some_counter counter
 some_counter{kind="counter"} %d
+`
+	e2eTestScrapeResultFmtRelabeled = `
+# HELP some_gauge_relabel Number of scrapes
+# TYPE some_gauge_relabel gauge
+some_gauge_relabel{kind="gauge"} %d
+
+# HELP some_counter_relabel Number of scrapes
+# TYPE some_counter_relabel counter
+some_counter_relabel{kind="counter"} %d
 `
 
 	e2eTestPromConfig = `
@@ -114,6 +124,17 @@ scrape_configs:
       labels:
         label1: 'L1'
         label2: 'L2'
+
+  - job_name: 'test-relabeling'
+
+    static_configs:
+    - targets: ['127.0.0.1:19003']
+
+    metric_relabel_configs:
+    - source_labels: [instance]
+      target_label: other_instance_id
+    - action: labeldrop
+      regex: (instance)
 `
 )
 
@@ -217,12 +238,38 @@ func TestE2E(t *testing.T) {
 		}
 		_ = s.ListenAndServe()
 	}()
+	go func() {
+		scrapes := 1
+		mux := http.NewServeMux()
+		mux.HandleFunc("/metrics",
+			func(w http.ResponseWriter, r *http.Request) {
+				defer r.Body.Close()
+				_, _ = ioutil.ReadAll(r.Body)
+
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte(fmt.Sprintf(
+					e2eTestScrapeResultFmtRelabeled,
+					scrapes,
+					scrapes,
+				)))
+				scrapes++
+			},
+		)
+		s := &http.Server{
+			Addr:    ":19003",
+			Handler: mux,
+		}
+		ts.stops <- func() {
+			_ = s.Close()
+		}
+		_ = s.ListenAndServe()
+	}()
 
 	// Gather results
 	var results []*metrics.ResourceMetrics
 	for res := range ts.metrics {
 		switch res.InstrumentationLibraryMetrics[0].Metrics[0].Name {
-		case "some_counter", "some_gauge":
+		case "some_counter", "some_gauge", "some_counter_relabel", "some_gauge_relabel":
 			// OK
 		default:
 			// Skip generated metrics.
@@ -283,8 +330,10 @@ func TestE2E(t *testing.T) {
 	}
 
 	expect := map[string][]float64{
-		"some_counter": []float64{1, 2, 3, 4, 5},
-		"some_gauge":   []float64{1, 2, 3, 4, 5},
+		"some_counter":         []float64{1, 2, 3, 4, 5},
+		"some_gauge":           []float64{1, 2, 3, 4, 5},
+		"some_counter_relabel": []float64{1, 2, 3, 4, 5},
+		"some_gauge_relabel":   []float64{1, 2, 3, 4, 5},
 	}
 
 	if diff, equal := messagediff.PrettyDiff(output, expect); !equal {
