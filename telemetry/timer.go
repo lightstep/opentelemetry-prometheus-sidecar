@@ -14,14 +14,6 @@
 
 package telemetry
 
-// Note: Tracing has been disabled here and elsewhere in the main
-// sidecar code.  However, we'd like to use it along with
-// span-to-metrics to measure latency, throughput, and error rate of
-// the outbound connections utilizing the tracing instrumentation.
-// This could be done with an OTel-Go Metrics SDK adatper.  Since this
-// would be more work, the simpler approach taken here uses a
-// ValueRecorder instrument and a simple calling pattern.
-
 import (
 	"context"
 	"time"
@@ -32,6 +24,9 @@ import (
 )
 
 type (
+	// Timer is a simple instrument for measuring a section of
+	// code, a kind of light-weight span that outputs a
+	// ValueRecorder of its duration.
 	Timer metric.Float64ValueRecorder
 
 	Timing struct {
@@ -39,6 +34,8 @@ type (
 		timer   Timer
 		started time.Time
 	}
+
+	Counter metric.Int64Counter
 )
 
 func NewTimer(name, desc string) Timer {
@@ -66,4 +63,22 @@ func (t Timing) Stop(err *error, kvs ...attribute.KeyValue) {
 	kvs = append(kvs, attribute.String("error", errorval))
 
 	metric.Float64ValueRecorder(t.timer).Record(t.ctx, time.Since(t.started).Seconds(), kvs...)
+}
+
+func NewCounter(name, desc string) Counter {
+	return Counter(sidecar.OTelMeterMust.NewInt64Counter(
+		name,
+		metric.WithDescription(desc),
+	))
+}
+
+func (c Counter) Add(ctx context.Context, cnt int64, err *error, kvs ...attribute.KeyValue) {
+	errorval := "false"
+	if err != nil && *err != nil {
+		errorval = "true"
+	}
+
+	kvs = append(kvs, attribute.String("error", errorval))
+
+	metric.Int64Counter(c).Add(ctx, cnt, kvs...)
 }
