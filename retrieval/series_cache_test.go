@@ -26,6 +26,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/internal/promtest"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/textparse"
 	"github.com/prometheus/prometheus/tsdb/record"
@@ -72,12 +73,9 @@ func TestScrapeCache_GarbageCollect(t *testing.T) {
 
 	// We should be able to read them all.
 	for i := 1; i <= 7; i++ {
-		entry, ok, err := c.get(ctx, uint64(i))
+		entry, err := c.get(ctx, uint64(i))
 		if err != nil {
 			t.Fatalf("unexpected error: %s", err)
-		}
-		if !ok {
-			t.Fatalf("entry with ref %d not found", i)
 		}
 		if !labels.Equal(entry.lset, labels.FromStrings("a", strconv.Itoa(i))) {
 			t.Fatalf("unexpected label set for ref %d: %s", i, entry.lset)
@@ -111,20 +109,15 @@ func TestScrapeCache_GarbageCollect(t *testing.T) {
 			t.Fatal(err)
 		}
 		for i := 1; i < 2; i++ {
-			if entry, ok, err := c.get(ctx, uint64(i)); err != nil {
-				t.Fatalf("unexpected error: %s", err)
-			} else if ok {
-				t.Fatalf("unexpected cache entry %d: %s", i, entry.lset)
+			if entry, err := c.get(ctx, uint64(i)); err != errSeriesNotFound {
+				t.Fatalf("unexpected cache entry %d: %v", i, entry)
 			}
 		}
 		// We should be able to read them all.
 		for i := 3; i <= 7; i++ {
-			entry, ok, err := c.get(ctx, uint64(i))
+			entry, err := c.get(ctx, uint64(i))
 			if err != nil {
 				t.Fatalf("unexpected error: %s", err)
-			}
-			if !ok {
-				t.Fatalf("label set with ref %d not found", i)
 			}
 			if !labels.Equal(entry.lset, labels.FromStrings("a", strconv.Itoa(i))) {
 				t.Fatalf("unexpected label set for ref %d: %s", i, entry.lset)
@@ -159,19 +152,14 @@ func TestScrapeCache_GarbageCollect(t *testing.T) {
 	//  Only series 4 and 7 should be left.
 	for i := 1; i <= 7; i++ {
 		if i != 4 && i != 7 {
-			if entry, ok, err := c.get(ctx, uint64(i)); err != nil {
+			if _, err := c.get(ctx, uint64(i)); err != errSeriesNotFound {
 				t.Fatalf("unexpected error: %s", err)
-			} else if ok {
-				t.Fatalf("unexpected cache entry %d: %s", i, entry.lset)
 			}
 			continue
 		}
-		entry, ok, err := c.get(ctx, uint64(i))
+		entry, err := c.get(ctx, uint64(i))
 		if err != nil {
 			t.Fatalf("unexpected error: %s", err)
-		}
-		if !ok {
-			t.Fatalf("entry with ref %d not found", i)
 		}
 		if !labels.Equal(entry.lset, labels.FromStrings("a", strconv.Itoa(i))) {
 			t.Fatalf("unexpected label set for ref %d: %s", i, entry.lset)
@@ -179,28 +167,21 @@ func TestScrapeCache_GarbageCollect(t *testing.T) {
 	}
 }
 
-func TestSeriesCache_Refresh(t *testing.T) {
+func TestSeriesCache_Lookup(t *testing.T) {
 	extraLabels := labels.FromStrings()
 	metadataMap := promtest.MetadataMap{}
-	logBuffer := &bytes.Buffer{}
-	defer func() {
-		if logBuffer.Len() > 0 {
-			t.Log(logBuffer.String())
-		}
-	}()
-	logger := log.NewLogfmtLogger(logBuffer)
-	c := newSeriesCache(logger, "", nil, nil, metadataMap, "", extraLabels)
+	c := newSeriesCache(telemetry.DefaultLogger(), "", nil, nil, metadataMap, "", extraLabels)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// Query unset reference.
 	const refID = 1
-	entry, ok, err := c.get(ctx, refID)
-	if err != nil {
+	entry, err := c.get(ctx, refID)
+	if err != errSeriesNotFound {
 		t.Fatalf("unexpected error: %s", err)
 	}
-	if ok || entry != nil {
+	if entry != nil {
 		t.Fatalf("unexpected series entry found: %v", entry)
 	}
 
@@ -209,11 +190,11 @@ func TestSeriesCache_Refresh(t *testing.T) {
 		t.Fatalf("unexpected error: %s", err)
 	}
 	// We should still not receive anything.
-	entry, ok, err = c.get(ctx, refID)
-	if err != nil {
+	entry, err = c.get(ctx, refID)
+	if err != errSeriesMissingMetadata {
 		t.Fatalf("unexpected error: %s", err)
 	}
-	if ok || entry != nil {
+	if entry != nil {
 		t.Fatalf("unexpected series entry found: %v", entry)
 	}
 
@@ -223,19 +204,16 @@ func TestSeriesCache_Refresh(t *testing.T) {
 
 	// Hack the timestamp of the last update to be sufficiently in the past that a refresh
 	// will be triggered.
-	c.entries[refID].lastRefresh = time.Now().Add(-2 * config.DefaultSeriesCacheRefreshPeriod)
+	c.entries[refID].lastLookup = time.Now().Add(-2 * config.DefaultSeriesCacheLookupPeriod)
 
 	// Now another get should trigger a refresh, which now finds data.
-	entry, ok, err = c.get(ctx, refID)
-	if entry == nil || !ok || err != nil {
+	entry, err = c.get(ctx, refID)
+	if entry == nil || err != nil {
 		t.Errorf("expected metadata but got none, error: %s", err)
-	}
-	if entry == nil || !entry.exported {
-		t.Errorf("expected to get exported entry")
 	}
 }
 
-func TestSeriesCache_RefreshMetadataNotFound(t *testing.T) {
+func TestSeriesCache_LookupMetadataNotFound(t *testing.T) {
 	logBuffer := &bytes.Buffer{}
 	defer func() {
 		if logBuffer.Len() > 0 {
@@ -257,11 +235,11 @@ func TestSeriesCache_RefreshMetadataNotFound(t *testing.T) {
 	}
 
 	// Get shouldn't find data because of the previous error.
-	entry, ok, err := c.get(ctx, refID)
-	if err != nil {
+	entry, err := c.get(ctx, refID)
+	if err != errSeriesMissingMetadata {
 		t.Fatalf("unexpected error: %s", err)
 	}
-	if ok || entry != nil {
+	if entry != nil {
 		t.Fatalf("unexpected series entry found: %v", entry)
 	}
 }
@@ -300,7 +278,7 @@ func TestSeriesCache_Filter(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, ok, err := c.get(ctx, uint64(idx)); !ok || err != nil {
+		if _, err := c.get(ctx, uint64(idx)); err != nil {
 			t.Fatalf("metric not found: %s", err)
 		}
 	}
@@ -309,10 +287,8 @@ func TestSeriesCache_Filter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok, err := c.get(ctx, 100); err != nil {
+	if _, err := c.get(ctx, 100); err != nil {
 		t.Fatalf("error retrieving metric: %s", err)
-	} else if ok {
-		t.Fatalf("metric was not filtered")
 	}
 }
 
@@ -356,15 +332,12 @@ func TestSeriesCache_Filter_Complex(t *testing.T) {
 		err := c.set(ctx, uint64(idx), lset, 1)
 		require.NoError(t, err)
 
-		_, ok, err := c.get(ctx, uint64(idx))
-
-		notFound := !ok || err != nil
-		found := !notFound
+		entry, err := c.get(ctx, uint64(idx))
 
 		if idx == 0 {
-			require.True(t, found, "OK %v Err %v", ok, err)
+			require.True(t, err == nil && entry != nil, "Err %v", err)
 		} else {
-			require.True(t, notFound, "OK %v Err %v", ok, err)
+			require.True(t, err == nil && entry == nil, "Err %v", err)
 		}
 	}
 }
@@ -395,8 +368,8 @@ func TestSeriesCache_RenameMetric(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	entry, ok, err := c.get(ctx, 1)
-	if !ok || err != nil {
+	entry, err := c.get(ctx, 1)
+	if err != nil {
 		t.Fatalf("metric not found: %s", err)
 	}
 	if !labels.Equal(entry.lset, labels.FromStrings("__name__", "metric1", "job", "job1", "instance", "inst1")) {
@@ -409,8 +382,8 @@ func TestSeriesCache_RenameMetric(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	entry, ok, err = c.get(ctx, 2)
-	if !ok || err != nil {
+	entry, err = c.get(ctx, 2)
+	if err != nil {
 		t.Fatalf("metric not found: %s", err)
 	}
 	if want := getMetricName("", "metric3"); entry.desc.Name != want {
@@ -443,9 +416,8 @@ func TestSeriesCache_ResetBehavior(t *testing.T) {
 		t.Fatalf("unexpected error: %s", err)
 	}
 
-	_, ok, err := c.get(ctx, refID)
+	_, err := c.get(ctx, refID)
 	require.NoError(t, err)
-	require.True(t, ok)
 
 	type kase struct {
 		ts         int64

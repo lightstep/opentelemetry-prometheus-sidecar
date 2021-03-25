@@ -39,7 +39,7 @@ const (
 )
 
 var (
-	ErrHistogramMetadataMissing = errors.New("histogram metadata missing")
+	errHistogramMetadataMissing = errors.New("histogram metadata missing")
 )
 
 // Appender appends a time series with exactly one data point. A hash for the series
@@ -395,7 +395,7 @@ Loop:
 		if consumed == 0 {
 			// This may be caused by a change of metadata or metadata conflict.
 			// There was no "le" label, or there was no _sum or _count suffix.
-			return nil, 0, samples[1:], ErrHistogramMetadataMissing
+			return nil, 0, samples[1:], errHistogramMetadataMissing
 		}
 		return nil, 0, samples[consumed:], nil
 	}

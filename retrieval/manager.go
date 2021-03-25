@@ -24,6 +24,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/common"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry/doevery"
@@ -184,6 +185,7 @@ Outer:
 				continue
 			}
 			processed, produced := len(samples), 0
+			droppedPoints, skippedPoints := 0, 0
 
 			for len(samples) > 0 {
 				select {
@@ -203,16 +205,14 @@ Outer:
 					samples = newSamples
 				}
 				if err != nil {
-					// Note: This case is poorly monitored (LS-22396):
+					droppedPoints++
 					doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
 						level.Warn(r.logger).Log("msg", "failed to build sample", "err", err)
 					})
 					continue
 				}
 				if outputSample == nil {
-					// Note: This case is poorly monitored (LS-22396): some of these
-					// cases are timestamp resets, which are ordinary, but can't be
-					// monitored either.
+					skippedPoints++
 					continue
 				}
 				r.appender.Append(ctx, hash, outputSample)
@@ -224,6 +224,8 @@ Outer:
 				nil,
 				samplesProcessed.Measurement(int64(processed)),
 				samplesProduced.Measurement(int64(produced)),
+				common.DroppedPoints.Measurement(int64(droppedPoints)),
+				common.SkippedPoints.Measurement(int64(skippedPoints)),
 			)
 
 		case record.Tombstones:

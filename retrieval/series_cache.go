@@ -23,6 +23,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry/doevery"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -119,16 +120,34 @@ type seriesCacheEntry struct {
 	maxSegment int
 
 	// Last time we attempted to populate meta information about the series.
-	lastRefresh time.Time
+	lastLookup time.Time
 }
+
+var (
+	seriesCacheLookupCounter = telemetry.NewCounter(
+		"sidecar.metadata.lookups",
+		"Number of Metric series lookups",
+	)
+	seriesCacheMissingResetCounter = telemetry.NewCounter(
+		"sidecar.cumulative.missing_resets",
+		"Number of Metric series resets that were missing start time, causing gaps a series",
+	)
+	seriesCacheGarbageCollectTimer = telemetry.NewTimer(
+		"sidecar.garbage_collection.duration",
+		"Duration of the series cache garbage collection",
+	)
+
+	errSeriesNotFound        = fmt.Errorf("series ref not found")
+	errSeriesMissingMetadata = fmt.Errorf("series ref missing metadata")
+)
 
 func (e *seriesCacheEntry) populated() bool {
 	return e.desc != nil
 }
 
-func (e *seriesCacheEntry) shouldRefresh() bool {
+func (e *seriesCacheEntry) shouldTryLookup() bool {
 	// We'll keep trying until populated.
-	return !e.populated() && time.Since(e.lastRefresh) > config.DefaultSeriesCacheRefreshPeriod
+	return !e.populated() && time.Since(e.lastLookup) > config.DefaultSeriesCacheLookupPeriod
 }
 
 func newSeriesCache(
@@ -174,8 +193,8 @@ func (c *seriesCache) run(ctx context.Context) {
 
 // garbageCollect drops obsolete cache entries based on the contents of the most
 // recent checkpoint.
-func (c *seriesCache) garbageCollect() error {
-	// Timing @@@ ? Should get some gauges out of this.
+func (c *seriesCache) garbageCollect() (retErr error) {
+	defer seriesCacheGarbageCollectTimer.Start(context.Background()).Stop(&retErr)
 
 	cpDir, cpNum, err := wal.LastCheckpoint(c.dir)
 	if errors.Cause(err) == record.ErrNotFound {
@@ -234,11 +253,6 @@ func (c *seriesCache) garbageCollect() error {
 	return nil
 }
 
-var (
-	errSeriesNotFound        = fmt.Errorf("series ref not found")
-	errSeriesMissingMetadata = fmt.Errorf("series ref missing metadata")
-)
-
 func (c *seriesCache) get(ctx context.Context, ref uint64) (*seriesCacheEntry, error) {
 	c.mtx.Lock()
 	e, ok := c.entries[ref]
@@ -252,8 +266,8 @@ func (c *seriesCache) get(ctx context.Context, ref uint64) (*seriesCacheEntry, e
 		return nil, nil
 	}
 
-	if e.shouldRefresh() {
-		if err := c.refresh(ctx, ref); err != nil {
+	if e.shouldTryLookup() {
+		if err := c.lookup(ctx, ref); err != nil {
 			return nil, err
 		}
 	}
@@ -292,9 +306,16 @@ func (c *seriesCache) getResetAdjusted(ref uint64, t int64, v float64) (int64, f
 	e, ok := c.entries[ref]
 	c.mtx.Unlock()
 	if !ok {
-		// TODO: Can we distinguish these errors, which are
-		// dropped points, from the ordinary reset case below,
-		// which not the same as dropped points?
+		// Note: This is an improbable branch. Every code path
+		// that reaches this point has already called get(), which
+		// checks the same error condition.  If this could
+		// really happen, we'd be counting dropped data incorrectly.
+		doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
+			level.Warn(c.logger).Log(
+				"msg", "timeseries missing ref",
+				"ref", ref,
+			)
+		})
 		return 0, 0, false
 	}
 	hasReset := e.hasReset
@@ -306,6 +327,8 @@ func (c *seriesCache) getResetAdjusted(ref uint64, t int64, v float64) (int64, f
 		// If we just initialized the reset timestamp, this sample should be skipped.
 		// We don't know the window over which the current cumulative value was built up over.
 		// The next sample for will be considered from this point onwards.
+
+		seriesCacheMissingResetCounter.Add(context.Background(), 1, nil)
 		return 0, 0, false
 	}
 	if v < e.previousValue {
@@ -341,20 +364,22 @@ func (c *seriesCache) set(ctx context.Context, ref uint64, lset labels.Labels, m
 		lset:       lset,
 	}
 	c.mtx.Unlock()
-	return c.refresh(ctx, ref)
+	return c.lookup(ctx, ref)
 }
 
-func (c *seriesCache) refresh(ctx context.Context, ref uint64) error {
+func (c *seriesCache) lookup(ctx context.Context, ref uint64) (retErr error) {
 	now := time.Now()
 	c.mtx.Lock()
 	entry := c.entries[ref]
-	entry.lastRefresh = now
+	entry.lastLookup = now
 	c.mtx.Unlock()
 
 	if entry.lset == nil {
 		// in which case the entry did not match the filters
 		return nil
 	}
+
+	defer seriesCacheLookupCounter.Add(ctx, 1, &retErr)
 
 	entryLabels := copyLabels(entry.lset)
 
