@@ -833,7 +833,7 @@ func TestSampleBuilder(t *testing.T) {
 				var err error
 				var result []*metric_pb.ResourceMetrics
 
-				series := newSeriesCache(nil, "", nil, nil, c.metadata, c.metricsPrefix, c.resourceLabels)
+				series := newSeriesCache(nil, "", nil, nil, c.metadata, c.metricsPrefix, c.resourceLabels, nil)
 				for ref, s := range c.series {
 					series.set(ctx, ref, s, 0)
 				}

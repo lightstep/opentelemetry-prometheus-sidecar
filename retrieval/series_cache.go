@@ -79,6 +79,8 @@ type seriesCache struct {
 	entries map[uint64]*seriesCacheEntry
 	// Map from series hash to most recently written interval.
 	intervals map[uint64]sampleInterval
+	// Map for jobs where "instance" has been relabelled
+	jobInstanceMap map[string]string
 }
 
 type seriesCacheEntry struct {
@@ -135,20 +137,22 @@ func newSeriesCache(
 	metaget MetadataGetter,
 	metricsPrefix string,
 	extraLabels labels.Labels,
+	jobInstanceMap map[string]string,
 ) *seriesCache {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
 	return &seriesCache{
-		logger:        logger,
-		dir:           dir,
-		filters:       filters,
-		metaget:       metaget,
-		entries:       map[uint64]*seriesCacheEntry{},
-		intervals:     map[uint64]sampleInterval{},
-		metricsPrefix: metricsPrefix,
-		extraLabels:   extraLabels,
-		renames:       renames,
+		logger:         logger,
+		dir:            dir,
+		filters:        filters,
+		metaget:        metaget,
+		entries:        map[uint64]*seriesCacheEntry{},
+		intervals:      map[uint64]sampleInterval{},
+		metricsPrefix:  metricsPrefix,
+		extraLabels:    extraLabels,
+		renames:        renames,
+		jobInstanceMap: jobInstanceMap,
 	}
 }
 
@@ -319,6 +323,13 @@ func (c *seriesCache) set(ctx context.Context, ref uint64, lset labels.Labels, m
 	return c.refresh(ctx, ref)
 }
 
+func (c *seriesCache) jobInstanceKey(job string) string {
+	if val, ok := c.jobInstanceMap[job]; ok {
+		return val
+	}
+	return "instance"
+}
+
 func (c *seriesCache) refresh(ctx context.Context, ref uint64) error {
 	c.mtx.Lock()
 	entry := c.entries[ref]
@@ -340,7 +351,7 @@ func (c *seriesCache) refresh(ctx context.Context, ref uint64) error {
 		baseMetricName string
 		suffix         string
 		job            = entry.lset.Get("job")
-		instance       = entry.lset.Get("instance")
+		instance       = entry.lset.Get(c.jobInstanceKey(job))
 	)
 	meta, err := c.metaget.Get(ctx, job, instance, metricName)
 	if err != nil {

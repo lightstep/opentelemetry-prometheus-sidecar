@@ -56,6 +56,7 @@ func TestScrapeCache_GarbageCollect(t *testing.T) {
 		promtest.MetadataMap{"//": &config.MetadataEntry{MetricType: textparse.MetricTypeGauge, ValueType: config.DOUBLE}},
 		"",
 		labels.FromStrings(),
+		nil,
 	)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -189,7 +190,7 @@ func TestSeriesCache_Refresh(t *testing.T) {
 		}
 	}()
 	logger := log.NewLogfmtLogger(logBuffer)
-	c := newSeriesCache(logger, "", nil, nil, metadataMap, "", extraLabels)
+	c := newSeriesCache(logger, "", nil, nil, metadataMap, "", extraLabels, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -245,7 +246,7 @@ func TestSeriesCache_RefreshMetadataNotFound(t *testing.T) {
 	logger := log.NewLogfmtLogger(logBuffer)
 	extraLabels := labels.FromStrings("__resource_a", "resource2_a")
 	metadataMap := promtest.MetadataMap{}
-	c := newSeriesCache(logger, "", nil, nil, metadataMap, "", extraLabels)
+	c := newSeriesCache(logger, "", nil, nil, metadataMap, "", extraLabels, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -285,7 +286,7 @@ func TestSeriesCache_Filter(t *testing.T) {
 			&labels.Matcher{Type: labels.MatchEqual, Name: "b", Value: "b1"},
 		},
 		{&labels.Matcher{Type: labels.MatchEqual, Name: "c", Value: "c1"}},
-	}, nil, metadataMap, "", extraLabels)
+	}, nil, metadataMap, "", extraLabels, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -340,7 +341,7 @@ func TestSeriesCache_Filter_Complex(t *testing.T) {
 			mustNewMatcher(labels.MatchRegexp, "__name__", "github.+"),
 			mustNewMatcher(labels.MatchRegexp, "category", "issues.+"),
 		},
-	}, nil, metadataMap, "", extraLabels)
+	}, nil, metadataMap, "", extraLabels, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -385,7 +386,7 @@ func TestSeriesCache_RenameMetric(t *testing.T) {
 	logger := log.NewLogfmtLogger(logBuffer)
 	c := newSeriesCache(logger, "", nil,
 		map[string]string{"metric2": "metric3"},
-		metadataMap, "", extraLabels)
+		metadataMap, "", extraLabels, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -418,6 +419,55 @@ func TestSeriesCache_RenameMetric(t *testing.T) {
 	}
 }
 
+func TestSeriesCache_Relabel(t *testing.T) {
+	// Populate the getters with data.
+	extraLabels := labels.FromStrings("__resource_a", "resource2_a")
+	metadataMap := promtest.MetadataMap{
+		"job1/inst1/metric1": &config.MetadataEntry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: config.DOUBLE},
+		"job2/inst1/metric2": &config.MetadataEntry{Metric: "metric2", MetricType: textparse.MetricTypeGauge, ValueType: config.DOUBLE},
+	}
+	logBuffer := &bytes.Buffer{}
+	defer func() {
+		if logBuffer.Len() > 0 {
+			t.Log(logBuffer.String())
+		}
+	}()
+	logger := log.NewLogfmtLogger(logBuffer)
+	c := newSeriesCache(logger, "", nil,
+		map[string]string{"metric2": "metric3"},
+		metadataMap, "", extraLabels, map[string]string{"job1": "other_instance_label"})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Test base case of metric that's not renamed.
+	err := c.set(ctx, 1, labels.FromStrings("__name__", "metric1", "job", "job1", "other_instance_label", "inst1"), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry, ok, err := c.get(ctx, 1)
+	if !ok || err != nil {
+		t.Fatalf("metric not found: %s", err)
+	}
+	if !labels.Equal(entry.lset, labels.FromStrings("__name__", "metric1", "job", "job1", "other_instance_label", "inst1")) {
+		t.Fatalf("unexpected labels %q", entry.lset)
+	}
+	if want := getMetricName("", "metric1"); entry.desc.Name != want {
+		t.Fatalf("want proto metric name %q but got %q", want, entry.desc.Name)
+	}
+	err = c.set(ctx, 2, labels.FromStrings("__name__", "metric2", "job", "job2", "instance", "inst1"), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry, ok, err = c.get(ctx, 2)
+	if !ok || err != nil {
+		t.Fatalf("metric not found: %s", err)
+	}
+	if want := getMetricName("", "metric3"); entry.desc.Name != want {
+		t.Fatalf("want proto metric name %q but got %q", want, entry.desc.Name)
+	}
+}
+
 func TestSeriesCache_ResetBehavior(t *testing.T) {
 	// Test the fix in
 	// https://github.com/Stackdriver/stackdriver-prometheus-sidecar/pull/263
@@ -432,7 +482,7 @@ func TestSeriesCache_ResetBehavior(t *testing.T) {
 	metadataMap := promtest.MetadataMap{
 		"job1/inst1/metric1": &config.MetadataEntry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: config.DOUBLE},
 	}
-	c := newSeriesCache(logger, "", nil, nil, metadataMap, "", extraLabels)
+	c := newSeriesCache(logger, "", nil, nil, metadataMap, "", extraLabels, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
