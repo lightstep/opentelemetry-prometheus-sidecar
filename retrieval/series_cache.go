@@ -22,6 +22,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry/doevery"
@@ -30,6 +31,8 @@ import (
 	"github.com/prometheus/prometheus/pkg/textparse"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wal"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 )
 
 // tsDesc has complete, proto-independent data about a metric data
@@ -75,6 +78,8 @@ type seriesCache struct {
 	entries map[uint64]*seriesCacheEntry
 	// Map from series hash to most recently written interval.
 	intervals map[uint64]sampleInterval
+
+	currentSeriesObs metric.Int64UpDownSumObserver
 }
 
 type seriesCacheEntry struct {
@@ -162,7 +167,7 @@ func newSeriesCache(
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
-	return &seriesCache{
+	sc := &seriesCache{
 		logger:        logger,
 		dir:           dir,
 		filters:       filters,
@@ -173,6 +178,36 @@ func newSeriesCache(
 		extraLabels:   extraLabels,
 		renames:       renames,
 	}
+
+	sc.currentSeriesObs = sidecar.OTelMeterMust.NewInt64UpDownSumObserver(
+		"sidecar.series.current",
+		func(ctx context.Context, result metric.Int64ObserverResult) {
+			sc.mtx.Lock()
+			defer sc.mtx.Unlock()
+
+			filtered, invalid, live := 0, 0, 0
+			for _, ent := range sc.entries {
+				if ent.lset == nil {
+					filtered++
+				} else if ent.populated() {
+					live++
+				} else {
+					invalid++
+				}
+			}
+
+			status := attribute.Key("status")
+
+			result.Observe(int64(filtered), status.String("filtered"))
+			result.Observe(int64(live), status.String("live"))
+			result.Observe(int64(invalid), status.String("invalid"))
+		},
+		metric.WithDescription(
+			"The current number of series in the series cache.",
+		),
+	)
+
+	return sc
 }
 
 func (c *seriesCache) run(ctx context.Context) {
