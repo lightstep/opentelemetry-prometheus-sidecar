@@ -68,7 +68,10 @@ const (
 	// collection?
 	DefaultSeriesCacheGarbageCollectionPeriod = time.Minute * 15
 
-	DefaultSeriesCacheRefreshPeriod = time.Minute * 3
+	// DefaultSeriesCacheLookupPeriod determines how often the
+	// sidecar will try to load metadata for the series when it is
+	// not known.
+	DefaultSeriesCacheLookupPeriod = time.Minute * 3
 
 	// TODO: The setting below is not configurable, it should be.
 
@@ -95,9 +98,11 @@ an OpenTelemetry (https://opentelemetry.io) Protocol endpoint.
 	SidecarPrefix        = "sidecar."
 	ProcessedMetric      = "sidecar.samples.processed"
 	ProducedMetric       = "sidecar.samples.produced"
+	SeriesDefinedMetric  = "sidecar.series.defined"
 	OutcomeMetric        = "sidecar.queue.outcome"
 	DroppedSeriesMetric  = "sidecar.series.dropped"
 	DroppedPointsMetric  = "sidecar.points.dropped"
+	SkippedPointsMetric  = "sidecar.points.skipped"
 	InvalidMetricsMetric = "sidecar.metrics.invalid"
 
 	OutcomeKey          = attribute.Key("outcome")

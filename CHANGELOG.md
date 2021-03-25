@@ -10,7 +10,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- New metric `sidecar.points.skipped` counts points that were not processed due to filters or cumulative resets. (#174)
+- New metric `sidecar.series.defined` counts the number of series refs defined in the WAL. (#174)
+- New metric `sidecar.metadata.lookups` counts the number of metadata lookups (with error=true/false). (#174)
+- New metric `sidecar.cumulative.missing_resets` counts the number of points that were not processed due to cumulative resets. (#174)
+- New metric `sidecar.series.current` reports the current number of series (with status=live/filtered/invalid). (#174)
+
 ### Changed
+
+- Series cache remembers points that were filtered in order to correctly count points that are dropped. (#174)
+- Metric `sidecar.metadata.fetch.duration` has new `mode` label for single and batch requests. (#174)
 
 ### Removed
 

@@ -39,7 +39,7 @@ const (
 )
 
 var (
-	ErrHistogramMetadataMissing = errors.New("histogram metadata missing")
+	errHistogramMetadataMissing = errors.New("histogram metadata missing")
 )
 
 // Appender appends a time series with exactly one data point. A hash for the series
@@ -72,18 +72,17 @@ func (b *sampleBuilder) next(ctx context.Context, samples []record.RefSample) (*
 		return nil, 0, tailSamples, nil
 	}
 
-	entry, ok, err := b.series.get(ctx, sample.Ref)
+	entry, err := b.series.get(ctx, sample.Ref)
 
 	if err != nil {
 		return nil, 0, tailSamples, errors.Wrap(err, "get series information")
 	}
-	if !ok {
+
+	if entry == nil {
+		// The point belongs to a filtered-out series.
 		return nil, 0, tailSamples, nil
 	}
 
-	if !entry.exported {
-		return nil, 0, tailSamples, nil
-	}
 	// Allocate the proto and fill in its metadata.
 	//
 	// TODO This code does not try to combine more than one point
@@ -96,7 +95,7 @@ func (b *sampleBuilder) next(ctx context.Context, samples []record.RefSample) (*
 	labels := protoStringLabels(entry.desc.Labels)
 
 	var resetTimestamp int64
-
+	var ok bool
 	switch entry.metadata.MetricType {
 	case textparse.MetricTypeCounter:
 		var value float64
@@ -326,7 +325,7 @@ func (b *sampleBuilder) buildHistogram(
 	// until we hit a new metric.
 Loop:
 	for i, s := range samples {
-		e, ok, err := b.series.get(ctx, s.Ref)
+		e, err := b.series.get(ctx, s.Ref)
 		if err != nil {
 			// Note: This case may or may not trigger the
 			// len(samples) == len(newSamples) test in
@@ -336,10 +335,10 @@ Loop:
 			// the manager safetly advances.
 			return nil, 0, samples, err
 		}
-		if !ok {
-			consumed++
-			// TODO(fabxc): increment metric.
-			continue
+		if e == nil {
+			// These points were filtered. This seems like
+			// an impossible situation.
+			break
 		}
 		name := e.lset.Get("__name__")
 		// The series matches if it has the same base name, the remainder is a valid histogram suffix,
@@ -396,7 +395,7 @@ Loop:
 		if consumed == 0 {
 			// This may be caused by a change of metadata or metadata conflict.
 			// There was no "le" label, or there was no _sum or _count suffix.
-			return nil, 0, samples[1:], ErrHistogramMetadataMissing
+			return nil, 0, samples[1:], errHistogramMetadataMissing
 		}
 		return nil, 0, samples[consumed:], nil
 	}

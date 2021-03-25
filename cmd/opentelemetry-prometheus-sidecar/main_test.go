@@ -80,7 +80,7 @@ func TestStartupInterrupt(t *testing.T) {
 		os.Args[0],
 		append(e2eTestMainCommonFlags,
 			"--prometheus.wal=testdata/wal",
-			"--log.level=debug",
+			"--log.level=debug", // The tests below depend on debug logs
 		)...)
 
 	cmd.Env = append(os.Environ(), "RUN_MAIN=1")
@@ -212,7 +212,6 @@ func TestStartupUnhealthyEndpoint(t *testing.T) {
 			"--prometheus.wal=testdata/wal",
 			"--startup.timeout=5s",
 			"--destination.timeout=1s",
-			"--log.level=debug",
 		)...)
 
 	cmd.Env = append(os.Environ(), "RUN_MAIN=1")
@@ -253,7 +252,6 @@ func TestSuperStackDump(t *testing.T) {
 			"--diagnostics.endpoint=http://127.0.0.1:19000",
 			"--prometheus.wal=testdata/wal",
 			"--healthcheck.period=1s",
-			"--log.level=debug",
 		)...)
 
 	ms := newTestServer(t, nil)

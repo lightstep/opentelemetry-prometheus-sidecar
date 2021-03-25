@@ -455,7 +455,7 @@ Metrics from the subordinate process can help identify issues once the first met
 | sidecar.connect.duration | histogram | how many attempts to connect (and how long) | `error`: true, false |
 | sidecar.export.duration | histogram | how many attempts to export (and how long) | `error`: true, false |
 | sidecar.monitor.duration | histogram | how many attempts to scrape Prometheus /metrics (and how long) | `error`: true, false |
-| sidecar.metadata.fetch.duration | histogram | how many attempts to fetch metadata from Prometheus (and how long) | `error`: true, false |
+| sidecar.metadata.fetch.duration | histogram | how many attempts to fetch metadata from Prometheus (and how long) | `mode`: single, batch; `error`: true, false |
 | sidecar.queue.outcome | counter | outcome of the sample in the queue | `outcome`: success, failed, retry, aborted |
 | sidecar.queue.capacity | gauge | number of available slots for samples (i.e., points) in the queue, counts buffer size times current number of shards | |
 | sidecar.queue.running | gauge | number of running shards, those which have not exited | |
@@ -463,9 +463,13 @@ Metrics from the subordinate process can help identify issues once the first met
 | sidecar.queue.size | gauge | number of samples (i.e., points) standing in a queue waiting to export | |
 | sidecar.samples.processed | histogram | number of samples (i.e., points) read in a prometheus WAL batch | |
 | sidecar.samples.produced | counter | number of samples (i.e., points) read from the prometheus WAL | |
+| sidecar.series.defined | counter | number of series defined in the WAL | |
 | sidecar.series.dropped | counter | number of series or metrics dropped | `key_reason`: various |
-| sidecar.points.dropped | counter | number of points dropped because | `key_reason`: various |
-| sidecar.metrics.invalid | gauge | constant value for invalid metrics | `key_reason`: various, `metric_name`: name of invalid metric instrument |
+| sidecar.points.dropped | counter | number of points dropped due to errors | `key_reason`: various |
+| sidecar.points.skipped | counter | number of points skipped by filters or cumulative resets | |
+| sidecar.metadata.lookups | counter | number of calls to lookup metadata | `error`: true, false |
+| sidecar.cumulative.missing_resets | counter | number of points skipped because cumulative reset time was not known | |
+| sidecar.series.current | gauge | number of series refs in the series cache | `status`: live, filtered, invalid |
 | sidecar.wal.size | gauge | size of the prometheus WAL | |
 | sidecar.wal.offset | gauge | current offset in the prometheus WAL | |
 | sidecar.segment.opens | counter | number of WAL segment open() calls | |
