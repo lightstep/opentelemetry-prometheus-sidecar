@@ -144,7 +144,7 @@ func TestValidationErrorReporting(t *testing.T) {
 			"--startup.timeout=15s",
 			"--healthcheck.period=5s",
 			"--destination.timeout=5s",
-			"--log.level=info",
+			"--log.level=debug",
 		)...)
 
 	cmd.Env = append(os.Environ(), "RUN_MAIN=1")
@@ -162,10 +162,10 @@ func TestValidationErrorReporting(t *testing.T) {
 	defer timer.Stop()
 
 	// Wait for 3 specific points, then 3 specific meta points.
-	var droppedPointsFound, droppedSeriesFound, invalidFound bool
+	var droppedPointsFound, droppedSeriesFound, skippedPointsFound int64
 	var got = 0
 outer:
-	for got < 3 || !droppedPointsFound || !droppedSeriesFound || !invalidFound {
+	for got < 3 || droppedPointsFound == 0 || skippedPointsFound == 0 {
 		var data *metrics.ResourceMetrics
 		select {
 		case data = <-ms.metrics:
@@ -186,13 +186,12 @@ outer:
 				require.InEpsilon(t, 100, point.(*otlpmetrics.DoubleDataPoint).Value, 0.01)
 				got++
 			case config.DroppedPointsMetric:
-				droppedPointsFound = true
-				require.Equal(t, int64(2), point.(*otlpmetrics.IntDataPoint).Value)
+				droppedPointsFound = point.(*otlpmetrics.IntDataPoint).Value
 			case config.DroppedSeriesMetric:
-				droppedSeriesFound = true
-				require.Equal(t, int64(1), point.(*otlpmetrics.IntDataPoint).Value)
+				droppedSeriesFound = point.(*otlpmetrics.IntDataPoint).Value
+			case config.SkippedPointsMetric:
+				skippedPointsFound = point.(*otlpmetrics.IntDataPoint).Value
 			case config.InvalidMetricsMetric:
-				invalidFound = true
 				labels := point.(*otlpmetrics.IntDataPoint).Labels
 
 				var reason, mname string
@@ -222,6 +221,11 @@ outer:
 		"reason2/gauge":   true,
 		"reason2/mistake": true,
 	}, invalid)
+
+	// Correct drop summary:
+	require.Equal(t, int64(2), droppedPointsFound) // from server response
+	require.Equal(t, int64(1), droppedSeriesFound) // from server response
+	require.Equal(t, int64(2), skippedPointsFound) // number of cumulative resets
 
 	for _, expect := range []string{
 		// We didn't start the trace service but received data.

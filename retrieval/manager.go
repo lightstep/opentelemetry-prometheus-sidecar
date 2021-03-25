@@ -45,6 +45,11 @@ var (
 		config.ProducedMetric,
 		metric.WithDescription("Number of Metric samples produced"),
 	)
+
+	seriesDefined = sidecar.OTelMeterMust.NewInt64Counter(
+		config.SeriesDefinedMetric,
+		metric.WithDescription("Number of Metric series defined"),
+	)
 )
 
 type MetadataGetter interface {
@@ -157,17 +162,29 @@ Outer:
 				level.Error(r.logger).Log("msg", "decode series", "err", err)
 				continue
 			}
+			success, failed := 0, 0
 			for _, s := range series {
 				err = seriesCache.set(ctx, s.Ref, s.Labels, r.tailer.CurrentSegment())
-				if err != nil {
-					doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
-						level.Error(r.logger).Log(
-							"msg", "update series cache",
-							"err", err,
-						)
-					})
+				if err == nil {
+					success++
+					continue
 				}
+				failed++
+				doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
+					level.Error(r.logger).Log(
+						"msg", "update series cache",
+						"err", err,
+					)
+				})
 			}
+
+			common.DroppedSeries.Add(
+				ctx,
+				int64(failed),
+				common.DroppedKeyReason.String("metadata"),
+			)
+			seriesDefined.Add(ctx, int64(success))
+
 		case record.Samples:
 			// Skip sample records before the the boundary offset.
 			if offset < startOffset {
@@ -175,7 +192,8 @@ Outer:
 				continue
 			}
 			if !started {
-				level.Info(r.logger).Log("msg", "reached first record after start offset",
+				level.Info(r.logger).Log(
+					"msg", "reached first record after start offset",
 					"start_offset", startOffset, "skipped_records", skipped)
 				started = true
 			}
@@ -219,12 +237,21 @@ Outer:
 				produced++
 			}
 
+			common.DroppedPoints.Add(ctx, int64(droppedPoints),
+				common.DroppedKeyReason.String("metadata"),
+			)
+
 			sidecar.OTelMeter.RecordBatch(
 				ctx,
 				nil,
 				samplesProcessed.Measurement(int64(processed)),
 				samplesProduced.Measurement(int64(produced)),
-				common.DroppedPoints.Measurement(int64(droppedPoints)),
+				// Note: skipped points could be refined, as there
+				// are two sub-types.  Some points are skipped because
+				// of cumulative resets, and some because of filters.
+				// Both are counted, so subtract sidecar.cumulative.missing_resets
+				// from skipped points to know the true number, when
+				// there are filters.
 				common.SkippedPoints.Measurement(int64(skippedPoints)),
 			)
 
