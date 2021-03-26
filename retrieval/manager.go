@@ -113,19 +113,6 @@ func (r *PrometheusReader) CurrentSegment() int {
 	return r.tailer.CurrentSegment()
 }
 
-// case LabelDrop:
-// 	for _, l := range lset {
-// 		if cfg.Regex.MatchString(l.Name) {
-// 			lb.Del(l.Name)
-// 		}
-// 	}
-// case LabelKeep:
-// 	for _, l := range lset {
-// 		if !cfg.Regex.MatchString(l.Name) {
-// 			lb.Del(l.Name)
-// 		}
-// 	}
-
 // getjobInstanceMap returns a string map for any job for which the instance
 // label has been relabeled
 func (r *PrometheusReader) getJobInstanceMap() map[string]string {
