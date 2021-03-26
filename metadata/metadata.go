@@ -30,6 +30,7 @@ import (
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/textparse"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 var (
@@ -50,6 +51,11 @@ type Cache struct {
 	seenJobs       map[string]struct{}
 	staticMetadata map[string]*config.MetadataEntry
 }
+
+// TODO: This code could use metrics to report the current size of the
+// cache, similar to ../retrieval/series_cache.go has.
+//
+// TODO: Add garbage collection in this file, somehow.
 
 // NewCache returns a new cache that gets populated by the metadata endpoint
 // at the given URL.
@@ -80,7 +86,6 @@ type cacheEntry struct {
 }
 
 func (e *cacheEntry) shouldRefetch() bool {
-	// TODO(fabxc): how often does this happen? Do we need an exponential backoff?
 	return !e.found && time.Since(e.lastFetch) > retryInterval
 }
 
@@ -110,7 +115,7 @@ func (c *Cache) Get(ctx context.Context, job, instance, metric string) (*config.
 			}
 			c.seenJobs[job] = struct{}{}
 		} else {
-			md, err := c.fetchMetric(ctx, job, instance, metric)
+			md, err := c.fetchSingle(ctx, job, instance, metric)
 			if err != nil {
 				return nil, errors.Wrapf(err, "fetch metric metadata \"%s/%s/%s\"", job, instance, metric)
 			}
@@ -131,11 +136,11 @@ func (c *Cache) Get(ctx context.Context, job, instance, metric string) (*config.
 	return nil, nil
 }
 
-func (c *Cache) fetch(ctx context.Context, typ string, q url.Values) (_ *common.MetadataAPIResponse, retErr error) {
+func (c *Cache) fetch(ctx context.Context, mode string, q url.Values) (_ *common.MetadataAPIResponse, retErr error) {
 	ctx, cancel := context.WithTimeout(ctx, config.DefaultPrometheusTimeout)
 	defer cancel()
 
-	defer fetchTimer.Start(ctx).Stop(&retErr)
+	defer fetchTimer.Start(ctx).Stop(&retErr, attribute.String("mode", mode))
 
 	u := *c.promURL
 	u.RawQuery = q.Encode()
@@ -164,12 +169,12 @@ func (c *Cache) fetch(ctx context.Context, typ string, q url.Values) (_ *common.
 
 const apiErrorNotFound = "not_found"
 
-// fetchMetric fetches metadata for the given job, instance, and metric combination.
+// fetchSingle fetches metadata for the given job, instance, and metric combination.
 // It returns a not-found entry if the fetch is successful but returns no data.
-func (c *Cache) fetchMetric(ctx context.Context, job, instance, metric string) (*cacheEntry, error) {
+func (c *Cache) fetchSingle(ctx context.Context, job, instance, metric string) (*cacheEntry, error) {
 	job, instance = escapeLval(job), escapeLval(instance)
 
-	apiResp, err := c.fetch(ctx, "metric", url.Values{
+	apiResp, err := c.fetch(ctx, "single", url.Values{
 		"match_target": []string{fmt.Sprintf("{job=\"%s\",instance=\"%s\"}", job, instance)},
 		"metric":       []string{metric},
 	})
@@ -182,7 +187,11 @@ func (c *Cache) fetchMetric(ctx context.Context, job, instance, metric string) (
 		return nil, errors.Wrap(errors.New(apiResp.Error), "lookup failed")
 	}
 	if len(apiResp.Data) == 0 {
-		return &cacheEntry{lastFetch: now}, nil
+		// Cache a not-found entry.
+		return &cacheEntry{
+			lastFetch: now,
+			found:     false,
+		}, nil
 	}
 	d := apiResp.Data[0]
 

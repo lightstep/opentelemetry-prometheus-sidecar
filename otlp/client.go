@@ -84,9 +84,6 @@ var (
 		"duration of the grpc.Dial() call",
 	)
 
-	droppedMetricsCounter = common.DroppedSeries
-	droppedPointsCounter  = common.DroppedPoints
-
 	errNoSingleCount = fmt.Errorf("no single count")
 )
 
@@ -334,11 +331,19 @@ func (c *Client) parseResponseMetadata(ctx context.Context, md grpcMetadata.MD) 
 		}
 		if key == "otlp-points-dropped" {
 			if points, err := singleCount(values); err == nil {
-				droppedPointsCounter.Add(ctx, int64(points))
+				common.DroppedPoints.Add(
+					ctx,
+					int64(points),
+					common.DroppedKeyReason.String("validation"),
+				)
 			}
 		} else if key == "otlp-metrics-dropped" {
 			if points, err := singleCount(values); err == nil {
-				droppedMetricsCounter.Add(ctx, int64(points))
+				common.DroppedSeries.Add(
+					ctx,
+					int64(points),
+					common.DroppedKeyReason.String("validation"),
+				)
 			}
 		} else if strings.HasPrefix(key, invalidTrailerPrefix) {
 			key = key[len(invalidTrailerPrefix):]

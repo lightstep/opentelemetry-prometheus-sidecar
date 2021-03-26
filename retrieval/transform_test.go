@@ -15,6 +15,7 @@ package retrieval
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"testing"
@@ -30,6 +31,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/textparse"
 	"github.com/prometheus/prometheus/tsdb/record"
+	"github.com/stretchr/testify/require"
 	messagediff "gopkg.in/d4l3k/messagediff.v1"
 )
 
@@ -187,6 +189,16 @@ func TestSampleBuilder(t *testing.T) {
 		}
 	)
 
+	isNotFound := func(err error) bool {
+		return errors.Is(err, errSeriesNotFound)
+	}
+	isMissingMetadata := func(err error) bool {
+		return errors.Is(err, errSeriesMissingMetadata)
+	}
+	isMissingHistogramMetadata := func(err error) bool {
+		return errors.Is(err, errHistogramMetadataMissing)
+	}
+
 	// Note: Be aware that the *resulting* points' labels will be arranged
 	// *alphabetically*.
 	cases := []struct {
@@ -197,7 +209,7 @@ func TestSampleBuilder(t *testing.T) {
 		metricsPrefix  string
 		input          []record.RefSample
 		result         []*metric_pb.ResourceMetrics
-		fail           bool
+		errors         []func(error) bool
 	}{
 		{
 			name: "basics",
@@ -416,6 +428,11 @@ func TestSampleBuilder(t *testing.T) {
 				{Ref: 3, T: 3000, V: 3},
 			},
 			result: []*metric_pb.ResourceMetrics{nil, nil, nil},
+			errors: []func(err error) bool{
+				isMissingMetadata,
+				isMissingMetadata,
+				isMissingMetadata,
+			},
 		},
 		// Summary metrics.
 		{
@@ -807,6 +824,7 @@ func TestSampleBuilder(t *testing.T) {
 				),
 			},
 		},
+		// Gauge/Histogram metadata conflict
 		{
 			name: "gauge not histogram",
 			series: seriesMap{
@@ -819,7 +837,28 @@ func TestSampleBuilder(t *testing.T) {
 			input: []record.RefSample{
 				{Ref: 1, T: 2000, V: 5.5},
 			},
-			fail: true,
+			result: []*metric_pb.ResourceMetrics{
+				nil,
+			},
+			errors: []func(error) bool{
+				isMissingHistogramMetadata,
+			},
+		},
+		// Missing series ref
+		{
+			name:           "no series ref",
+			series:         seriesMap{},
+			resourceLabels: labels.FromStrings("resource_a", "abc"),
+			metadata:       promtest.MetadataMap{},
+			input: []record.RefSample{
+				{Ref: 1, T: 2000, V: 5.5},
+			},
+			result: []*metric_pb.ResourceMetrics{
+				nil,
+			},
+			errors: []func(error) bool{
+				isNotFound,
+			},
 		},
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -828,9 +867,7 @@ func TestSampleBuilder(t *testing.T) {
 	for _, c := range cases {
 		t.Run(fmt.Sprintf("Test case %s", c.name),
 			func(t *testing.T) {
-
 				var s *metric_pb.ResourceMetrics
-				var err error
 				var result []*metric_pb.ResourceMetrics
 
 				series := newSeriesCache(nil, "", nil, nil, c.metadata, c.metricsPrefix, c.resourceLabels, nil)
@@ -841,18 +878,19 @@ func TestSampleBuilder(t *testing.T) {
 				b := &sampleBuilder{series: series}
 
 				for k := 0; len(c.input) > 0; k++ {
+					var err error
 					s, _, c.input, err = b.next(context.Background(), c.input)
-					if err != nil {
-						break
-					}
+
 					result = append(result, s)
+
+					if c.errors == nil {
+						require.NoError(t, err)
+						continue
+					}
+
+					require.True(t, c.errors[k](err), "For %d %v", k, err)
 				}
-				if err == nil && c.fail {
-					t.Error("expected error but got none")
-				}
-				if err != nil && !c.fail {
-					t.Errorf("unexpected error: %s", err)
-				}
+
 				if diff, equal := messagediff.PrettyDiff(c.result, result); !equal {
 					t.Errorf("unexpected result:\n%v", diff)
 				}

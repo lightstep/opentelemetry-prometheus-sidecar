@@ -24,6 +24,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/common"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry/doevery"
@@ -44,6 +45,11 @@ var (
 	samplesProduced = sidecar.OTelMeterMust.NewInt64Counter(
 		config.ProducedMetric,
 		metric.WithDescription("Number of Metric samples produced"),
+	)
+
+	seriesDefined = sidecar.OTelMeterMust.NewInt64Counter(
+		config.SeriesDefinedMetric,
+		metric.WithDescription("Number of Metric series defined"),
 	)
 )
 
@@ -205,17 +211,31 @@ Outer:
 				level.Error(r.logger).Log("msg", "decode series", "err", err)
 				continue
 			}
+			success, failed := 0, 0
 			for _, s := range series {
 				err = seriesCache.set(ctx, s.Ref, s.Labels, r.tailer.CurrentSegment())
-				if err != nil {
-					doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
-						level.Error(r.logger).Log(
-							"msg", "update series cache",
-							"err", err,
-						)
-					})
+				if err == nil {
+					success++
+					continue
 				}
+				failed++
+				doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
+					level.Error(r.logger).Log(
+						"msg", "update series cache",
+						"err", err,
+					)
+				})
 			}
+
+			if failed != 0 {
+				common.DroppedSeries.Add(
+					ctx,
+					int64(failed),
+					common.DroppedKeyReason.String("metadata"),
+				)
+			}
+			seriesDefined.Add(ctx, int64(success))
+
 		case record.Samples:
 			// Skip sample records before the the boundary offset.
 			if offset < startOffset {
@@ -223,7 +243,8 @@ Outer:
 				continue
 			}
 			if !started {
-				level.Info(r.logger).Log("msg", "reached first record after start offset",
+				level.Info(r.logger).Log(
+					"msg", "reached first record after start offset",
 					"start_offset", startOffset, "skipped_records", skipped)
 				started = true
 			}
@@ -233,6 +254,7 @@ Outer:
 				continue
 			}
 			processed, produced := len(samples), 0
+			droppedPoints, skippedPoints := 0, 0
 
 			for len(samples) > 0 {
 				select {
@@ -252,27 +274,37 @@ Outer:
 					samples = newSamples
 				}
 				if err != nil {
-					// Note: This case is poorly monitored (LS-22396):
+					droppedPoints++
 					doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
 						level.Warn(r.logger).Log("msg", "failed to build sample", "err", err)
 					})
 					continue
 				}
 				if outputSample == nil {
-					// Note: This case is poorly monitored (LS-22396): some of these
-					// cases are timestamp resets, which are ordinary, but can't be
-					// monitored either.
+					skippedPoints++
 					continue
 				}
 				r.appender.Append(ctx, hash, outputSample)
 				produced++
 			}
 
+			if droppedPoints != 0 {
+				common.DroppedPoints.Add(ctx, int64(droppedPoints),
+					common.DroppedKeyReason.String("metadata"),
+				)
+			}
 			sidecar.OTelMeter.RecordBatch(
 				ctx,
 				nil,
 				samplesProcessed.Measurement(int64(processed)),
 				samplesProduced.Measurement(int64(produced)),
+				// Note: skipped points could be refined, as there
+				// are two sub-types.  Some points are skipped because
+				// of cumulative resets, and some because of filters.
+				// Both are counted, so subtract sidecar.cumulative.missing_resets
+				// from skipped points to know the true number, when
+				// there are filters.
+				common.SkippedPoints.Measurement(int64(skippedPoints)),
 			)
 
 		case record.Tombstones:
