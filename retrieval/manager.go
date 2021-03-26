@@ -107,16 +107,43 @@ func (r *PrometheusReader) CurrentSegment() int {
 	return r.tailer.CurrentSegment()
 }
 
+// case LabelDrop:
+// 	for _, l := range lset {
+// 		if cfg.Regex.MatchString(l.Name) {
+// 			lb.Del(l.Name)
+// 		}
+// 	}
+// case LabelKeep:
+// 	for _, l := range lset {
+// 		if !cfg.Regex.MatchString(l.Name) {
+// 			lb.Del(l.Name)
+// 		}
+// 	}
+
 // getjobInstanceMap returns a string map for any job for which the instance
 // label has been relabeled
 func (r *PrometheusReader) getJobInstanceMap() map[string]string {
 	jobInstanceMap := make(map[string]string)
 	for _, config := range r.scrapeConfig {
+		newInstanceLabel := ""
 		for _, metricRelabel := range config.MetricRelabelConfigs {
-			for _, ln := range metricRelabel.SourceLabels {
-				if string(ln) == "instance" {
-					jobInstanceMap[config.JobName] = metricRelabel.TargetLabel
+			switch metricRelabel.Action {
+			case "replace":
+				for _, ln := range metricRelabel.SourceLabels {
+					if string(ln) == "instance" {
+						newInstanceLabel = metricRelabel.TargetLabel
+					}
 				}
+			case "labeldrop":
+				if metricRelabel.Regex.MatchString("instance") && len(newInstanceLabel) > 0 {
+					jobInstanceMap[config.JobName] = newInstanceLabel
+				}
+			case "labelkeep":
+				if !metricRelabel.Regex.MatchString("instance") && len(newInstanceLabel) > 0 {
+					jobInstanceMap[config.JobName] = newInstanceLabel
+				}
+			default:
+				// no other action required
 			}
 		}
 	}
