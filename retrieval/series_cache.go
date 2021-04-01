@@ -78,6 +78,8 @@ type seriesCache struct {
 	entries map[uint64]*seriesCacheEntry
 	// Map from series hash to most recently written interval.
 	intervals map[uint64]sampleInterval
+	// Map for jobs where "instance" has been relabelled
+	jobInstanceMap map[string]string
 
 	currentSeriesObs metric.Int64UpDownSumObserver
 }
@@ -159,6 +161,7 @@ func newSeriesCache(
 	metaget MetadataGetter,
 	metricsPrefix string,
 	extraLabels labels.Labels,
+	jobInstanceMap map[string]string,
 ) *seriesCache {
 	if logger == nil {
 		logger = log.NewNopLogger()
@@ -173,6 +176,7 @@ func newSeriesCache(
 		metricsPrefix: metricsPrefix,
 		extraLabels:   extraLabels,
 		renames:       renames,
+		jobInstanceMap: jobInstanceMap,
 	}
 
 	sc.currentSeriesObs = sidecar.OTelMeterMust.NewInt64UpDownSumObserver(
@@ -396,6 +400,13 @@ func (c *seriesCache) set(ctx context.Context, ref uint64, lset labels.Labels, m
 	return c.lookup(ctx, ref)
 }
 
+func (c *seriesCache) jobInstanceKey(job string) string {
+	if val, ok := c.jobInstanceMap[job]; ok {
+		return val
+	}
+	return "instance"
+}
+
 func (c *seriesCache) lookup(ctx context.Context, ref uint64) (retErr error) {
 	now := time.Now()
 	c.mtx.Lock()
@@ -425,7 +436,7 @@ func (c *seriesCache) lookup(ctx context.Context, ref uint64) (retErr error) {
 		baseMetricName string
 		suffix         string
 		job            = entry.lset.Get("job")
-		instance       = entry.lset.Get("instance")
+		instance       = entry.lset.Get(c.jobInstanceKey(job))
 	)
 	meta, err := c.metaget.Get(ctx, job, instance, metricName)
 	if err != nil {
