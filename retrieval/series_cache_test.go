@@ -418,8 +418,8 @@ func TestSeriesCache_Relabel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	entry, ok, err := c.get(ctx, 1)
-	if !ok || err != nil {
+	entry, err := c.get(ctx, 1)
+	if err != nil {
 		t.Fatalf("metric not found: %s", err)
 	}
 	if !labels.Equal(entry.lset, labels.FromStrings("__name__", "metric1", "job", "job1", "other_instance_label", "inst1")) {
@@ -432,8 +432,8 @@ func TestSeriesCache_Relabel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	entry, ok, err = c.get(ctx, 2)
-	if !ok || err != nil {
+	entry, err = c.get(ctx, 2)
+	if err != nil {
 		t.Fatalf("metric not found: %s", err)
 	}
 	if want := getMetricName("", "metric3"); entry.desc.Name != want {
