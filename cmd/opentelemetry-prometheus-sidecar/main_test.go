@@ -378,7 +378,7 @@ func TestErrSkipSegment(t *testing.T) {
 	require.Nil(t, err, "unexpected error")
 	require.Equal(t, 0, r.attempts)
 
-	r = fakePrometheusReader{err: tail.ErrRestartReader}
+	r = fakePrometheusReader{err: errors.New("another error")}
 	err = runReader(context.Background(), &r, "", 0, maxAttempts)
 	require.Equal(t, tail.ErrRestartReader, err)
 	require.Equal(t, 0, r.attempts)
