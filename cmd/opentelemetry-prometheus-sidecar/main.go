@@ -221,19 +221,6 @@ func Main() bool {
 		return false
 	}
 
-	prometheusReader := retrieval.NewPrometheusReader(
-		log.With(logger, "component", "prom_wal"),
-		cfg.Prometheus.WAL,
-		tailer,
-		filters,
-		metricRenames,
-		metadataCache,
-		queueManager,
-		cfg.OpenTelemetry.MetricsPrefix,
-		cfg.Prometheus.MaxPointAge.Duration,
-		createPrimaryDestinationResourceLabels(svcInstanceId, cfg.Destination.Attributes),
-	)
-
 	// Start the admin server.
 	go func() {
 		defer cancelMain()
@@ -263,6 +250,20 @@ func Main() bool {
 
 	level.Debug(logger).Log("msg", "entering run state")
 	healthChecker.SetRunning()
+
+	prometheusReader := retrieval.NewPrometheusReader(
+		log.With(logger, "component", "prom_wal"),
+		cfg.Prometheus.WAL,
+		tailer,
+		filters,
+		metricRenames,
+		metadataCache,
+		queueManager,
+		cfg.OpenTelemetry.MetricsPrefix,
+		cfg.Prometheus.MaxPointAge.Duration,
+		createPrimaryDestinationResourceLabels(svcInstanceId, cfg.Destination.Attributes),
+		promMon.GetScrapeConfig(),
+	)
 
 	// Run two inter-depdendent components:
 	// (1) Prometheus reader
