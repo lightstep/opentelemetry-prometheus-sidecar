@@ -258,7 +258,7 @@ func (s *Supervisor) healthcheckErr(ctx context.Context) (err error) {
 		}
 
 		if resp.StatusCode/100 != 2 {
-			return errors.Errorf("healthcheck: %s", resp.Status)
+			return errors.Errorf("healthcheck: %s", hr.Status)
 		}
 
 		return nil

@@ -228,7 +228,6 @@ func (a *alive) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		} else {
 			resp = a.lastResponse
 		}
-
 		return resp
 	})
 }
@@ -286,6 +285,11 @@ func (a *alive) check(metrics map[string][]exportRecord) error {
 	produced := sumWhere(config.ProducedMetric, "")
 
 	if produced.defined() && produced.matchDelta() == 0 {
+		// if the sidecar has not been able to produced samples, it's
+		// possible that all series are being filtered
+		if produced.matchValue() == 0 {
+			return errors.Errorf("no samples produced, check filter configuration")
+		}
 		return errors.Errorf(
 			"%s stopped moving at %v",
 			config.ProducedMetric,
