@@ -156,6 +156,10 @@ func (m *Monitor) GetConfig(ctx context.Context) (promconfig.Config, error) {
 
 }
 
+func (m *Monitor) GetScrapeConfig() []*promconfig.ScrapeConfig {
+	return m.scrapeConfig
+}
+
 func (m *Monitor) WaitForReady(inCtx context.Context, inCtxCancel context.CancelFunc) error {
 	u := *m.cfg.PromURL
 	u.Path = path.Join(u.Path, "/-/ready")
@@ -206,6 +210,7 @@ func (m *Monitor) WaitForReady(inCtx context.Context, inCtxCancel context.Cancel
 					inCtxCancel()
 					return false
 				}
+				m.scrapeConfig = promCfg.ScrapeConfigs
 
 				// Great! We also need it to have completed
 				// a full round of scrapes.

@@ -15,6 +15,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - New metric `sidecar.metadata.lookups` counts the number of metadata lookups (with error=true/false). (#174)
 - New metric `sidecar.cumulative.missing_resets` counts the number of points that were not processed due to cumulative resets. (#174)
 - New metric `sidecar.series.current` reports the current number of series (with status=live/filtered/invalid). (#174)
+- Added support for handling relabeling rules for `instance` label. (#175)
 
 ### Changed
 

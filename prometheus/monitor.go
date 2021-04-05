@@ -11,6 +11,7 @@ import (
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/prom2json"
+	promconfig "github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/pkg/labels"
 )
 
@@ -24,7 +25,8 @@ const acceptHeader = `application/vnd.google.protobuf;proto=io.prometheus.client
 
 type (
 	Monitor struct {
-		cfg config.PromReady
+		cfg          config.PromReady
+		scrapeConfig []*promconfig.ScrapeConfig
 	}
 
 	Family struct {

@@ -28,6 +28,7 @@ import (
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry/doevery"
+	promconfig "github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
 	"github.com/prometheus/prometheus/tsdb/record"
@@ -68,6 +69,7 @@ func NewPrometheusReader(
 	metricsPrefix string,
 	maxPointAge time.Duration,
 	extraLabels labels.Labels,
+	scrapeConfig []*promconfig.ScrapeConfig,
 ) *PrometheusReader {
 	if logger == nil {
 		logger = log.NewNopLogger()
@@ -84,6 +86,7 @@ func NewPrometheusReader(
 		metricsPrefix:        metricsPrefix,
 		maxPointAge:          maxPointAge,
 		extraLabels:          extraLabels,
+		scrapeConfig:         scrapeConfig,
 	}
 }
 
@@ -99,6 +102,7 @@ type PrometheusReader struct {
 	metricsPrefix        string
 	maxPointAge          time.Duration
 	extraLabels          labels.Labels
+	scrapeConfig         []*promconfig.ScrapeConfig
 }
 
 func (r *PrometheusReader) Next() {
@@ -109,8 +113,39 @@ func (r *PrometheusReader) CurrentSegment() int {
 	return r.tailer.CurrentSegment()
 }
 
+// getjobInstanceMap returns a string map for any job for which the instance
+// label has been relabeled
+func (r *PrometheusReader) getJobInstanceMap() map[string]string {
+	jobInstanceMap := make(map[string]string)
+	for _, config := range r.scrapeConfig {
+		newInstanceLabel := ""
+		for _, metricRelabel := range config.MetricRelabelConfigs {
+			switch metricRelabel.Action {
+			case "replace":
+				for _, ln := range metricRelabel.SourceLabels {
+					if string(ln) == "instance" {
+						newInstanceLabel = metricRelabel.TargetLabel
+					}
+				}
+			case "labeldrop":
+				if metricRelabel.Regex.MatchString("instance") && len(newInstanceLabel) > 0 {
+					jobInstanceMap[config.JobName] = newInstanceLabel
+				}
+			case "labelkeep":
+				if !metricRelabel.Regex.MatchString("instance") && len(newInstanceLabel) > 0 {
+					jobInstanceMap[config.JobName] = newInstanceLabel
+				}
+			default:
+				// no other action required
+			}
+		}
+	}
+	return jobInstanceMap
+}
+
 func (r *PrometheusReader) Run(ctx context.Context, startOffset int) error {
 	level.Info(r.logger).Log("msg", "starting Prometheus reader")
+	jobInstanceMap := r.getJobInstanceMap()
 
 	seriesCache := newSeriesCache(
 		r.logger,
@@ -120,6 +155,7 @@ func (r *PrometheusReader) Run(ctx context.Context, startOffset int) error {
 		r.metadataGetter,
 		r.metricsPrefix,
 		r.extraLabels,
+		jobInstanceMap,
 	)
 	go seriesCache.run(ctx)
 
