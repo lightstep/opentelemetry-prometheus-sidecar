@@ -283,12 +283,15 @@ func (c *Client) Store(req *metricsService.ExportMetricsServiceRequest) error {
 			defer exportDuration.Start(ctx).Stop(&err)
 
 			if _, err = service.Export(c.grpcMetadata(ctx), reqCopy, grpc.Trailer(&md)); err != nil {
-				level.Debug(c.logger).Log(
-					"msg", "export failure",
-					"err", truncateErrorString(err),
-					"size", proto.Size(reqCopy),
-					"trailers", fmt.Sprint(md),
-				)
+				doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
+					level.Error(c.logger).Log(
+						"msg", "export failure",
+						"err", truncateErrorString(err),
+						"size", proto.Size(reqCopy),
+						"trailers", fmt.Sprint(md),
+						"recoverable", isRecoverable(err),
+					)
+				})
 				errors <- err
 				return
 			}
