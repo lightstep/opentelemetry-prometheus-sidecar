@@ -40,7 +40,8 @@ type seriesMap map[uint64]labels.Labels
 
 func TestSampleBuilder(t *testing.T) {
 	type (
-		DoubleHistogramBucketStruct = otlptest.DoubleHistogramBucketStruct
+		DoubleHistogramBucketStruct      = otlptest.DoubleHistogramBucketStruct
+		DoubleSummaryQuantileValueStruct = otlptest.DoubleSummaryQuantileValueStruct
 	)
 	var (
 		IntSumCumulativeMonotonic    = otlptest.IntSumCumulativeMonotonic
@@ -52,6 +53,9 @@ func TestSampleBuilder(t *testing.T) {
 		DoubleHistogramDataPoint     = otlptest.DoubleHistogramDataPoint
 		DoubleHistogramCumulative    = otlptest.DoubleHistogramCumulative
 		DoubleHistogramBucket        = otlptest.DoubleHistogramBucket
+		DoubleSummary                = otlptest.DoubleSummary
+		DoubleSummaryDataPoint       = otlptest.DoubleSummaryDataPoint
+		DoubleSummaryQuantileValue   = otlptest.DoubleSummaryQuantileValue
 		Labels                       = otlptest.Labels
 		Label                        = otlptest.Label
 
@@ -136,6 +140,26 @@ func TestSampleBuilder(t *testing.T) {
 					sum,
 					count,
 					buckets...,
+				),
+			)
+		}
+
+		DoubleSummaryPoint = func(
+			labels []*common_pb.StringKeyValue,
+			name string,
+			start, end time.Time,
+			sum float64, count uint64,
+			quantiles ...DoubleSummaryQuantileValueStruct,
+		) *metric_pb.Metric {
+			return DoubleSummary(
+				name, "", "",
+				DoubleSummaryDataPoint(
+					labels,
+					start,
+					end,
+					sum,
+					count,
+					quantiles...,
 				),
 			)
 		}
@@ -377,63 +401,75 @@ func TestSampleBuilder(t *testing.T) {
 			name: "summary",
 			metadata: promtest.MetadataMap{
 				"job1/instance1/metric1": &metadataEntry{Metric: "metric1", MetricType: textparse.MetricTypeSummary, ValueType: config.DOUBLE},
+				"job1/instance1/metric1_a_count": &metadataEntry{Metric: "metric1_a_count", MetricType: textparse.MetricTypeGauge, ValueType: config.DOUBLE},
 			},
 			series: seriesMap{
 				1: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_sum"),
 				2: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1", "quantile", "0.5"),
 				3: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_count"),
 				4: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1", "quantile", "0.9"),
+				// Add another series that only deviates by having an extra label. We must properly detect a new summary.
+				// This is an discouraged but possible case of metric labeling.
+				5: labels.FromStrings("job", "job1", "instance", "instance1", "a", "b", "__name__", "metric1_sum"),
+				6: labels.FromStrings("job", "job1", "instance", "instance1", "a", "b", "__name__", "metric1_count"),
+				// Series that triggers more edge cases.
+				7: labels.FromStrings("job", "job1", "instance", "instance1", "a", "b", "__name__", "metric1_a_count"),
 			},
 			input: []record.RefSample{
-				{Ref: 1, T: 1000, V: 1},
-				{Ref: 1, T: 1500, V: 1},
-				{Ref: 2, T: 2000, V: 2},
-				{Ref: 3, T: 3000, V: 3},
-				{Ref: 3, T: 3500, V: 4},
-				{Ref: 4, T: 4000, V: 4},
+				{Ref: 1, T: 1000, V: 55.1},
+				{Ref: 2, T: 1000, V: 0.3},
+				{Ref: 3, T: 1000, V: 10},
+				{Ref: 4, T: 1000, V: 0.6},
+				// Second sample set should actually be emitted.
+				{Ref: 1, T: 2000, V: 123.4},
+				{Ref: 2, T: 2000, V: 0.7},
+				{Ref: 3, T: 2000, V: 21},
+				{Ref: 4, T: 2000, V: 0.8},
+				// New summary without actual quantile values – should still work.
+				{Ref: 5, T: 1000, V: 55.1},
+				{Ref: 6, T: 1000, V: 10},
+				{Ref: 5, T: 2000, V: 123.4},
+				{Ref: 6, T: 2000, V: 21},
+				// New metric that actually matches the base name but the suffix is more more than a valid summary suffix.
+				{Ref: 7, T: 1000, V: 3},
 			},
 			result: []*metric_pb.Metric{
 				nil, // 0: dropped by reset handling.
-				DoubleCounterPoint(
+				DoubleSummaryPoint( // 1:
 					Labels(
 						Label("instance", "instance1"),
 						Label("job", "job1"),
 					),
-					"metric1_sum",
+					"metric1",
 					time.Unix(1, 0),
-					time.Unix(1, int64(500*time.Millisecond)),
-					0,
-				),
-				DoubleGaugePoint(
-					Labels(
-						Label("instance", "instance1"),
-						Label("job", "job1"),
-						Label("quantile", "0.5"),
-					),
-					"metric1",
 					time.Unix(2, 0),
-					2,
+					float64(123.4)-float64(55.1),
+					21-10,
+					DoubleSummaryQuantileValue(0.5, float64(0.7) - float64(0.3)),
+					DoubleSummaryQuantileValue(0.9, float64(0.8) - float64(0.6)),
 				),
-				nil, // 3: dropped
-				IntCounterPoint(
+				nil, // 2: skipped
+				DoubleSummaryPoint( // 3: summary w/ no quantile values
 					Labels(
+						Label("a", "b"),
 						Label("instance", "instance1"),
 						Label("job", "job1"),
-					),
-					"metric1_count",
-					time.Unix(3, 0),
-					time.Unix(3, int64(500*time.Millisecond)),
-					1,
-				),
-				DoubleGaugePoint(
-					Labels(
-						Label("instance", "instance1"),
-						Label("job", "job1"),
-						Label("quantile", "0.9"),
 					),
 					"metric1",
-					time.Unix(4, 0),
-					4,
+					time.Unix(1, 0),
+					time.Unix(2, 0),
+					float64(123.4)-float64(55.1),
+					21-10,
+				),
+				DoubleGaugePoint( // 4: not a summary
+					Labels(
+						Label("a", "b"),
+						Label("instance", "instance1"),
+						Label("job", "job1"),
+					),
+					"metric1_a_count",
+					time.Unix(1, 0),
+					3,
 				),
 			},
 		},
@@ -692,6 +728,7 @@ func TestSampleBuilder(t *testing.T) {
 		},
 		// Samples with a NaN value should be dropped.
 		{
+			name: "sample with NaN",
 			series: seriesMap{
 				1: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_count"),
 			},
@@ -711,6 +748,7 @@ func TestSampleBuilder(t *testing.T) {
 		},
 		// Samples with a NaN value should be dropped.
 		{
+			name: "sample with NaN 2",
 			series: seriesMap{
 				1: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_count"),
 			},
@@ -727,14 +765,15 @@ func TestSampleBuilder(t *testing.T) {
 			result: []*metric_pb.Metric{
 				nil, // due to reset timestamp handling
 				nil, // due to NaN
-				IntCounterPoint(
+				DoubleSummaryPoint(
 					Labels(
 						Label("instance", "instance1"),
 						Label("job", "job1"),
 					),
-					"metric1_count",
+					"metric1",
 					time.Unix(2, 0),
 					time.Unix(5, 0),
+					0,
 					4,
 				),
 			},

@@ -494,22 +494,9 @@ func (c *seriesCache) lookup(ctx context.Context, ref uint64) (retErr error) {
 			ts.ValueType = meta.ValueType
 		}
 	case textparse.MetricTypeSummary:
-		switch suffix {
-		case metricSuffixSum:
-			ts.Kind = config.CUMULATIVE
-			ts.ValueType = config.DOUBLE
-		case metricSuffixCount:
-			ts.Kind = config.CUMULATIVE
-			ts.ValueType = config.INT64
-		case "": // Actual quantiles.
-			ts.Kind = config.GAUGE
-			ts.ValueType = config.DOUBLE
-		default:
-			// Note: this branch has been seen for a
-			// _bucket suffix, indicating a mix of
-			// histogram and summary conventions.
-			return errors.Errorf("unexpected summary metric name suffix %q", suffix)
-		}
+		ts.Name = c.getMetricName(c.metricsPrefix, baseMetricName)
+		ts.Kind = config.CUMULATIVE
+		ts.ValueType = config.DOUBLE
 	case textparse.MetricTypeHistogram:
 		ts.Name = c.getMetricName(c.metricsPrefix, baseMetricName)
 		ts.Kind = config.CUMULATIVE
