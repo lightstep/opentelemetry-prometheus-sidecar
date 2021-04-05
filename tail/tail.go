@@ -218,6 +218,9 @@ func (t *Tailer) getCurrentSegment() int {
 	return t.nextSegment - 1
 }
 
+// Offset is reset as in incNextSegment()
+// as we *just* started pointing to the *current*
+// segment.
 func (t *Tailer) setCurrentSegment(segment int) {
 	t.mtx.Lock()
 	defer t.mtx.Unlock()
@@ -448,7 +451,7 @@ func (t *Tailer) Read(b []byte) (int, error) {
 		if err == record.ErrNotFound && promSeg > nextSegment {
 			t.setCurrentSegment(promSeg)
 			level.Warn(t.logger).Log(
-				"msg", "past WAL segment not found, transition to the new current segment",
+				"msg", "past WAL segment not found, sidecar may have dragged behind. Consider increasing max-shards and max-timeseries-per-request values",
 				"segment", nextSegment,
 				"current", promSeg,
 				"checkpoint", getCheckpointFilenames(t.dir),
