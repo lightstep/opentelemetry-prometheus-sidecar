@@ -28,6 +28,7 @@ import (
 	traces "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/trace/v1"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/internal/promtest"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
 
@@ -378,9 +379,10 @@ func TestErrSkipSegment(t *testing.T) {
 	require.Nil(t, err, "unexpected error")
 	require.Equal(t, 0, r.attempts)
 
-	r = fakePrometheusReader{err: tail.ErrRestartReader}
+	anotherErr := errors.New("unexpected error")
+	r = fakePrometheusReader{err: anotherErr}
 	err = runReader(context.Background(), &r, "", 0, maxAttempts)
-	require.Equal(t, tail.ErrRestartReader, err)
+	require.Equal(t, anotherErr, err)
 	require.Equal(t, 0, r.attempts)
 
 	// looping should only happen for ErrSkipSegment

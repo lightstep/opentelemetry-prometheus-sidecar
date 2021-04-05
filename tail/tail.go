@@ -24,6 +24,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -49,6 +50,9 @@ const (
 	// the Prom code makes this a variable, the application does
 	// not (apparently?) expose it as a variable, so we hard-code.
 	promSegmentSize = wal.DefaultSegmentSize
+
+	// The prefix of the checkpoint files.
+	checkpointPrefix = "checkpoint."
 )
 
 var (
@@ -77,7 +81,6 @@ var (
 		),
 	)
 
-	ErrRestartReader = errors.New("sidecar fell behind, restarting reader")
 	ErrSkipSegment   = errors.New("skip truncated WAL segment")
 )
 
@@ -213,6 +216,16 @@ func (t *Tailer) getCurrentSegment() int {
 	t.mtx.Lock()
 	defer t.mtx.Unlock()
 	return t.nextSegment - 1
+}
+
+// Offset is reset as in incNextSegment()
+// as we *just* started pointing to the *current*
+// segment.
+func (t *Tailer) setCurrentSegment(segment int) {
+	t.mtx.Lock()
+	defer t.mtx.Unlock()
+	t.nextSegment = segment + 1
+	t.offset = 0
 }
 
 // Offset returns the approximate current position of the tailer in the WAL with
@@ -436,12 +449,19 @@ func (t *Tailer) Read(b []byte) (int, error) {
 		next, err := openSegment(t.dir, nextSegment)
 
 		if err == record.ErrNotFound && promSeg > nextSegment {
+			t.setCurrentSegment(promSeg)
 			level.Warn(t.logger).Log(
-				"msg", "past WAL segment not found, will restart the reader",
+				"msg", "past WAL segment not found, sidecar may have dragged behind. Consider increasing max-shards and max-timeseries-per-request values",
 				"segment", nextSegment,
 				"current", promSeg,
+				"checkpoint", getCheckpointFilenames(t.dir),
 			)
-			return 0, ErrRestartReader
+			next, err = openSegment(t.dir, promSeg)
+			if err != nil {
+				return 0, errors.Wrap(err, "open next segment")
+			}
+			t.cur = next
+			continue
 		}
 
 		if err != nil {
@@ -455,6 +475,32 @@ func (t *Tailer) Read(b []byte) (int, error) {
 		)
 		t.cur = next
 	}
+}
+
+// getCheckpointFilenames looks for checkpoint filenames, in order to
+// debug cases where the sidecar dragged behind the current Prometheus
+// segment. A single checkpoint file should exist at all times, but
+// we check for more in case of exotic scenarios.
+func getCheckpointFilenames(dir string) string {
+	files, err := ioutil.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+	var filenames string
+	found := false
+	for _, entry := range files {
+		name := entry.Name()
+		if !strings.HasPrefix(name, checkpointPrefix) {
+			continue
+		}
+
+		if found {
+			filenames += ","
+		}
+		found = true
+		filenames += name[len(checkpointPrefix):]
+	}
+	return filenames
 }
 
 // openSegment finds a WAL segment with a name that parses to n. This
