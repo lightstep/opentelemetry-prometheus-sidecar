@@ -289,6 +289,7 @@ func (c *Client) Store(req *metricsService.ExportMetricsServiceRequest) error {
 						"err", truncateErrorString(err),
 						"size", proto.Size(reqCopy),
 						"trailers", fmt.Sprint(md),
+						"recoverable", isRecoverable(err),
 					)
 				})
 				errors <- err
