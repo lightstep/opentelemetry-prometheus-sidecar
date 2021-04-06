@@ -118,7 +118,7 @@ func NewQueueManager(logger log.Logger, cfg promconfig.QueueConfig, timeout time
 		timeout:       timeout,
 		clientFactory: clientFactory,
 
-		numShards:   1,
+		numShards:   cfg.MinShards,
 		reshardChan: make(chan int),
 		quit:        make(chan struct{}),
 
@@ -332,13 +332,13 @@ func (t *QueueManager) calculateDesiredShards() {
 	}
 
 	numShards := int(math.Ceil(desiredShards))
-	if numShards > t.cfg.MaxShards {
+	if numShards < t.cfg.MinShards {
+		numShards = t.cfg.MinShards
+	} else if numShards > t.cfg.MaxShards {
 		numShards = t.cfg.MaxShards
-	} else if numShards < 1 {
-		numShards = 1
 	}
-	if numShards == t.numShards {
-		return
+	if numShards < 1 { // Sanitize if needed.
+		numShards = 1
 	}
 
 	// Note: we do not block here, so that this period stays close
