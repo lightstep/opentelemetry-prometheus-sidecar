@@ -36,8 +36,8 @@ import (
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/common/version"
 	"github.com/stretchr/testify/require"
+	"go.etcd.io/etcd/version"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -59,20 +59,14 @@ type TestPoint struct {
 	T time.Time
 }
 
-func newTestSample(name string, timestamp int64, v float64) *metric_pb.ResourceMetrics {
-	return otlptest.ResourceMetrics(
-		otlptest.Resource(),
-		otlptest.InstrumentationLibraryMetrics(
-			otlptest.InstrumentationLibrary(sidecar.ExportInstrumentationLibrary, version.Version),
-			otlptest.DoubleGauge(
-				name, "", "",
-				otlptest.DoubleDataPoint(
-					otlptest.Labels(),
-					time.Unix(0, 0),
-					time.Unix(timestamp, 0),
-					v,
-				),
-			),
+func newTestSample(name string, timestamp int64, v float64) *metric_pb.Metric {
+	return otlptest.DoubleGauge(
+		name, "", "",
+		otlptest.DoubleDataPoint(
+			otlptest.Labels(),
+			time.Unix(0, 0),
+			time.Unix(timestamp, 0),
+			v,
 		),
 	)
 }
@@ -86,7 +80,17 @@ func NewTestStorageClient(t *testing.T, checkUniq bool) *TestStorageClient {
 	}
 }
 
-func (c *TestStorageClient) expectSamples(samples []*metric_pb.ResourceMetrics) {
+func resourceMetric(m *metric_pb.Metric) *metric_pb.ResourceMetrics {
+	return otlptest.ResourceMetrics(
+		otlptest.Resource(),
+		otlptest.InstrumentationLibraryMetrics(
+			otlptest.InstrumentationLibrary(sidecar.ExportInstrumentationLibrary, version.Version),
+			m,
+		),
+	)
+}
+
+func (c *TestStorageClient) expectSamples(samples []*metric_pb.Metric) {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 	ctx := context.Background()
@@ -106,7 +110,7 @@ func (c *TestStorageClient) expectSamples(samples []*metric_pb.ResourceMetrics) 
 				V: value,
 			})
 			return nil
-		}, s)
+		}, resourceMetric(s))
 	}
 	c.wg.Add(len(samples))
 }
@@ -206,7 +210,7 @@ func TestSampleDeliverySimple(t *testing.T) {
 	// batch timeout case.
 	n := 100
 
-	var samples []*metric_pb.ResourceMetrics
+	var samples []*metric_pb.Metric
 	for i := 0; i < n; i++ {
 		samples = append(samples, newTestSample(
 			fmt.Sprintf("test_metric_%d", i),
@@ -255,7 +259,7 @@ func TestSampleDeliveryMultiShard(t *testing.T) {
 	numShards := 10
 	n := 5 * numShards
 
-	var samples []*metric_pb.ResourceMetrics
+	var samples []*metric_pb.Metric
 	for i := 0; i < n; i++ {
 		samples = append(samples, newTestSample(
 			fmt.Sprintf("test_metric_%d", i),
@@ -308,7 +312,7 @@ func TestSampleDeliveryTimeout(t *testing.T) {
 	// Let's send one less sample than batch size, and wait the timeout duration
 	n := mainConfig.QueueConfig().MaxSamplesPerSend - 1
 
-	var samples1, samples2 []*metric_pb.ResourceMetrics
+	var samples1, samples2 []*metric_pb.Metric
 	for i := 0; i < n; i++ {
 		samples1 = append(samples1, newTestSample(
 			fmt.Sprintf("test_metric_%d", i),
@@ -371,7 +375,7 @@ func TestSampleDeliveryOrder(t *testing.T) {
 	mainConfig := config.DefaultMainConfig()
 	n := mainConfig.QueueConfig().MaxSamplesPerSend * ts
 
-	var samples []*metric_pb.ResourceMetrics
+	var samples []*metric_pb.Metric
 	for i := 0; i < n; i++ {
 		samples = append(samples, newTestSample(
 			fmt.Sprintf("test_metric_%d", i%ts),
@@ -484,7 +488,7 @@ func TestSpawnNotMoreThanMaxConcurrentSendsGoroutines(t *testing.T) {
 	mainConfig := config.DefaultMainConfig()
 	n := mainConfig.QueueConfig().MaxSamplesPerSend * 2
 
-	var samples []*metric_pb.ResourceMetrics
+	var samples []*metric_pb.Metric
 	for i := 0; i < n; i++ {
 		samples = append(samples, newTestSample(
 			fmt.Sprintf("test_metric_%d", i),

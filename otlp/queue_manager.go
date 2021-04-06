@@ -504,7 +504,7 @@ func (s *shardCollection) runShard(i int) {
 }
 
 func (s *shardCollection) sendSamples(client StorageClient, samples []*metric_pb.Metric) {
-1	begin := time.Now()
+	begin := time.Now()
 	s.sendSamplesWithBackoff(client, samples)
 
 	// These counters are used to calculate the dynamic sharding, and as such
