@@ -58,6 +58,8 @@ const (
 
 	// How many points per request
 	DefaultMaxTimeseriesPerRequest = 500
+	// Min number of shards, i.e. amount of concurrency
+	DefaultMinShards = 1
 	// Max number of shards, i.e. amount of concurrency
 	DefaultMaxShards = 200
 
@@ -177,6 +179,7 @@ type PromConfig struct {
 	WAL                     string         `json:"wal"`
 	MaxPointAge             DurationConfig `json:"max_point_age"`
 	MaxTimeseriesPerRequest int            `json:"max_timeseries_per_request"`
+	MinShards               int            `json:"min_shards"`
 	MaxShards               int            `json:"max_shards"`
 }
 
@@ -222,6 +225,7 @@ func (c MainConfig) QueueConfig() promconfig.QueueConfig {
 
 	cfg.MaxBackoff = model.Duration(2 * time.Second)
 	cfg.MaxSamplesPerSend = c.Prometheus.MaxTimeseriesPerRequest
+	cfg.MinShards = c.Prometheus.MinShards
 	cfg.MaxShards = c.Prometheus.MaxShards
 
 	// We want the queues to have enough buffer to ensure consistent flow with full batches
@@ -242,6 +246,7 @@ func DefaultMainConfig() MainConfig {
 			Endpoint:                DefaultPrometheusEndpoint,
 			MaxPointAge:             DurationConfig{DefaultMaxPointAge},
 			MaxTimeseriesPerRequest: DefaultMaxTimeseriesPerRequest,
+			MinShards:		 DefaultMinShards,
 			MaxShards:               DefaultMaxShards,
 		},
 		Admin: AdminConfig{
@@ -322,6 +327,9 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 
 	a.Flag("prometheus.max-timeseries-per-request", fmt.Sprintf("Send at most this number of timeseries per request. Default: %d", DefaultMaxTimeseriesPerRequest)).
 		IntVar(&cfg.Prometheus.MaxTimeseriesPerRequest)
+
+	a.Flag("prometheus.min-shards", fmt.Sprintf("Min number of shards, i.e. amount of concurrency. Default: %d", DefaultMinShards)).
+		IntVar(&cfg.Prometheus.MinShards)
 
 	a.Flag("prometheus.max-shards", fmt.Sprintf("Max number of shards, i.e. amount of concurrency. Default: %d", DefaultMaxShards)).
 		IntVar(&cfg.Prometheus.MaxShards)
@@ -410,6 +418,10 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 		if err := sanitizeValues("diagnostics header", true, cfg.Diagnostics.Headers); err != nil {
 			return MainConfig{}, nil, nil, err
 		}
+	}
+
+	if cfg.Prometheus.MinShards > cfg.Prometheus.MaxShards {
+		return MainConfig{}, nil, nil, errors.New("min-shards cannot be greater than max-shards")
 	}
 
 	// We avoided using the kingpin support for URL flags because
