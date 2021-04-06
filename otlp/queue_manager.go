@@ -31,8 +31,8 @@ import (
 	otelResource "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/resource/v1"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry/doevery"
 	"github.com/pkg/errors"
+	"github.com/prometheus/common/version"
 	promconfig "github.com/prometheus/prometheus/config"
-	"go.etcd.io/etcd/version"
 	"go.opentelemetry.io/otel/metric"
 
 	// gRPC Status protobuf types we may want to see.  This type

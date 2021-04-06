@@ -35,8 +35,8 @@ import (
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/common/version"
 	"github.com/stretchr/testify/require"
-	"go.etcd.io/etcd/version"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

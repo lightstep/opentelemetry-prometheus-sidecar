@@ -30,7 +30,6 @@ require (
 	// see https://github.com/prometheus/prometheus/issues/7663.
 	github.com/prometheus/prometheus v1.8.2-0.20210119214810-e4487274853c
 	github.com/stretchr/testify v1.7.0
-	go.etcd.io/etcd v0.0.0-20191023171146-3cf2f69b5738
 	go.opentelemetry.io/contrib/instrumentation/host v0.18.0
 	go.opentelemetry.io/contrib/instrumentation/runtime v0.18.0
 	go.opentelemetry.io/contrib/propagators v0.18.0
