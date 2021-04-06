@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	metric_pb "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
 	resource_pb "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/resource/v1"
@@ -29,6 +30,7 @@ import (
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/prometheus"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
+	"github.com/prometheus/common/version"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/textparse"
 	"github.com/prometheus/prometheus/tsdb/record"
@@ -37,10 +39,10 @@ import (
 
 type nopAppender struct {
 	lock    sync.Mutex
-	samples []*metric_pb.ResourceMetrics
+	samples []*metric_pb.Metric
 }
 
-func (a *nopAppender) Append(_ context.Context, hash uint64, s *metric_pb.ResourceMetrics) error {
+func (a *nopAppender) Append(_ context.Context, hash uint64, s *metric_pb.Metric) error {
 	a.lock.Lock()
 	defer a.lock.Unlock()
 
@@ -48,7 +50,7 @@ func (a *nopAppender) Append(_ context.Context, hash uint64, s *metric_pb.Resour
 	return nil
 }
 
-func (a *nopAppender) getSamples() []*metric_pb.ResourceMetrics {
+func (a *nopAppender) getSamples() []*metric_pb.Metric {
 	a.lock.Lock()
 	defer a.lock.Unlock()
 
@@ -86,16 +88,11 @@ func TestReader_Progress(t *testing.T) {
 	}
 
 	// Populate the getters with data.
-	extraLabels := labels.FromStrings(
-		"project_id", "proj1",
-		"namespace", "ns1", "location", "loc1",
-		"job", "job1", "__address__", "inst1")
-
 	metadataMap := promtest.MetadataMap{
 		"job1/inst1/metric1": &config.MetadataEntry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, Help: "help"},
 	}
 
-	r := NewPrometheusReader(nil, dir, tailer, nil, nil, metadataMap, &nopAppender{}, "", 0, extraLabels, nil)
+	r := NewPrometheusReader(nil, dir, tailer, nil, nil, metadataMap, &nopAppender{}, "", 0, nil)
 	r.progressSaveInterval = 200 * time.Millisecond
 
 	// Populate sample data
@@ -160,7 +157,7 @@ func TestReader_Progress(t *testing.T) {
 	}
 
 	recorder := &nopAppender{}
-	r = NewPrometheusReader(nil, dir, tailer, nil, nil, metadataMap, recorder, "", 0, extraLabels, nil)
+	r = NewPrometheusReader(nil, dir, tailer, nil, nil, metadataMap, recorder, "", 0, nil)
 	go r.Run(ctx, progressOffset)
 
 	// Wait for reader to process until the end.
@@ -199,9 +196,19 @@ func TestReader_Progress(t *testing.T) {
 				t.Fatalf("unexpected record %d for offset %d", i, tseconds)
 			}
 			return nil
-		}, s)
+		}, resourceMetric(s))
 	}
 
+}
+
+func resourceMetric(m *metric_pb.Metric) *metric_pb.ResourceMetrics {
+	return otlptest.ResourceMetrics(
+		otlptest.Resource(),
+		otlptest.InstrumentationLibraryMetrics(
+			otlptest.InstrumentationLibrary(sidecar.ExportInstrumentationLibrary, version.Version),
+			m,
+		),
+	)
 }
 
 func TestReader_ProgressFile(t *testing.T) {
@@ -232,9 +239,8 @@ func TestReader_ProgressFile(t *testing.T) {
 
 func TestHashSeries(t *testing.T) {
 	a := tsDesc{
-		Name:     "mtype1",
-		Labels:   labels.Labels{{"l3", "l3"}, {"l4", "l4"}},
-		Resource: labels.Labels{{"l1", "l1"}, {"l2", "l2"}},
+		Name:   "mtype1",
+		Labels: labels.Labels{{"l3", "l3"}, {"l4", "l4"}},
 	}
 	// Hash a many times and ensure the hash doesn't change. This checks that we don't produce different
 	// hashes by unordered map iteration.
@@ -246,19 +252,12 @@ func TestHashSeries(t *testing.T) {
 	}
 	for _, b := range []tsDesc{
 		{
-			Name:     "mtype2",
-			Labels:   labels.Labels{{"l3", "l3"}, {"l4", "l4"}},
-			Resource: labels.Labels{{"l1", "l1"}, {"l2", "l2"}},
+			Name:   "mtype2",
+			Labels: labels.Labels{{"l3", "l3"}, {"l4", "l4"}},
 		},
 		{
-			Name:     "mtype1",
-			Labels:   labels.Labels{{"l3", "l3"}, {"l4", "l4"}},
-			Resource: labels.Labels{{"l1", "l1"}, {"l2", "l2-"}},
-		},
-		{
-			Name:     "mtype1",
-			Labels:   labels.Labels{{"l3", "l3-"}, {"l4", "l4"}},
-			Resource: labels.Labels{{"l1", "l1"}, {"l2", "l2"}},
+			Name:   "mtype1",
+			Labels: labels.Labels{{"l3", "l3-"}, {"l4", "l4"}},
 		},
 	} {
 		if hashSeries(b) == hash {

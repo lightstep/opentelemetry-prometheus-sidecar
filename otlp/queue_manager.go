@@ -26,10 +26,13 @@ import (
 	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	metricsService "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/collector/metrics/v1"
+	otelCommon "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/common/v1"
 	metric_pb "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
+	otelResource "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/resource/v1"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry/doevery"
 	"github.com/pkg/errors"
 	promconfig "github.com/prometheus/prometheus/config"
+	"go.etcd.io/etcd/version"
 	"go.opentelemetry.io/otel/metric"
 
 	// gRPC Status protobuf types we may want to see.  This type
@@ -50,6 +53,13 @@ const (
 	shardUpdateDuration = 15 * time.Second
 
 	maxErrorDetailStringLen = 512
+)
+
+var (
+	staticInstrumentationLibrary = &otelCommon.InstrumentationLibrary{
+		Name:    sidecar.ExportInstrumentationLibrary,
+		Version: version.Version,
+	}
 )
 
 // StorageClient defines an interface for sending a batch of samples to an
@@ -81,6 +91,7 @@ type QueueManager struct {
 	cfg           promconfig.QueueConfig
 	timeout       time.Duration
 	clientFactory StorageClientFactory
+	resource      *otelResource.Resource
 
 	shardsMtx   sync.RWMutex
 	shards      *shardCollection
@@ -105,7 +116,7 @@ type QueueManager struct {
 }
 
 // NewQueueManager builds a new QueueManager.
-func NewQueueManager(logger log.Logger, cfg promconfig.QueueConfig, timeout time.Duration, clientFactory StorageClientFactory, tailer LogReaderClient) (*QueueManager, error) {
+func NewQueueManager(logger log.Logger, cfg promconfig.QueueConfig, timeout time.Duration, clientFactory StorageClientFactory, tailer LogReaderClient, resource *otelResource.Resource) (*QueueManager, error) {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
@@ -128,6 +139,7 @@ func NewQueueManager(logger log.Logger, cfg promconfig.QueueConfig, timeout time
 		walSize:            newEWMARate(ewmaWeight, shardUpdateDuration),
 		walOffset:          newEWMARate(ewmaWeight, shardUpdateDuration),
 		tailer:             tailer,
+		resource:           resource,
 	}
 	lastSize, err := tailer.Size()
 	if err != nil {
@@ -524,11 +536,22 @@ func (s *shardCollection) sendSamplesWithBackoff(client StorageClient, samples [
 	// repeatedly time out.
 	maxWait := s.qm.timeout * time.Duration(config.DefaultMaxExportAttempts)
 
+	req := &metricsService.ExportMetricsServiceRequest{
+		ResourceMetrics: []*metric_pb.ResourceMetrics{
+			{
+				Resource: s.qm.resource,
+				InstrumentationLibraryMetrics: []*metric_pb.InstrumentationLibraryMetrics{
+					{
+						InstrumentationLibrary: staticInstrumentationLibrary,
+						Metrics:                samples,
+					},
+				},
+			},
+		},
+	}
+
 	for time.Since(start) < maxWait {
-		err := client.Store(&metricsService.ExportMetricsServiceRequest{
-			// @@@
-			// Metric: samples,
-		})
+		err := client.Store(req)
 
 		if err == nil {
 			s.qm.sendOutcomesCounter.Add(

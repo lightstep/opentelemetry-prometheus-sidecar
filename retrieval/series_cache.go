@@ -40,7 +40,6 @@ import (
 type tsDesc struct {
 	Name      string
 	Labels    labels.Labels // Sorted
-	Resource  labels.Labels // Sorted
 	Kind      config.Kind
 	ValueType config.ValueType
 }
@@ -67,7 +66,6 @@ type seriesCache struct {
 	filters       [][]*labels.Matcher
 	metaget       MetadataGetter
 	metricsPrefix string
-	extraLabels   labels.Labels
 	renames       map[string]string
 
 	// lastCheckpoint holds the index of the last checkpoint we garbage collected for.
@@ -160,22 +158,18 @@ func newSeriesCache(
 	renames map[string]string,
 	metaget MetadataGetter,
 	metricsPrefix string,
-	extraLabels labels.Labels,
 	jobInstanceMap map[string]string,
 ) *seriesCache {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
 	sc := &seriesCache{
-		logger:        logger,
-		dir:           dir,
-		filters:       filters,
-		metaget:       metaget,
-		entries:       map[uint64]*seriesCacheEntry{},
-		intervals:     map[uint64]sampleInterval{},
-		metricsPrefix: metricsPrefix,
-		extraLabels:   extraLabels,
-		renames:       renames,
+		logger:         logger,
+		filters:        filters,
+		dir:            dir,
+		metaget:        metaget,
+		entries:        map[uint64]*seriesCacheEntry{},
+		intervals:      map[uint64]sampleInterval{},
 		jobInstanceMap: jobInstanceMap,
 	}
 
@@ -476,9 +470,8 @@ func (c *seriesCache) lookup(ctx context.Context, ref uint64) (retErr error) {
 	}
 
 	ts := tsDesc{
-		Name:     c.getMetricName(c.metricsPrefix, metricName),
-		Labels:   entryLabels,
-		Resource: c.extraLabels,
+		Name:   c.getMetricName(c.metricsPrefix, metricName),
+		Labels: entryLabels,
 	}
 	sort.Sort(&ts.Labels)
 

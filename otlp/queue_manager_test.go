@@ -141,6 +141,8 @@ func (c *TestStorageClient) Store(req *metricsService.ExportMetricsServiceReques
 	defer c.mtx.Unlock()
 	ctx := context.Background()
 
+	fmt.Println("RECEIVED", req)
+
 	for _, ts := range req.ResourceMetrics {
 		vs := otlptest.VisitorState{}
 		vs.Visit(ctx, func(
@@ -150,6 +152,7 @@ func (c *TestStorageClient) Store(req *metricsService.ExportMetricsServiceReques
 			monotonic bool,
 			point interface{},
 		) error {
+			fmt.Println("HERE", point)
 			nanos := point.(*metric_pb.DoubleDataPoint).TimeUnixNano
 			value := point.(*metric_pb.DoubleDataPoint).Value
 
@@ -233,7 +236,7 @@ func TestSampleDeliverySimple(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := NewQueueManager(nil, cfg, 0, c, tailer)
+	m, err := NewQueueManager(nil, cfg, 0, c, tailer, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -282,7 +285,7 @@ func TestSampleDeliveryMultiShard(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := NewQueueManager(nil, cfg, 0, c, tailer)
+	m, err := NewQueueManager(nil, cfg, 0, c, tailer, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -338,7 +341,7 @@ func TestSampleDeliveryTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := NewQueueManager(nil, cfg, 0, c, tailer)
+	m, err := NewQueueManager(nil, cfg, 0, c, tailer, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -393,7 +396,7 @@ func TestSampleDeliveryOrder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := NewQueueManager(nil, mainConfig.QueueConfig(), 0, c, tailer)
+	m, err := NewQueueManager(nil, mainConfig.QueueConfig(), 0, c, tailer, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -508,7 +511,7 @@ func TestSpawnNotMoreThanMaxConcurrentSendsGoroutines(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := NewQueueManager(nil, cfg, 0, c, tailer)
+	m, err := NewQueueManager(nil, cfg, 0, c, tailer, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
