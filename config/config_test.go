@@ -173,6 +173,7 @@ startup_timeout: 1777s
 						25 * time.Hour,
 					},
 					MaxTimeseriesPerRequest: 500,
+					MinShards:		 1,
 					MaxShards:               200,
 				},
 				Admin: AdminConfig{
@@ -265,6 +266,7 @@ log:
 				"--prometheus.wal", "wal-eeee",
 				"--prometheus.max-point-age", "10h",
 				"--prometheus.max-timeseries-per-request", "5",
+				"--prometheus.min-shards", "5",
 				"--prometheus.max-shards", "10",
 				"--log.level=warning",
 				"--healthcheck.period=17s",
@@ -282,6 +284,7 @@ log:
 						10 * time.Hour,
 					},
 					MaxTimeseriesPerRequest: 5,
+					MinShards:               5,
 					MaxShards:               10,
 				},
 				Admin: AdminConfig{
@@ -358,6 +361,7 @@ prometheus:
   endpoint: http://127.0.0.1:19090/
   max_point_age: 72h
   max_timeseries_per_request: 10
+  min_shards: 10
   max_shards: 20
   scrape_intervals: [30s]
 
@@ -422,6 +426,7 @@ static_metadata:
 						72 * time.Hour,
 					},
 					MaxTimeseriesPerRequest: 10,
+					MinShards:               10,
 					MaxShards:               20,
 				},
 				OpenTelemetry: OTelConfig{
@@ -574,6 +579,15 @@ static_metadata:
 				return cfg
 			}(),
 			"",
+		},
+		{
+			"min-shards greater than max-shards", ``,
+			[]string{
+				"--prometheus.min-shards=101",
+				"--prometheus.max-shards=100",
+			},
+			config.MainConfig{},
+			"min-shards cannot be greater than max-shards",
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

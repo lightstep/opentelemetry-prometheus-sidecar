@@ -42,6 +42,7 @@ func Example() {
 	//     "wal": "/volume/wal",
 	//     "max_point_age": "72h0m0s",
 	//     "max_timeseries_per_request": 500,
+	//     "min_shards": 100,
 	//     "max_shards": 200
 	//   },
 	//   "opentelemetry": {
