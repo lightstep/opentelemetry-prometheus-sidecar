@@ -8,6 +8,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+## [0.21.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.21.0) - 2021-04-06
 ### Added
 
 - New metric `sidecar.points.skipped` counts points that were not processed due to filters or cumulative resets. (#174)
