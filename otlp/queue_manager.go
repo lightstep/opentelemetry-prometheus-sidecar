@@ -202,7 +202,7 @@ func NewQueueManager(logger log.Logger, cfg promconfig.QueueConfig, timeout time
 
 // Append queues a sample to be sent to the OpenTelemetry API.
 // Always returns nil.
-func (t *QueueManager) Append(ctx context.Context, hash uint64, sample *metric_pb.ResourceMetrics) error {
+func (t *QueueManager) Append(ctx context.Context, hash uint64, sample *metric_pb.Metric) error {
 	t.queueLengthCounter.Add(ctx, 1)
 
 	t.shardsMtx.RLock()
@@ -390,7 +390,7 @@ func (t *QueueManager) reshard(n int) {
 }
 
 type queueEntry struct {
-	sample *metric_pb.ResourceMetrics
+	sample *metric_pb.Metric
 }
 
 type shard struct {
@@ -434,7 +434,7 @@ func (s *shardCollection) stop() {
 	}
 }
 
-func (s *shardCollection) enqueue(hash uint64, sample *metric_pb.ResourceMetrics) {
+func (s *shardCollection) enqueue(hash uint64, sample *metric_pb.Metric) {
 	s.qm.samplesIn.incr(1)
 	shardIndex := hash % uint64(len(s.shards))
 
@@ -450,7 +450,7 @@ func (s *shardCollection) runShard(i int) {
 	shard := s.shards[i]
 
 	// Send batches of at most MaxSamplesPerSend samples to the remote storage.
-	pendingSamples := make([]*metric_pb.ResourceMetrics, 0, s.qm.cfg.MaxSamplesPerSend)
+	pendingSamples := make([]*metric_pb.Metric, 0, s.qm.cfg.MaxSamplesPerSend)
 
 	ctx := context.Background()
 
@@ -503,8 +503,8 @@ func (s *shardCollection) runShard(i int) {
 	}
 }
 
-func (s *shardCollection) sendSamples(client StorageClient, samples []*metric_pb.ResourceMetrics) {
-	begin := time.Now()
+func (s *shardCollection) sendSamples(client StorageClient, samples []*metric_pb.Metric) {
+1	begin := time.Now()
 	s.sendSamplesWithBackoff(client, samples)
 
 	// These counters are used to calculate the dynamic sharding, and as such
@@ -514,7 +514,7 @@ func (s *shardCollection) sendSamples(client StorageClient, samples []*metric_pb
 }
 
 // sendSamples to the remote storage with backoff for recoverable errors.
-func (s *shardCollection) sendSamplesWithBackoff(client StorageClient, samples []*metric_pb.ResourceMetrics) {
+func (s *shardCollection) sendSamplesWithBackoff(client StorageClient, samples []*metric_pb.Metric) {
 	ctx := context.Background()
 	start := time.Now()
 	backoff := s.qm.cfg.MinBackoff
@@ -526,7 +526,8 @@ func (s *shardCollection) sendSamplesWithBackoff(client StorageClient, samples [
 
 	for time.Since(start) < maxWait {
 		err := client.Store(&metricsService.ExportMetricsServiceRequest{
-			ResourceMetrics: samples,
+			// @@@
+			// Metric: samples,
 		})
 
 		if err == nil {
