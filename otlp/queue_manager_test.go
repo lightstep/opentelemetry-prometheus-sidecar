@@ -15,7 +15,6 @@ package otlp
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -141,7 +140,7 @@ func (c *TestStorageClient) Store(req *metricsService.ExportMetricsServiceReques
 	defer c.mtx.Unlock()
 	ctx := context.Background()
 
-	fmt.Println("RECEIVED", req)
+	recv := 0
 
 	for _, ts := range req.ResourceMetrics {
 		vs := otlptest.VisitorState{}
@@ -152,9 +151,9 @@ func (c *TestStorageClient) Store(req *metricsService.ExportMetricsServiceReques
 			monotonic bool,
 			point interface{},
 		) error {
-			fmt.Println("HERE", point)
 			nanos := point.(*metric_pb.DoubleDataPoint).TimeUnixNano
 			value := point.(*metric_pb.DoubleDataPoint).Value
+			recv++
 
 			c.receivedSamples[metricName] = append(c.receivedSamples[metricName], TestPoint{
 				T: time.Unix(0, int64(nanos)),
@@ -162,11 +161,6 @@ func (c *TestStorageClient) Store(req *metricsService.ExportMetricsServiceReques
 			})
 			return nil
 		}, ts)
-
-		if vs.PointCount() != 1 {
-			d, _ := json.Marshal(ts)
-			c.t.Fatalf("unexpected number of points %d: %s", vs.PointCount(), string(d))
-		}
 	}
 	if c.checkUniq {
 		for i, ts := range req.ResourceMetrics {
@@ -178,7 +172,7 @@ func (c *TestStorageClient) Store(req *metricsService.ExportMetricsServiceReques
 			}
 		}
 	}
-	for range req.ResourceMetrics {
+	for i := 0; i < recv; i++ {
 		c.wg.Done()
 	}
 	return nil

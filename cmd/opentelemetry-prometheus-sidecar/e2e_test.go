@@ -21,7 +21,9 @@ import (
 	traceService "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/collector/trace/v1"
 	common "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/common/v1"
 	metrics "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
+	otelResource "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/resource/v1"
 	traces "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/trace/v1"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/internal/otlptest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/semconv"
@@ -267,19 +269,30 @@ func TestE2E(t *testing.T) {
 
 	// Gather results
 	var results []*metrics.ResourceMetrics
+	resCount := 0
 	for res := range ts.metrics {
-		switch res.InstrumentationLibraryMetrics[0].Metrics[0].Name {
-		case "some_counter", "some_gauge", "some_counter_relabel", "some_gauge_relabel":
-			// OK
-		default:
-			// Skip generated metrics.
-			continue
-		}
 		results = append(results, res)
+		vs := otlptest.VisitorState{}
+		vs.Visit(ctx, func(
+			resource *otelResource.Resource,
+			metricName string,
+			kind config.Kind,
+			monotonic bool,
+			point interface{},
+		) error {
+			switch metricName {
+			case "some_counter", "some_gauge", "some_counter_relabel", "some_gauge_relabel":
+				// OK
+				resCount++
+			default:
+				// Skip generated metrics.
+			}
+			return nil
+		}, res)
 
 		// Gather 2x the number of timeseries we want to see
 		// for each, since they arrive out of order.
-		if len(results) == 2*e2eMetricsPerScrape*e2eTestScrapes {
+		if resCount >= 2*e2eMetricsPerScrape*e2eTestScrapes {
 			break
 		}
 	}
@@ -293,34 +306,41 @@ func TestE2E(t *testing.T) {
 
 	// Validate data.
 	output := map[string][]float64{}
-	for _, result := range results {
-		name := result.InstrumentationLibraryMetrics[0].Metrics[0].Name
-
-		val := 0.0
-		switch dp := result.InstrumentationLibraryMetrics[0].Metrics[0].Data.(type) {
-		case *metrics.Metric_DoubleGauge:
-			val = dp.DoubleGauge.DataPoints[0].Value
-		case *metrics.Metric_DoubleSum:
-			val = dp.DoubleSum.DataPoints[0].Value
-		default:
-			t.Error("Unexpected", result.InstrumentationLibraryMetrics[0].Metrics[0])
-		}
-
-		rvals := map[string]string{}
-		for _, attr := range result.Resource.Attributes {
-			if _, has := rvals[attr.Key]; has {
-				t.Error("duplicate resource key:", attr.Key)
-				continue
+	for _, res := range results {
+		results = append(results, res)
+		vs := otlptest.VisitorState{}
+		vs.Visit(ctx, func(
+			resource *otelResource.Resource,
+			metricName string,
+			kind config.Kind,
+			monotonic bool,
+			point interface{},
+		) error {
+			switch metricName {
+			case "some_counter", "some_gauge", "some_counter_relabel", "some_gauge_relabel":
+				// OK
+			default:
+				return nil
 			}
-			rvals[attr.Key] = attr.Value.Value.(*common.AnyValue_StringValue).StringValue
-		}
 
-		// At this moment, the labels in static_configs are NOT
-		// passed to the Resource.
-		assert.Equal(t, rvals[string(semconv.ServiceNameKey)], "Service")
-		assert.Equal(t, rvals[string(semconv.ServiceInstanceIDKey)], "")
+			val := point.(*metrics.DoubleDataPoint).Value
+			rvals := map[string]string{}
+			for _, attr := range resource.Attributes {
+				if _, has := rvals[attr.Key]; has {
+					t.Error("duplicate resource key:", attr.Key)
+					continue
+				}
+				rvals[attr.Key] = attr.Value.Value.(*common.AnyValue_StringValue).StringValue
+			}
 
-		output[name] = append(output[name], val)
+			// At this moment, the labels in static_configs are NOT
+			// passed to the Resource.
+			assert.Equal(t, rvals[string(semconv.ServiceNameKey)], "Service")
+			assert.Equal(t, rvals[string(semconv.ServiceInstanceIDKey)], "")
+
+			output[metricName] = append(output[metricName], val)
+			return nil
+		}, res)
 	}
 
 	// Sort and truncate each result, then compare.
@@ -330,10 +350,10 @@ func TestE2E(t *testing.T) {
 	}
 
 	expect := map[string][]float64{
-		"some_counter":         []float64{1, 2, 3, 4, 5},
-		"some_gauge":           []float64{1, 2, 3, 4, 5},
-		"some_counter_relabel": []float64{1, 2, 3, 4, 5},
-		"some_gauge_relabel":   []float64{1, 2, 3, 4, 5},
+		"some_counter":         {1, 2, 3, 4, 5},
+		"some_gauge":           {1, 2, 3, 4, 5},
+		"some_counter_relabel": {1, 2, 3, 4, 5},
+		"some_gauge_relabel":   {1, 2, 3, 4, 5},
 	}
 
 	if diff, equal := messagediff.PrettyDiff(output, expect); !equal {

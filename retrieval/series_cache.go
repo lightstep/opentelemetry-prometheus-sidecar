@@ -165,11 +165,13 @@ func newSeriesCache(
 	}
 	sc := &seriesCache{
 		logger:         logger,
-		filters:        filters,
 		dir:            dir,
+		filters:        filters,
 		metaget:        metaget,
 		entries:        map[uint64]*seriesCacheEntry{},
 		intervals:      map[uint64]sampleInterval{},
+		metricsPrefix:  metricsPrefix,
+		renames:        renames,
 		jobInstanceMap: jobInstanceMap,
 	}
 
