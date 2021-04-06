@@ -50,7 +50,7 @@ const (
 	DefaultMaxPointAge               = time.Hour * 25
 	DefaultShutdownDelay             = time.Minute
 	DefaultStartupTimeout            = time.Minute * 10
-	DefaultNoisyLogPeriod            = time.Second * 5
+	DefaultNoisyLogPeriod            = time.Second * 60
 	DefaultPrometheusTimeout         = time.Second * 60
 
 	DefaultSupervisorBufferSize  = 16384
