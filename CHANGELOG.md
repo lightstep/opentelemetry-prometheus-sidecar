@@ -21,6 +21,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - Series cache remembers points that were filtered in order to correctly count points that are dropped. (#174)
 - Metric `sidecar.metadata.fetch.duration` has new `mode` label for single and batch requests. (#174)
+- Noisy logs are reduced to emitting once per minute. (#181)
 
 ### Removed
 
