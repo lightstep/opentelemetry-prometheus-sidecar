@@ -8,6 +8,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+### Added
+
+### Changed
+
+- OTLP data points re-use Resource and InstrumentationLibrary (thus are smaller). (#182)
+
+### Removed
+
 ## [0.21.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.21.0) - 2021-04-06
 ### Added
 
