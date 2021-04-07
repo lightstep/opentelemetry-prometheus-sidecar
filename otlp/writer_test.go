@@ -22,8 +22,8 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/golang/protobuf/proto"
-	metricsService "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/collector/metrics/v1"
-	metric_pb "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
+	metricsService "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
+	metric_pb "go.opentelemetry.io/proto/otlp/metrics/v1"
 )
 
 type myWriterCloser struct {

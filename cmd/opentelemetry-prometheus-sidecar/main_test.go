@@ -25,11 +25,11 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
-	traces "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/trace/v1"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/internal/promtest"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
+	traces "go.opentelemetry.io/proto/otlp/trace/v1"
 )
 
 // Note: the tests would be cleaner in this package if

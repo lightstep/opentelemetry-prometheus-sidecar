@@ -20,9 +20,9 @@ import (
 	"testing"
 	"time"
 
-	metricsService "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/collector/metrics/v1"
-	metric_pb "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
 	"github.com/stretchr/testify/require"
+	metricsService "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
+	metric_pb "go.opentelemetry.io/proto/otlp/metrics/v1"
 	"google.golang.org/grpc"
 )
 

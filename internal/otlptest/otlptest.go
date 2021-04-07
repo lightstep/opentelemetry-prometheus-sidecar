@@ -6,10 +6,10 @@ import (
 	"time"
 
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
-	otlppb "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/collector/metrics/v1"
-	otlpcommon "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/common/v1"
-	otlpmetrics "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
-	otlpresource "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/resource/v1"
+	otlppb "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
+	otlpcommon "go.opentelemetry.io/proto/otlp/common/v1"
+	otlpmetrics "go.opentelemetry.io/proto/otlp/metrics/v1"
+	otlpresource "go.opentelemetry.io/proto/otlp/resource/v1"
 )
 
 var (

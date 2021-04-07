@@ -22,8 +22,6 @@ import (
 	"time"
 
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
-	metric_pb "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
-	resource_pb "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/resource/v1"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/internal/otlptest"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/internal/promtest"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/prometheus"
@@ -33,6 +31,8 @@ import (
 	"github.com/prometheus/prometheus/pkg/textparse"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wal"
+	metric_pb "go.opentelemetry.io/proto/otlp/metrics/v1"
+	resource_pb "go.opentelemetry.io/proto/otlp/resource/v1"
 )
 
 type nopAppender struct {

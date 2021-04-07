@@ -29,9 +29,9 @@ import (
 	"github.com/prometheus/prometheus/tsdb/record"
 
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
-	common_pb "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/common/v1"
-	metric_pb "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
-	resource_pb "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/resource/v1"
+	common_pb "go.opentelemetry.io/proto/otlp/common/v1"
+	metric_pb "go.opentelemetry.io/proto/otlp/metrics/v1"
+	resource_pb "go.opentelemetry.io/proto/otlp/resource/v1"
 )
 
 const (
