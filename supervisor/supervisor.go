@@ -249,14 +249,6 @@ func (s *Supervisor) healthcheckErr(ctx context.Context) (err error) {
 			span.SetAttributes(attribute.String("sidecar.stackdump", hr.Stackdump))
 		}
 
-		for k, es := range hr.Metrics {
-			for _, e := range es {
-				span.SetAttributes(
-					attribute.Float64(fmt.Sprintf("%s{%s}", k, e.Labels), e.Value),
-				)
-			}
-		}
-
 		if resp.StatusCode/100 != 2 {
 			return errors.Errorf("healthcheck: %s", hr.Status)
 		}
