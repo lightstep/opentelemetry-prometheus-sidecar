@@ -24,9 +24,6 @@ import (
 
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/common"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
-	metrics "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
-	otlpmetrics "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
-	otlpresource "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/resource/v1"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/internal/otlptest"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/internal/promtest"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -34,6 +31,9 @@ import (
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wal"
 	"github.com/stretchr/testify/require"
+	metrics "go.opentelemetry.io/proto/otlp/metrics/v1"
+	otlpmetrics "go.opentelemetry.io/proto/otlp/metrics/v1"
+	otlpresource "go.opentelemetry.io/proto/otlp/resource/v1"
 	grpcmeta "google.golang.org/grpc/metadata"
 )
 

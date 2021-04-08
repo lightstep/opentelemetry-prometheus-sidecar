@@ -25,12 +25,12 @@ import (
 	"github.com/go-kit/kit/log/level"
 	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
-	metricsService "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/collector/metrics/v1"
-	metric_pb "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry/doevery"
 	"github.com/pkg/errors"
 	promconfig "github.com/prometheus/prometheus/config"
 	"go.opentelemetry.io/otel/metric"
+	metricsService "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
+	metric_pb "go.opentelemetry.io/proto/otlp/metrics/v1"
 
 	// gRPC Status protobuf types we may want to see.  This type
 	// is not widely used, but is the most standard way to itemize
