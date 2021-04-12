@@ -8,8 +8,6 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
-<<<<<<< HEAD
-
 ### Changed
 
 - OTLP data points re-use Resource and InstrumentationLibrary (thus are smaller). (#182)
