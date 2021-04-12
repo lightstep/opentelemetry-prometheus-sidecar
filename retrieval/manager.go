@@ -68,7 +68,6 @@ func NewPrometheusReader(
 	appender Appender,
 	metricsPrefix string,
 	maxPointAge time.Duration,
-	extraLabels labels.Labels,
 	scrapeConfig []*promconfig.ScrapeConfig,
 ) *PrometheusReader {
 	if logger == nil {
@@ -85,7 +84,6 @@ func NewPrometheusReader(
 		metricRenames:        metricRenames,
 		metricsPrefix:        metricsPrefix,
 		maxPointAge:          maxPointAge,
-		extraLabels:          extraLabels,
 		scrapeConfig:         scrapeConfig,
 	}
 }
@@ -101,7 +99,6 @@ type PrometheusReader struct {
 	progressSaveInterval time.Duration
 	metricsPrefix        string
 	maxPointAge          time.Duration
-	extraLabels          labels.Labels
 	scrapeConfig         []*promconfig.ScrapeConfig
 }
 
@@ -154,7 +151,6 @@ func (r *PrometheusReader) Run(ctx context.Context, startOffset int) error {
 		r.metricRenames,
 		r.metadataGetter,
 		r.metricsPrefix,
-		r.extraLabels,
 		jobInstanceMap,
 	)
 	go seriesCache.run(ctx)
@@ -365,15 +361,8 @@ func hashSeries(s tsDesc) uint64 {
 	h = hashAdd(h, s.Name)
 	h = hashAddByte(h, sep)
 
-	// Both lists are sorted
+	// List is sorted
 	for _, l := range s.Labels {
-		h = hashAddByte(h, sep)
-		h = hashAdd(h, l.Name)
-		h = hashAddByte(h, sep)
-		h = hashAdd(h, l.Value)
-	}
-	h = hashAddByte(h, sep)
-	for _, l := range s.Resource {
 		h = hashAddByte(h, sep)
 		h = hashAdd(h, l.Name)
 		h = hashAddByte(h, sep)

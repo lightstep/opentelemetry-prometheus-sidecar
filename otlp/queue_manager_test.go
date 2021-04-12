@@ -15,7 +15,6 @@ package otlp
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -59,20 +58,14 @@ type TestPoint struct {
 	T time.Time
 }
 
-func newTestSample(name string, timestamp int64, v float64) *metric_pb.ResourceMetrics {
-	return otlptest.ResourceMetrics(
-		otlptest.Resource(),
-		otlptest.InstrumentationLibraryMetrics(
-			otlptest.InstrumentationLibrary(sidecar.ExportInstrumentationLibrary, version.Version),
-			otlptest.DoubleGauge(
-				name, "", "",
-				otlptest.DoubleDataPoint(
-					otlptest.Labels(),
-					time.Unix(0, 0),
-					time.Unix(timestamp, 0),
-					v,
-				),
-			),
+func newTestSample(name string, timestamp int64, v float64) *metric_pb.Metric {
+	return otlptest.DoubleGauge(
+		name, "", "",
+		otlptest.DoubleDataPoint(
+			otlptest.Labels(),
+			time.Unix(0, 0),
+			time.Unix(timestamp, 0),
+			v,
 		),
 	)
 }
@@ -86,7 +79,17 @@ func NewTestStorageClient(t *testing.T, checkUniq bool) *TestStorageClient {
 	}
 }
 
-func (c *TestStorageClient) expectSamples(samples []*metric_pb.ResourceMetrics) {
+func resourceMetric(m *metric_pb.Metric) *metric_pb.ResourceMetrics {
+	return otlptest.ResourceMetrics(
+		otlptest.Resource(),
+		otlptest.InstrumentationLibraryMetrics(
+			otlptest.InstrumentationLibrary(sidecar.ExportInstrumentationLibrary, version.Version),
+			m,
+		),
+	)
+}
+
+func (c *TestStorageClient) expectSamples(samples []*metric_pb.Metric) {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 	ctx := context.Background()
@@ -106,7 +109,7 @@ func (c *TestStorageClient) expectSamples(samples []*metric_pb.ResourceMetrics) 
 				V: value,
 			})
 			return nil
-		}, s)
+		}, resourceMetric(s))
 	}
 	c.wg.Add(len(samples))
 }
@@ -137,6 +140,8 @@ func (c *TestStorageClient) Store(req *metricsService.ExportMetricsServiceReques
 	defer c.mtx.Unlock()
 	ctx := context.Background()
 
+	recv := 0
+
 	for _, ts := range req.ResourceMetrics {
 		vs := otlptest.VisitorState{}
 		vs.Visit(ctx, func(
@@ -148,6 +153,7 @@ func (c *TestStorageClient) Store(req *metricsService.ExportMetricsServiceReques
 		) error {
 			nanos := point.(*metric_pb.DoubleDataPoint).TimeUnixNano
 			value := point.(*metric_pb.DoubleDataPoint).Value
+			recv++
 
 			c.receivedSamples[metricName] = append(c.receivedSamples[metricName], TestPoint{
 				T: time.Unix(0, int64(nanos)),
@@ -155,11 +161,6 @@ func (c *TestStorageClient) Store(req *metricsService.ExportMetricsServiceReques
 			})
 			return nil
 		}, ts)
-
-		if vs.PointCount() != 1 {
-			d, _ := json.Marshal(ts)
-			c.t.Fatalf("unexpected number of points %d: %s", vs.PointCount(), string(d))
-		}
 	}
 	if c.checkUniq {
 		for i, ts := range req.ResourceMetrics {
@@ -171,7 +172,7 @@ func (c *TestStorageClient) Store(req *metricsService.ExportMetricsServiceReques
 			}
 		}
 	}
-	for range req.ResourceMetrics {
+	for i := 0; i < recv; i++ {
 		c.wg.Done()
 	}
 	return nil
@@ -206,7 +207,7 @@ func TestSampleDeliverySimple(t *testing.T) {
 	// batch timeout case.
 	n := 100
 
-	var samples []*metric_pb.ResourceMetrics
+	var samples []*metric_pb.Metric
 	for i := 0; i < n; i++ {
 		samples = append(samples, newTestSample(
 			fmt.Sprintf("test_metric_%d", i),
@@ -229,7 +230,7 @@ func TestSampleDeliverySimple(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := NewQueueManager(nil, cfg, 0, c, tailer)
+	m, err := NewQueueManager(nil, cfg, 0, c, tailer, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -255,7 +256,7 @@ func TestSampleDeliveryMultiShard(t *testing.T) {
 	numShards := 10
 	n := 5 * numShards
 
-	var samples []*metric_pb.ResourceMetrics
+	var samples []*metric_pb.Metric
 	for i := 0; i < n; i++ {
 		samples = append(samples, newTestSample(
 			fmt.Sprintf("test_metric_%d", i),
@@ -278,7 +279,7 @@ func TestSampleDeliveryMultiShard(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := NewQueueManager(nil, cfg, 0, c, tailer)
+	m, err := NewQueueManager(nil, cfg, 0, c, tailer, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -308,7 +309,7 @@ func TestSampleDeliveryTimeout(t *testing.T) {
 	// Let's send one less sample than batch size, and wait the timeout duration
 	n := mainConfig.QueueConfig().MaxSamplesPerSend - 1
 
-	var samples1, samples2 []*metric_pb.ResourceMetrics
+	var samples1, samples2 []*metric_pb.Metric
 	for i := 0; i < n; i++ {
 		samples1 = append(samples1, newTestSample(
 			fmt.Sprintf("test_metric_%d", i),
@@ -334,7 +335,7 @@ func TestSampleDeliveryTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := NewQueueManager(nil, cfg, 0, c, tailer)
+	m, err := NewQueueManager(nil, cfg, 0, c, tailer, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -371,7 +372,7 @@ func TestSampleDeliveryOrder(t *testing.T) {
 	mainConfig := config.DefaultMainConfig()
 	n := mainConfig.QueueConfig().MaxSamplesPerSend * ts
 
-	var samples []*metric_pb.ResourceMetrics
+	var samples []*metric_pb.Metric
 	for i := 0; i < n; i++ {
 		samples = append(samples, newTestSample(
 			fmt.Sprintf("test_metric_%d", i%ts),
@@ -389,7 +390,7 @@ func TestSampleDeliveryOrder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := NewQueueManager(nil, mainConfig.QueueConfig(), 0, c, tailer)
+	m, err := NewQueueManager(nil, mainConfig.QueueConfig(), 0, c, tailer, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -484,7 +485,7 @@ func TestSpawnNotMoreThanMaxConcurrentSendsGoroutines(t *testing.T) {
 	mainConfig := config.DefaultMainConfig()
 	n := mainConfig.QueueConfig().MaxSamplesPerSend * 2
 
-	var samples []*metric_pb.ResourceMetrics
+	var samples []*metric_pb.Metric
 	for i := 0; i < n; i++ {
 		samples = append(samples, newTestSample(
 			fmt.Sprintf("test_metric_%d", i),
@@ -504,7 +505,7 @@ func TestSpawnNotMoreThanMaxConcurrentSendsGoroutines(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := NewQueueManager(nil, cfg, 0, c, tailer)
+	m, err := NewQueueManager(nil, cfg, 0, c, tailer, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

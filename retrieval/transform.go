@@ -21,9 +21,7 @@ import (
 	"strings"
 	"time"
 
-	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
 	"github.com/pkg/errors"
-	"github.com/prometheus/common/version"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/textparse"
 	"github.com/prometheus/prometheus/tsdb/record"
@@ -47,7 +45,7 @@ var (
 // The client may cache the computed hash more easily, which is why its part of the call
 // and not done by the Appender's implementation.
 type Appender interface {
-	Append(ctx context.Context, hash uint64, s *metric_pb.ResourceMetrics) error
+	Append(ctx context.Context, hash uint64, s *metric_pb.Metric) error
 }
 
 type sampleBuilder struct {
@@ -62,7 +60,7 @@ type sampleBuilder struct {
 // nil timeseries and a nil error.  These are observable as the difference between
 // "processed" and "produced" in the calling code (see manager.go).  TODO: Add
 // a label to identify each of the paths below.
-func (b *sampleBuilder) next(ctx context.Context, samples []record.RefSample) (*metric_pb.ResourceMetrics, uint64, []record.RefSample, error) {
+func (b *sampleBuilder) next(ctx context.Context, samples []record.RefSample) (*metric_pb.Metric, uint64, []record.RefSample, error) {
 	sample := samples[0]
 	tailSamples := samples[1:]
 
@@ -84,14 +82,7 @@ func (b *sampleBuilder) next(ctx context.Context, samples []record.RefSample) (*
 	}
 
 	// Allocate the proto and fill in its metadata.
-	//
-	// TODO This code does not try to combine more than one point
-	// into a ResourceMetrics, which is possible here (or on the
-	// other side of the channel). The hope is
-	// to use an OTel-Go SDK metrics processor to implement this
-	// functionality, where the OTLP exporter already applies
-	// this.  Note: issue #44.
-	ts, point := protoTimeseries(entry.desc)
+	point := protoMetric(entry.desc)
 	labels := protoStringLabels(entry.desc.Labels)
 
 	var resetTimestamp int64
@@ -192,7 +183,7 @@ func (b *sampleBuilder) next(ctx context.Context, samples []record.RefSample) (*
 		}
 	}
 
-	return ts, entry.hash, tailSamples, nil
+	return point, entry.hash, tailSamples, nil
 }
 
 func protoLabel(l labels.Label) *common_pb.KeyValue {
@@ -213,6 +204,14 @@ func protoStringLabel(l labels.Label) *common_pb.StringKeyValue {
 	}
 }
 
+func protoMetric(desc *tsDesc) *metric_pb.Metric {
+	return &metric_pb.Metric{
+		Name:        desc.Name,
+		Description: "", // TODO
+		Unit:        "", // TODO
+	}
+}
+
 func protoResourceAttributes(labels labels.Labels) []*common_pb.KeyValue {
 	ret := make([]*common_pb.KeyValue, len(labels))
 	for i := range labels {
@@ -221,34 +220,18 @@ func protoResourceAttributes(labels labels.Labels) []*common_pb.KeyValue {
 	return ret
 }
 
+func LabelsToResource(labels labels.Labels) *resource_pb.Resource {
+	return &resource_pb.Resource{
+		Attributes: protoResourceAttributes(labels),
+	}
+}
+
 func protoStringLabels(labels labels.Labels) []*common_pb.StringKeyValue {
 	ret := make([]*common_pb.StringKeyValue, len(labels))
 	for i := range labels {
 		ret[i] = protoStringLabel(labels[i])
 	}
 	return ret
-}
-
-func protoTimeseries(desc *tsDesc) (*metric_pb.ResourceMetrics, *metric_pb.Metric) {
-	metric := &metric_pb.Metric{
-		Name:        desc.Name,
-		Description: "", // TODO
-		Unit:        "", // TODO
-	}
-	return &metric_pb.ResourceMetrics{
-		Resource: &resource_pb.Resource{
-			Attributes: protoResourceAttributes(desc.Resource),
-		},
-		InstrumentationLibraryMetrics: []*metric_pb.InstrumentationLibraryMetrics{
-			&metric_pb.InstrumentationLibraryMetrics{
-				InstrumentationLibrary: &common_pb.InstrumentationLibrary{
-					Name:    sidecar.ExportInstrumentationLibrary,
-					Version: version.Version,
-				},
-				Metrics: []*metric_pb.Metric{metric},
-			},
-		},
-	}, metric
 }
 
 const (

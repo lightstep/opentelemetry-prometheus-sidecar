@@ -215,6 +215,7 @@ func Main() bool {
 		cfg.Destination.Timeout.Duration,
 		scf,
 		tailer,
+		retrieval.LabelsToResource(createPrimaryDestinationResourceLabels(svcInstanceId, cfg.Destination.Attributes)),
 	)
 	if err != nil {
 		level.Error(logger).Log("msg", "creating queue manager failed", "err", err)
@@ -261,7 +262,6 @@ func Main() bool {
 		queueManager,
 		cfg.OpenTelemetry.MetricsPrefix,
 		cfg.Prometheus.MaxPointAge.Duration,
-		createPrimaryDestinationResourceLabels(svcInstanceId, cfg.Destination.Attributes),
 		promMon.GetScrapeConfig(),
 	)
 

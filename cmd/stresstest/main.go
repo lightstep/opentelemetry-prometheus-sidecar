@@ -98,6 +98,9 @@ func Main() bool {
 		cfg.Destination.Timeout.Duration,
 		scf,
 		&fakeTailer{time.Now()},
+		otlptest.Resource(
+			otlptest.KeyValue("A", "B"),
+		),
 	)
 
 	if err := queueManager.Start(); err != nil {
@@ -107,33 +110,23 @@ func Main() bool {
 	defer queueManager.Stop()
 
 	now := time.Now()
-	req := otlptest.ResourceMetrics(
-		otlptest.Resource(
-			otlptest.KeyValue("A", "B"),
-		),
-		otlptest.InstrumentationLibraryMetrics(
-			otlptest.InstrumentationLibrary(
-				"testlib", "v0.0.1",
+	m := otlptest.IntGauge(
+		"up",
+		"d",
+		"u",
+		otlptest.IntDataPoint(
+			otlptest.Labels(
+				otlptest.Label("L", "M"),
 			),
-			otlptest.IntGauge(
-				"up",
-				"d",
-				"u",
-				otlptest.IntDataPoint(
-					otlptest.Labels(
-						otlptest.Label("L", "M"),
-					),
-					now.Add(-time.Second),
-					now,
-					1,
-				),
-			),
+			now.Add(-time.Second),
+			now,
+			1,
 		),
 	)
 
 	ctx := context.Background()
 	for {
-		queueManager.Append(ctx, rand.Uint64(), req)
+		queueManager.Append(ctx, rand.Uint64(), m)
 	}
 }
 
