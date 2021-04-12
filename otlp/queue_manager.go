@@ -25,15 +25,15 @@ import (
 	"github.com/go-kit/kit/log/level"
 	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
-	metricsService "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/collector/metrics/v1"
-	otelCommon "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/common/v1"
-	metric_pb "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
-	otelResource "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/resource/v1"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry/doevery"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/version"
 	promconfig "github.com/prometheus/prometheus/config"
 	"go.opentelemetry.io/otel/metric"
+	metricsService "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
+	metricspb "go.opentelemetry.io/proto/otlp/metrics/v1"
+	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
+	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 
 	// gRPC Status protobuf types we may want to see.  This type
 	// is not widely used, but is the most standard way to itemize
@@ -56,7 +56,7 @@ const (
 )
 
 var (
-	staticInstrumentationLibrary = &otelCommon.InstrumentationLibrary{
+	staticInstrumentationLibrary = &commonpb.InstrumentationLibrary{
 		Name:    sidecar.ExportInstrumentationLibrary,
 		Version: version.Version,
 	}
@@ -91,7 +91,7 @@ type QueueManager struct {
 	cfg           promconfig.QueueConfig
 	timeout       time.Duration
 	clientFactory StorageClientFactory
-	resource      *otelResource.Resource
+	resource      *resourcepb.Resource
 
 	shardsMtx   sync.RWMutex
 	shards      *shardCollection
@@ -116,7 +116,7 @@ type QueueManager struct {
 }
 
 // NewQueueManager builds a new QueueManager.
-func NewQueueManager(logger log.Logger, cfg promconfig.QueueConfig, timeout time.Duration, clientFactory StorageClientFactory, tailer LogReaderClient, resource *otelResource.Resource) (*QueueManager, error) {
+func NewQueueManager(logger log.Logger, cfg promconfig.QueueConfig, timeout time.Duration, clientFactory StorageClientFactory, tailer LogReaderClient, resource *resourcepb.Resource) (*QueueManager, error) {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
@@ -214,7 +214,7 @@ func NewQueueManager(logger log.Logger, cfg promconfig.QueueConfig, timeout time
 
 // Append queues a sample to be sent to the OpenTelemetry API.
 // Always returns nil.
-func (t *QueueManager) Append(ctx context.Context, hash uint64, sample *metric_pb.Metric) error {
+func (t *QueueManager) Append(ctx context.Context, hash uint64, sample *metricspb.Metric) error {
 	t.queueLengthCounter.Add(ctx, 1)
 
 	t.shardsMtx.RLock()
@@ -402,7 +402,7 @@ func (t *QueueManager) reshard(n int) {
 }
 
 type queueEntry struct {
-	sample *metric_pb.Metric
+	sample *metricspb.Metric
 }
 
 type shard struct {
@@ -446,7 +446,7 @@ func (s *shardCollection) stop() {
 	}
 }
 
-func (s *shardCollection) enqueue(hash uint64, sample *metric_pb.Metric) {
+func (s *shardCollection) enqueue(hash uint64, sample *metricspb.Metric) {
 	s.qm.samplesIn.incr(1)
 	shardIndex := hash % uint64(len(s.shards))
 
@@ -462,7 +462,7 @@ func (s *shardCollection) runShard(i int) {
 	shard := s.shards[i]
 
 	// Send batches of at most MaxSamplesPerSend samples to the remote storage.
-	pendingSamples := make([]*metric_pb.Metric, 0, s.qm.cfg.MaxSamplesPerSend)
+	pendingSamples := make([]*metricspb.Metric, 0, s.qm.cfg.MaxSamplesPerSend)
 
 	ctx := context.Background()
 
@@ -515,7 +515,7 @@ func (s *shardCollection) runShard(i int) {
 	}
 }
 
-func (s *shardCollection) sendSamples(client StorageClient, samples []*metric_pb.Metric) {
+func (s *shardCollection) sendSamples(client StorageClient, samples []*metricspb.Metric) {
 	begin := time.Now()
 	s.sendSamplesWithBackoff(client, samples)
 
@@ -526,7 +526,7 @@ func (s *shardCollection) sendSamples(client StorageClient, samples []*metric_pb
 }
 
 // sendSamples to the remote storage with backoff for recoverable errors.
-func (s *shardCollection) sendSamplesWithBackoff(client StorageClient, samples []*metric_pb.Metric) {
+func (s *shardCollection) sendSamplesWithBackoff(client StorageClient, samples []*metricspb.Metric) {
 	ctx := context.Background()
 	start := time.Now()
 	backoff := s.qm.cfg.MinBackoff
@@ -537,10 +537,10 @@ func (s *shardCollection) sendSamplesWithBackoff(client StorageClient, samples [
 	maxWait := s.qm.timeout * time.Duration(config.DefaultMaxExportAttempts)
 
 	req := &metricsService.ExportMetricsServiceRequest{
-		ResourceMetrics: []*metric_pb.ResourceMetrics{
+		ResourceMetrics: []*metricspb.ResourceMetrics{
 			{
 				Resource: s.qm.resource,
-				InstrumentationLibraryMetrics: []*metric_pb.InstrumentationLibraryMetrics{
+				InstrumentationLibraryMetrics: []*metricspb.InstrumentationLibraryMetrics{
 					{
 						InstrumentationLibrary: staticInstrumentationLibrary,
 						Metrics:                samples,

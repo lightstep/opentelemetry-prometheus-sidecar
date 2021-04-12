@@ -17,16 +17,16 @@ import (
 	"testing"
 
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
-	metricService "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/collector/metrics/v1"
-	traceService "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/collector/trace/v1"
-	common "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/common/v1"
-	metrics "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/metrics/v1"
-	otelResource "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/resource/v1"
-	traces "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/trace/v1"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/internal/otlptest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/semconv"
+	metricService "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
+	traceService "go.opentelemetry.io/proto/otlp/collector/trace/v1"
+	common "go.opentelemetry.io/proto/otlp/common/v1"
+	metrics "go.opentelemetry.io/proto/otlp/metrics/v1"
+	resource "go.opentelemetry.io/proto/otlp/resource/v1"
+	traces "go.opentelemetry.io/proto/otlp/trace/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	grpcMetadata "google.golang.org/grpc/metadata"
@@ -274,7 +274,7 @@ func TestE2E(t *testing.T) {
 		results = append(results, res)
 		vs := otlptest.VisitorState{}
 		vs.Visit(ctx, func(
-			resource *otelResource.Resource,
+			resource *resource.Resource,
 			metricName string,
 			kind config.Kind,
 			monotonic bool,
@@ -310,7 +310,7 @@ func TestE2E(t *testing.T) {
 		results = append(results, res)
 		vs := otlptest.VisitorState{}
 		vs.Visit(ctx, func(
-			resource *otelResource.Resource,
+			resource *resource.Resource,
 			metricName string,
 			kind config.Kind,
 			monotonic bool,

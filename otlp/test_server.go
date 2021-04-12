@@ -15,7 +15,7 @@ package otlp
 import (
 	"context"
 
-	metricsService "github.com/lightstep/opentelemetry-prometheus-sidecar/internal/opentelemetry-proto-gen/collector/metrics/v1"
+	metricsService "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
 	"google.golang.org/grpc/status"
 )
 

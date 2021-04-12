@@ -8,15 +8,20 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
-### Added
+<<<<<<< HEAD
 
 ### Changed
 
 - OTLP data points re-use Resource and InstrumentationLibrary (thus are smaller). (#182)
 
+## [0.21.1](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.21.1) - 2021-04-06
+
 ### Removed
 
+- Removed healthcheck metrics from telemetry traces
+
 ## [0.21.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.21.0) - 2021-04-06
+
 ### Added
 
 - New metric `sidecar.points.skipped` counts points that were not processed due to filters or cumulative resets. (#174)
@@ -31,8 +36,6 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Series cache remembers points that were filtered in order to correctly count points that are dropped. (#174)
 - Metric `sidecar.metadata.fetch.duration` has new `mode` label for single and batch requests. (#174)
 - Noisy logs are reduced to emitting once per minute. (#181)
-
-### Removed
 
 ## [0.20.1](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.20.1) - 2021-03-23
 
