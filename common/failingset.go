@@ -26,7 +26,6 @@ import (
 	"github.com/go-kit/kit/log/level"
 	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 )
 
@@ -49,8 +48,6 @@ type (
 
 const (
 	failingConstant = 1
-
-	metricNameKey attribute.Key = "metric_name"
 
 	failingMetricSummaryInterval = time.Minute * 5
 )
@@ -113,7 +110,7 @@ func (i *FailingSet) observeLocked(result metric.Int64ObserverResult) stateMap {
 		for metricName := range names {
 			result.Observe(failingConstant,
 				DroppedKeyReason.String(reason),
-				metricNameKey.String(metricName),
+				MetricNameKey.String(metricName),
 			)
 		}
 	}
