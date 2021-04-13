@@ -31,6 +31,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/google/uuid"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/cmd/internal"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/common"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/health"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
@@ -206,7 +207,7 @@ func Main() bool {
 		Headers:          grpcMetadata.New(cfg.Destination.Headers),
 		Compressor:       cfg.Destination.Compression,
 		Prometheus:       cfg.Prometheus,
-		InvalidSet:       otlp.NewInvalidSet(log.With(logger, "component", "validation")),
+		InvalidSet:       common.NewInvalidSet(log.With(logger, "component", "validation")),
 	})
 
 	queueManager, err := otlp.NewQueueManager(

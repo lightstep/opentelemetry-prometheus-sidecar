@@ -26,6 +26,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/cmd/internal"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/common"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/internal/otlptest"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/otlp"
@@ -89,7 +90,7 @@ func Main() bool {
 		Timeout:          cfg.Destination.Timeout.Duration,
 		RootCertificates: cfg.Security.RootCertificates,
 		Headers:          grpcMetadata.New(cfg.Destination.Headers),
-		InvalidSet:       otlp.NewInvalidSet(logger),
+		InvalidSet:       common.NewInvalidSet(logger),
 	})
 
 	queueManager, err := otlp.NewQueueManager(

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package otlp
+package common
 
 import (
 	"context"
@@ -25,7 +25,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
-	"github.com/lightstep/opentelemetry-prometheus-sidecar/common"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 )
 
@@ -48,6 +48,8 @@ type (
 
 const (
 	invalidConstant = 1
+
+	metricNameKey attribute.Key = "metric_name"
 
 	invalidMetricSummaryInterval = time.Minute * 5
 )
@@ -109,7 +111,7 @@ func (i *InvalidSet) observeLocked(result metric.Int64ObserverResult) stateMap {
 	for reason, names := range i.short {
 		for metricName := range names {
 			result.Observe(invalidConstant,
-				common.DroppedKeyReason.String(reason),
+				DroppedKeyReason.String(reason),
 				metricNameKey.String(metricName),
 			)
 		}

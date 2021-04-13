@@ -32,7 +32,6 @@ import (
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry/doevery"
-	"go.opentelemetry.io/otel/attribute"
 	metricsService "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -68,8 +67,6 @@ const (
 	}]
 }`
 
-	metricNameKey attribute.Key = "metric_name"
-
 	invalidTrailerPrefix = "otlp-invalid-"
 )
 
@@ -98,7 +95,7 @@ type Client struct {
 	headers          grpcMetadata.MD
 	compressor       string
 	prometheus       config.PromConfig
-	invalidSet       *InvalidSet
+	invalidSet       *common.InvalidSet
 
 	conn *grpc.ClientConn
 }
@@ -112,7 +109,7 @@ type ClientConfig struct {
 	Headers          grpcMetadata.MD
 	Compressor       string
 	Prometheus       config.PromConfig
-	InvalidSet       *InvalidSet
+	InvalidSet       *common.InvalidSet
 }
 
 // NewClient creates a new Client.
