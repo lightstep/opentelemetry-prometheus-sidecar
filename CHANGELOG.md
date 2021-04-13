@@ -11,7 +11,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Changed
 
 - OTLP data points re-use Resource and InstrumentationLibrary (thus are smaller). (#182)
-- `sidecar.metrics.invalid` broaded to include non-validation failures, renamed `sidecar.metrics.failing`.
+- `sidecar.metrics.invalid` broaded to include non-validation failures, renamed `sidecar.metrics.failing`. (#188)
 
 ## [0.21.1](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.21.1) - 2021-04-06
 
