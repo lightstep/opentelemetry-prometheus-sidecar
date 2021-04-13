@@ -237,7 +237,7 @@ Outer:
 				continue
 			}
 			processed, produced := len(samples), 0
-			droppedPoints, skippedPoints := 0, 0
+			points, droppedPoints, skippedPoints := 0, 0, 0
 
 			for len(samples) > 0 {
 				select {
@@ -248,27 +248,30 @@ Outer:
 
 				outputSample, hash, newSamples, err := builder.next(ctx, samples)
 
+				points = len(samples) - len(newSamples)
+
 				if len(samples) == len(newSamples) {
 					// Note: There are a few code paths in `builder.next()`
 					// where it's easier to fall through to this than to be
 					// sure the samples list becomes shorter by at least 1.
 					samples = samples[1:]
+					points = 1
 				} else {
 					samples = newSamples
 				}
 				if err != nil {
-					droppedPoints++
+					droppedPoints += points
 					doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
 						level.Warn(r.logger).Log("msg", "failed to build sample", "err", err)
 					})
 					continue
 				}
 				if outputSample == nil {
-					skippedPoints++
+					skippedPoints += points
 					continue
 				}
 				r.appender.Append(ctx, hash, outputSample)
-				produced++
+				produced += points
 			}
 
 			if droppedPoints != 0 {
