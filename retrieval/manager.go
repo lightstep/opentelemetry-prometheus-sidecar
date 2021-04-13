@@ -44,7 +44,7 @@ var (
 
 	samplesProcessed = sidecar.OTelMeterMust.NewInt64ValueRecorder(
 		config.ProcessedMetric,
-		metric.WithDescription("Number of WAL samples processed in a batch"),
+		metric.WithDescription("Number of Metric samples processed in a batch"),
 	)
 
 	samplesProduced = sidecar.OTelMeterMust.NewInt64Counter(
