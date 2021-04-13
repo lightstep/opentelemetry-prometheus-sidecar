@@ -84,20 +84,102 @@ type prometheusReader interface {
 	CurrentSegment() int
 }
 
-func runReader(ctx context.Context, reader prometheusReader, walDir string, startOffset int, maxRetries int) error {
-	var err error
-	attempts := 0
-	for {
-		err = reader.Run(ctx, startOffset)
-		if err != nil && attempts < maxRetries && strings.Contains(err.Error(), tail.ErrSkipSegment.Error()) {
-			_ = retrieval.SaveProgressFile(walDir, startOffset)
-			reader.Next()
-			attempts += 1
-			startOffset = reader.CurrentSegment() * wal.DefaultSegmentSize
-			continue
-		}
-		return err
+type sidecarConfig struct {
+	scf           otlp.StorageClientFactory
+	mon           *prometheus.Monitor
+	logger        log.Logger
+	svcInstanceId string
+	filters       [][]*labels.Matcher
+	metricRenames map[string]string
+	metadataCache *metadata.Cache
+
+	config.MainConfig
+}
+
+func newTailer(ctx context.Context, scfg sidecarConfig) (*tail.Tailer, error) {
+	return tail.Tail(
+		ctx,
+		log.With(scfg.logger, "component", "wal_reader"),
+		scfg.Prometheus.WAL,
+		scfg.mon,
+	)
+}
+
+func startComponents(ctx context.Context, scfg sidecarConfig, tailer *tail.Tailer, startOffset int) (int, error) {
+	// Run two inter-dependent components:
+	// (1) Prometheus reader
+	// (2) Queue manager
+	// TODO: Replace this with x/sync/errgroup
+	currentSegment := 0
+	queueManager, err := otlp.NewQueueManager(
+		log.With(scfg.logger, "component", "queue_manager"),
+		scfg.QueueConfig(),
+		scfg.Destination.Timeout.Duration,
+		scfg.scf,
+		tailer,
+		retrieval.LabelsToResource(createPrimaryDestinationResourceLabels(scfg.svcInstanceId, scfg.Destination.Attributes)),
+	)
+	if err != nil {
+		level.Error(scfg.logger).Log("msg", "creating queue manager failed", "err", err)
+		return currentSegment, err
 	}
+
+	prometheusReader := retrieval.NewPrometheusReader(
+		log.With(scfg.logger, "component", "prom_wal"),
+		scfg.Prometheus.WAL,
+		tailer,
+		scfg.filters,
+		scfg.metricRenames,
+		scfg.metadataCache,
+		queueManager,
+		scfg.OpenTelemetry.MetricsPrefix,
+		scfg.Prometheus.MaxPointAge.Duration,
+		scfg.mon.GetScrapeConfig(),
+	)
+
+	var g run.Group
+	{
+		g.Add(
+			func() error {
+				level.Info(scfg.logger).Log("msg", "starting Prometheus reader", "segment", startOffset/wal.DefaultSegmentSize)
+				return prometheusReader.Run(ctx, startOffset)
+			},
+			func(err error) {
+				// Prometheus reader needs to be stopped before closing the TSDB
+				// so that it doesn't try to write samples to a closed storage.
+				// See the use of `stopCh` below to explain how this works.
+				level.Info(scfg.logger).Log("msg", "stopping Prometheus reader")
+			},
+		)
+	}
+	{
+		stopCh := make(chan struct{})
+		g.Add(
+			func() error {
+				if err := queueManager.Start(); err != nil {
+					return err
+				}
+				level.Info(scfg.logger).Log("msg", "starting OpenTelemetry writer")
+				<-stopCh
+				return nil
+			},
+			func(err error) {
+				if err := queueManager.Stop(); err != nil {
+					level.Error(scfg.logger).Log(
+						"msg", "stopping OpenTelemetry writer",
+						"err", err,
+					)
+				}
+				close(stopCh)
+			},
+		)
+	}
+
+	if err := g.Run(); err != nil {
+		level.Error(scfg.logger).Log("msg", "run loop error", "err", err)
+		return prometheusReader.CurrentSegment(), err
+	}
+	return prometheusReader.CurrentSegment(), nil
 }
 
 func Main() bool {
@@ -118,20 +200,27 @@ func Main() bool {
 	// environment variable to avoid recursion.
 	isSupervisor := !cfg.DisableSupervisor && os.Getenv(supervisorEnv) == ""
 
-	// Unique identifer for this process.
-	svcInstanceId := uuid.New().String()
+	scfg := sidecarConfig{
+		nil,
+		nil,
+		// Configure logging and diagnostics.
+		internal.NewLogger(cfg, isSupervisor),
+		// Unique identifer for this process.
+		uuid.New().String(),
+		[][]*labels.Matcher{},
+		metricRenames,
+		nil,
+		cfg,
+	}
 
-	// Configure logging and diagnostics.
-	logger := internal.NewLogger(cfg, isSupervisor)
-
-	telemetry.StaticSetup(logger)
+	telemetry.StaticSetup(scfg.logger)
 
 	telem := internal.StartTelemetry(
 		cfg,
 		"opentelemetry-prometheus-sidecar",
-		svcInstanceId,
+		scfg.svcInstanceId,
 		isSupervisor,
-		logger,
+		scfg.logger,
 	)
 	if telem != nil {
 		defer telem.Shutdown(context.Background())
@@ -139,15 +228,15 @@ func Main() bool {
 
 	// Start the supervisor.
 	if isSupervisor {
-		return startSupervisor(cfg, telem, logger)
+		return startSupervisor(scfg, telem)
 	}
 
 	// Start the sidecar.  This context lasts the lifetime of the sidecar.
-	ctx, cancelMain := telemetry.ContextWithSIGTERM(logger)
+	ctx, cancelMain := telemetry.ContextWithSIGTERM(scfg.logger)
 	defer cancelMain()
 
 	healthChecker := health.NewChecker(
-		telem.Controller, cfg.Admin.HealthCheckPeriod.Duration, logger, cfg.Admin.HealthCheckThresholdRatio,
+		telem.Controller, cfg.Admin.HealthCheckPeriod.Duration, scfg.logger, cfg.Admin.HealthCheckThresholdRatio,
 	)
 
 	httpClient := &http.Client{
@@ -155,17 +244,17 @@ func Main() bool {
 		// Transport: otelhttp.NewTransport(http.DefaultTransport),
 	}
 
-	filters, err := parseFilters(logger, cfg.Filters)
+	scfg.filters, err = parseFilters(scfg.logger, cfg.Filters)
 	if err != nil {
-		level.Error(logger).Log("msg", "error parsing --filter", "err", err)
+		level.Error(scfg.logger).Log("msg", "error parsing --filter", "err", err)
 		return false
 	}
 
 	// Parse was validated already, ignore error.
 	promURL, _ := url.Parse(cfg.Prometheus.Endpoint)
 
-	promMon := prometheus.NewMonitor(config.PromReady{
-		Logger:                         log.With(logger, "component", "prom_ready"),
+	scfg.mon = prometheus.NewMonitor(config.PromReady{
+		Logger:                         log.With(scfg.logger, "component", "prom_ready"),
 		PromURL:                        promURL,
 		StartupDelayEffectiveStartTime: time.Now(),
 	})
@@ -174,23 +263,18 @@ func Main() bool {
 	if err != nil {
 		panic(err)
 	}
-	metadataCache := metadata.NewCache(httpClient, metadataURL, staticMetadata)
+	scfg.metadataCache = metadata.NewCache(httpClient, metadataURL, staticMetadata)
 
 	// Check the progress file, ensure we can write this file.
-	startOffset, err := readWriteStartOffset(cfg, logger)
+	startOffset, err := readWriteStartOffset(scfg)
 	if err != nil {
-		level.Error(logger).Log("msg", "cannot write progress file", "err", err)
+		level.Error(scfg.logger).Log("msg", "cannot write progress file", "err", err)
 		return false
 	}
 
-	tailer, err := tail.Tail(
-		ctx,
-		log.With(logger, "component", "wal_reader"),
-		cfg.Prometheus.WAL,
-		promMon,
-	)
+	tailer, err := newTailer(ctx, scfg)
 	if err != nil {
-		level.Error(logger).Log("msg", "tailing WAL failed", "err", err)
+		level.Error(scfg.logger).Log("msg", "tailing WAL failed", "err", err)
 		return false
 	}
 
@@ -198,122 +282,70 @@ func Main() bool {
 
 	cfg.Destination.Headers[config.AgentKey] = config.AgentMainValue
 
-	scf := internal.NewOTLPClientFactory(otlp.ClientConfig{
-		Logger:           log.With(logger, "component", "storage"),
+	scfg.scf = internal.NewOTLPClientFactory(otlp.ClientConfig{
+		Logger:           log.With(scfg.logger, "component", "storage"),
 		URL:              outputURL,
 		Timeout:          cfg.Destination.Timeout.Duration,
 		RootCertificates: cfg.Security.RootCertificates,
 		Headers:          grpcMetadata.New(cfg.Destination.Headers),
 		Compressor:       cfg.Destination.Compression,
 		Prometheus:       cfg.Prometheus,
-		InvalidSet:       otlp.NewInvalidSet(log.With(logger, "component", "validation")),
+		InvalidSet:       otlp.NewInvalidSet(log.With(scfg.logger, "component", "validation")),
 	})
-
-	queueManager, err := otlp.NewQueueManager(
-		log.With(logger, "component", "queue_manager"),
-		cfg.QueueConfig(),
-		cfg.Destination.Timeout.Duration,
-		scf,
-		tailer,
-		retrieval.LabelsToResource(createPrimaryDestinationResourceLabels(svcInstanceId, cfg.Destination.Attributes)),
-	)
-	if err != nil {
-		level.Error(logger).Log("msg", "creating queue manager failed", "err", err)
-		return false
-	}
 
 	// Start the admin server.
 	go func() {
 		defer cancelMain()
 
-		server := newAdminServer(healthChecker, cfg.Admin, logger)
+		server := newAdminServer(healthChecker, cfg.Admin, scfg.logger)
 
 		go func() {
-			level.Debug(logger).Log("msg", "starting admin server")
+			level.Debug(scfg.logger).Log("msg", "starting admin server")
 			<-ctx.Done()
 			if err := server.Shutdown(context.Background()); err != nil {
-				level.Error(logger).Log("msg", "admin server shutdown", "err", err)
+				level.Error(scfg.logger).Log("msg", "admin server shutdown", "err", err)
 			}
 		}()
 
 		if err := server.ListenAndServe(); err != http.ErrServerClosed {
-			level.Error(logger).Log("msg", "admin listener", "err", err)
+			level.Error(scfg.logger).Log("msg", "admin listener", "err", err)
 		}
 	}()
 
-	logStartup(cfg, logger)
+	logStartup(cfg, scfg.logger)
 
 	// Test for Prometheus and Outbound dependencies before starting.
-	if err := selfTest(ctx, scf, cfg.StartupTimeout.Duration, logger, promMon); err != nil {
-		level.Error(logger).Log("msg", "selftest failed, not starting", "err", err)
+	if err := selfTest(ctx, scfg); err != nil {
+		level.Error(scfg.logger).Log("msg", "selftest failed, not starting", "err", err)
 		return false
 	}
 
-	level.Debug(logger).Log("msg", "entering run state")
+	level.Debug(scfg.logger).Log("msg", "entering run state")
 	healthChecker.SetRunning()
 
-	prometheusReader := retrieval.NewPrometheusReader(
-		log.With(logger, "component", "prom_wal"),
-		cfg.Prometheus.WAL,
-		tailer,
-		filters,
-		metricRenames,
-		metadataCache,
-		queueManager,
-		cfg.OpenTelemetry.MetricsPrefix,
-		cfg.Prometheus.MaxPointAge.Duration,
-		promMon.GetScrapeConfig(),
-	)
-
-	// Run two inter-depdendent components:
-	// (1) Prometheus reader
-	// (2) Queue manager
-	// TODO: Replace this with x/sync/errgroup
-	var g run.Group
-	{
-		g.Add(
-			func() error {
-				level.Info(logger).Log("msg", "starting Prometheus reader", "segment", startOffset/wal.DefaultSegmentSize)
-				return runReader(ctx, prometheusReader, cfg.Prometheus.WAL, startOffset, config.DefaultMaxRetrySkipSegments)
-			},
-			func(err error) {
-				// Prometheus reader needs to be stopped before closing the TSDB
-				// so that it doesn't try to write samples to a closed storage.
-				// See the use of `stopCh` below to explain how this works.
-				level.Info(logger).Log("msg", "stopping Prometheus reader")
-				cancelMain()
-			},
-		)
+	attempts := 0
+	currentSegment := 0
+	for {
+		currentSegment, err = startComponents(ctx, scfg, tailer, startOffset)
+		if err != nil && attempts < config.DefaultMaxRetrySkipSegments && strings.Contains(err.Error(), tail.ErrSkipSegment.Error()) {
+			_ = retrieval.SaveProgressFile(cfg.Prometheus.WAL, startOffset)
+			tailer, err = newTailer(ctx, scfg)
+			if err != nil {
+				level.Error(scfg.logger).Log("msg", "tailing WAL failed", "err", err)
+				break
+			}
+			attempts += 1
+			startOffset = currentSegment * wal.DefaultSegmentSize
+			continue
+		}
+		break
 	}
-	{
-		stopCh := make(chan struct{})
-		g.Add(
-			func() error {
-				if err := queueManager.Start(); err != nil {
-					return err
-				}
-				level.Info(logger).Log("msg", "starting OpenTelemetry writer")
-				<-stopCh
-				return nil
-			},
-			func(err error) {
-				if err := queueManager.Stop(); err != nil {
-					level.Error(logger).Log(
-						"msg", "stopping OpenTelemetry writer",
-						"err", err,
-					)
-				}
-				close(stopCh)
-			},
-		)
-	}
-	if err := g.Run(); err != nil {
-		level.Error(logger).Log("msg", "run loop error", "err", err)
-		return false
+	if err != nil {
+		cancelMain()
 	}
 
 	// SIGTERM causes graceful shutdown.
-	level.Info(logger).Log("msg", "sidecar process exiting")
+	level.Info(scfg.logger).Log("msg", "sidecar process exiting")
 	return true
 }
 
@@ -353,22 +385,22 @@ func createPrimaryDestinationResourceLabels(svcInstanceId string, extraLabels ma
 	return labels.FromMap(extraLabels)
 }
 
-func selfTest(ctx context.Context, scf otlp.StorageClientFactory, timeout time.Duration, logger log.Logger, promMon *prometheus.Monitor) error {
-	client := scf.New()
+func selfTest(ctx context.Context, scfg sidecarConfig) error {
+	client := scfg.scf.New()
 
-	ctx, cancel := context.WithTimeout(ctx, timeout)
+	ctx, cancel := context.WithTimeout(ctx, scfg.StartupTimeout.Duration)
 	defer cancel()
 
-	level.Debug(logger).Log("msg", "checking Prometheus readiness")
+	level.Debug(scfg.logger).Log("msg", "checking Prometheus readiness")
 
 	// These tests are performed sequentially, to keep the logs simple.
 	// Note WaitForReady loops until success or stop if the context is canceled
 	// or an unsupported version of prometheus is identified
-	if err := promMon.WaitForReady(ctx, cancel); err != nil {
+	if err := scfg.mon.WaitForReady(ctx, cancel); err != nil {
 		return errors.Wrap(err, "Prometheus is not ready")
 	}
 
-	level.Debug(logger).Log("msg", "checking OpenTelemetry endpoint")
+	level.Debug(scfg.logger).Log("msg", "checking OpenTelemetry endpoint")
 
 	// Outbound connection test.
 	{
@@ -382,7 +414,7 @@ func selfTest(ctx context.Context, scf otlp.StorageClientFactory, timeout time.D
 		}
 	}
 
-	level.Debug(logger).Log("msg", "selftest was successful")
+	level.Debug(scfg.logger).Log("msg", "selftest was successful")
 	return nil
 }
 
@@ -404,10 +436,10 @@ func logStartup(cfg config.MainConfig, logger log.Logger) {
 	}
 }
 
-func startSupervisor(cfg config.MainConfig, telem *telemetry.Telemetry, logger log.Logger) bool {
+func startSupervisor(scfg sidecarConfig, telem *telemetry.Telemetry) bool {
 	super := supervisor.New(supervisor.Config{
-		Logger:    logger,
-		Admin:     cfg.Admin,
+		Logger:    scfg.logger,
+		Admin:     scfg.Admin,
 		Telemetry: telem,
 	})
 
@@ -430,13 +462,13 @@ func newAdminServer(hc *health.Checker, acfg config.AdminConfig, logger log.Logg
 
 // readWriteStartOffset reads the last (approxiate) progress position and re-writes
 // the progress file, to ensure we have write permission on startup.
-func readWriteStartOffset(cfg config.MainConfig, logger log.Logger) (int, error) {
-	startOffset, err := retrieval.ReadProgressFile(cfg.Prometheus.WAL)
+func readWriteStartOffset(scfg sidecarConfig) (int, error) {
+	startOffset, err := retrieval.ReadProgressFile(scfg.Prometheus.WAL)
 	if err != nil {
-		level.Warn(logger).Log("msg", "reading progress file failed", "err", err)
+		level.Warn(scfg.logger).Log("msg", "reading progress file failed", "err", err)
 		startOffset = 0
 	}
 
-	err = retrieval.SaveProgressFile(cfg.Prometheus.WAL, startOffset)
+	err = retrieval.SaveProgressFile(scfg.Prometheus.WAL, startOffset)
 	return startOffset, err
 }
