@@ -461,10 +461,9 @@ Metrics from the subordinate process can help identify issues once the first met
 | sidecar.queue.running | gauge | number of running shards, those which have not exited | |
 | sidecar.queue.shards | gauge | number of current shards, as set by the queue manager | |
 | sidecar.queue.size | gauge | number of samples (i.e., points) standing in a queue waiting to export | |
-| sidecar.samples.processed | histogram | number of samples (i.e., points) read in a prometheus WAL batch | |
-| sidecar.samples.produced | counter | number of samples (i.e., points) read from the prometheus WAL | |
 | sidecar.series.defined | counter | number of series defined in the WAL | |
 | sidecar.series.dropped | counter | number of series or metrics dropped | `key_reason`: various |
+| sidecar.points.produced | counter | number of points read from the prometheus WAL | |
 | sidecar.points.dropped | counter | number of points dropped due to errors | `key_reason`: various |
 | sidecar.points.skipped | counter | number of points skipped by filters or cumulative resets | |
 | sidecar.metadata.lookups | counter | number of calls to lookup metadata | `error`: true, false |

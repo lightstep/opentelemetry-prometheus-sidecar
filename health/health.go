@@ -282,7 +282,7 @@ func (a *alive) check(metrics map[string][]exportRecord) error {
 		return t
 	}
 
-	produced := sumWhere(config.ProducedMetric, "")
+	produced := sumWhere(config.ProducedPointsMetric, "")
 
 	if produced.defined() && produced.matchDelta() == 0 {
 		// if the sidecar has not been able to produced samples, it's
@@ -292,7 +292,7 @@ func (a *alive) check(metrics map[string][]exportRecord) error {
 		}
 		return errors.Errorf(
 			"%s stopped moving at %v",
-			config.ProducedMetric,
+			config.ProducedPointsMetric,
 			produced.matchValue(),
 		)
 	}
