@@ -38,7 +38,7 @@ import (
 
 var (
 	datapointsProcessed = sidecar.OTelMeterMust.NewInt64ValueRecorder(
-		config.ProcessedMetric,
+		config.ProcessedPointsMetric,
 		metric.WithDescription("Number of WAL data points processed in a batch"),
 	)
 
