@@ -25,13 +25,14 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 )
 
 type (
-	// InvalidSet reports a set of gauges to describe invalid data points.
-	InvalidSet struct {
+	// FailingSet reports a set of gauges to describe failing data points.
+	FailingSet struct {
 		observer metric.Int64ValueObserver
 		logger   log.Logger
 
@@ -47,29 +48,29 @@ type (
 )
 
 const (
-	invalidConstant = 1
+	failingConstant = 1
 
 	metricNameKey attribute.Key = "metric_name"
 
-	invalidMetricSummaryInterval = time.Minute * 5
+	failingMetricSummaryInterval = time.Minute * 5
 )
 
-func NewInvalidSet(logger log.Logger) *InvalidSet {
-	i := &InvalidSet{
+func NewFailingSet(logger log.Logger) *FailingSet {
+	i := &FailingSet{
 		short:  stateMap{},
 		long:   stateMap{},
 		logger: logger,
 	}
 	i.observer = sidecar.OTelMeterMust.NewInt64ValueObserver(
-		"sidecar.metrics.invalid",
+		config.FailingMetricsMetric,
 		i.observe,
-		metric.WithDescription("labeled examples of invalid metric data"),
+		metric.WithDescription("labeled examples of failing metric data"),
 	)
 	return i
 
 }
 
-func (i *InvalidSet) Set(reason, metricName string) {
+func (i *FailingSet) Set(reason, metricName string) {
 	i.lock.Lock()
 	defer i.lock.Unlock()
 
@@ -84,7 +85,7 @@ func (s stateMap) set(reason, metricName string) {
 	s[reason][metricName] = struct{}{}
 }
 
-func (i *InvalidSet) observe(_ context.Context, result metric.Int64ObserverResult) {
+func (i *FailingSet) observe(_ context.Context, result metric.Int64ObserverResult) {
 	summary := i.observeLocked(result)
 
 	if summary == nil {
@@ -104,13 +105,13 @@ func (i *InvalidSet) observe(_ context.Context, result metric.Int64ObserverResul
 	}
 }
 
-func (i *InvalidSet) observeLocked(result metric.Int64ObserverResult) stateMap {
+func (i *FailingSet) observeLocked(result metric.Int64ObserverResult) stateMap {
 	i.lock.Lock()
 	defer i.lock.Unlock()
 
 	for reason, names := range i.short {
 		for metricName := range names {
-			result.Observe(invalidConstant,
+			result.Observe(failingConstant,
 				DroppedKeyReason.String(reason),
 				metricNameKey.String(metricName),
 			)
@@ -123,7 +124,7 @@ func (i *InvalidSet) observeLocked(result metric.Int64ObserverResult) stateMap {
 	}
 
 	now := time.Now()
-	if now.Sub(i.lastSummary) < invalidMetricSummaryInterval {
+	if now.Sub(i.lastSummary) < failingMetricSummaryInterval {
 		return nil
 	}
 

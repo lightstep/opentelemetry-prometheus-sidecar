@@ -171,6 +171,8 @@ func Main() bool {
 		StartupDelayEffectiveStartTime: time.Now(),
 	})
 
+	failingSet := common.NewFailingSet(log.With(logger, "component", "failing"))
+
 	metadataURL, err := promURL.Parse(config.PrometheusMetadataEndpointPath)
 	if err != nil {
 		panic(err)
@@ -207,7 +209,7 @@ func Main() bool {
 		Headers:          grpcMetadata.New(cfg.Destination.Headers),
 		Compressor:       cfg.Destination.Compression,
 		Prometheus:       cfg.Prometheus,
-		InvalidSet:       common.NewInvalidSet(log.With(logger, "component", "validation")),
+		FailingSet:       failingSet,
 	})
 
 	queueManager, err := otlp.NewQueueManager(

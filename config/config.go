@@ -105,7 +105,7 @@ an OpenTelemetry (https://opentelemetry.io) Protocol endpoint.
 	DroppedSeriesMetric  = "sidecar.series.dropped"
 	DroppedPointsMetric  = "sidecar.points.dropped"
 	SkippedPointsMetric  = "sidecar.points.skipped"
-	InvalidMetricsMetric = "sidecar.metrics.invalid"
+	FailingMetricsMetric = "sidecar.metrics.failing"
 
 	OutcomeKey          = attribute.Key("outcome")
 	OutcomeSuccessValue = "success"
@@ -246,7 +246,7 @@ func DefaultMainConfig() MainConfig {
 			Endpoint:                DefaultPrometheusEndpoint,
 			MaxPointAge:             DurationConfig{DefaultMaxPointAge},
 			MaxTimeseriesPerRequest: DefaultMaxTimeseriesPerRequest,
-			MinShards:		 DefaultMinShards,
+			MinShards:               DefaultMinShards,
 			MaxShards:               DefaultMaxShards,
 		},
 		Admin: AdminConfig{

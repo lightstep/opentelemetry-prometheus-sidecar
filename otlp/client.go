@@ -95,7 +95,7 @@ type Client struct {
 	headers          grpcMetadata.MD
 	compressor       string
 	prometheus       config.PromConfig
-	invalidSet       *common.InvalidSet
+	invalidSet       *common.FailingSet
 
 	conn *grpc.ClientConn
 }
@@ -109,7 +109,7 @@ type ClientConfig struct {
 	Headers          grpcMetadata.MD
 	Compressor       string
 	Prometheus       config.PromConfig
-	InvalidSet       *common.InvalidSet
+	FailingSet       *common.FailingSet
 }
 
 // NewClient creates a new Client.
@@ -126,7 +126,7 @@ func NewClient(conf ClientConfig) *Client {
 		headers:          conf.Headers,
 		compressor:       conf.Compressor,
 		prometheus:       conf.Prometheus,
-		invalidSet:       conf.InvalidSet,
+		invalidSet:       conf.FailingSet,
 	}
 }
 
