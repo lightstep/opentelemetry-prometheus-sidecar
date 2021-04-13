@@ -37,19 +37,9 @@ import (
 )
 
 var (
-	datapointsProcessed = sidecar.OTelMeterMust.NewInt64ValueRecorder(
-		config.ProcessedPointsMetric,
-		metric.WithDescription("Number of WAL data points processed in a batch"),
-	)
-
-	samplesProcessed = sidecar.OTelMeterMust.NewInt64ValueRecorder(
-		config.ProcessedMetric,
-		metric.WithDescription("Number of Metric samples processed in a batch"),
-	)
-
-	samplesProduced = sidecar.OTelMeterMust.NewInt64Counter(
-		config.ProducedMetric,
-		metric.WithDescription("Number of Metric samples produced"),
+	pointsProduced = sidecar.OTelMeterMust.NewInt64Counter(
+		config.ProducedPointsMetric,
+		metric.WithDescription("Number of Metric points produced"),
 	)
 
 	seriesDefined = sidecar.OTelMeterMust.NewInt64Counter(
@@ -241,8 +231,7 @@ Outer:
 				level.Error(r.logger).Log("decode samples", "err", err)
 				continue
 			}
-			datapoints, processed, produced := len(samples), 0, 0
-			droppedPoints, skippedPoints := 0, 0
+			produced, droppedPoints, skippedPoints := 0, 0, 0
 
 			for len(samples) > 0 {
 				select {
@@ -261,7 +250,6 @@ Outer:
 				} else {
 					samples = newSamples
 				}
-				processed++
 				if err != nil {
 					droppedPoints++
 					doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
@@ -285,12 +273,7 @@ Outer:
 			sidecar.OTelMeter.RecordBatch(
 				ctx,
 				nil,
-				// data points may be grouped in histograms, this is
-				// why we're keeping a separate measurement for datapoints
-				// vs the samples processed
-				datapointsProcessed.Measurement(int64(datapoints)),
-				samplesProcessed.Measurement(int64(processed)),
-				samplesProduced.Measurement(int64(produced)),
+				pointsProduced.Measurement(int64(produced)),
 				// Note: skipped points could be refined, as there
 				// are two sub-types.  Some points are skipped because
 				// of cumulative resets, and some because of filters.
