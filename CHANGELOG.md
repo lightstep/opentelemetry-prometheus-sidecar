@@ -10,7 +10,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
-- New metric `sidecar.points.processed` counts total points processed from the WAL. (#187)
+- New metric `sidecar.points.produced` counts total points produced from the WAL. (#187)
 
 ### Changed
 
