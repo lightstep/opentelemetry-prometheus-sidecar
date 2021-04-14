@@ -418,8 +418,7 @@ func (c *seriesCache) lookup(ctx context.Context, ref uint64) (retErr error) {
 				level.Warn(c.logger).Log(
 					"msg", "metadata not found",
 					"metric_name", entry.name,
-					"job", job,
-					"instance", instance,
+					"labels", fmt.Sprint(entry.lset),
 				)
 			})
 			failedReason = "metadata_missing"
