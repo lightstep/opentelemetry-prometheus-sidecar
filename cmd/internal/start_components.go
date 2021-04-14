@@ -2,6 +2,7 @@ package internal
 
 import (
 	"context"
+	"strings"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -41,7 +42,40 @@ func createPrimaryDestinationResourceLabels(svcInstanceId string, extraLabels ma
 	return labels.FromMap(extraLabels)
 }
 
-func StartComponents(ctx context.Context, scfg SidecarConfig, tailer *tail.Tailer, startOffset int) (int, error) {
+func NewTailer(ctx context.Context, scfg SidecarConfig) (*tail.Tailer, error) {
+	return tail.Tail(
+		ctx,
+		log.With(scfg.Logger, "component", "wal_reader"),
+		scfg.Prometheus.WAL,
+		scfg.Monitor,
+	)
+}
+
+func StartComponents(ctx context.Context, scfg SidecarConfig, tailer tail.WalTailer, startOffset int) error {
+	var err error
+	attempts := 0
+	currentSegment := 0
+	for {
+		currentSegment, err = runComponents(ctx, scfg, tailer, startOffset)
+		if err != nil && attempts < config.DefaultMaxRetrySkipSegments && strings.Contains(err.Error(), tail.ErrSkipSegment.Error()) {
+			_ = tailer.Close()
+			_ = retrieval.SaveProgressFile(scfg.Prometheus.WAL, startOffset)
+			tailer, err = NewTailer(ctx, scfg)
+			if err != nil {
+				level.Error(scfg.Logger).Log("msg", "tailing WAL failed", "err", err)
+				break
+			}
+			attempts += 1
+			tailer.SetCurrentSegment(currentSegment + 1)
+			startOffset = (currentSegment + 1) * wal.DefaultSegmentSize
+			continue
+		}
+		break
+	}
+	return err
+}
+
+func runComponents(ctx context.Context, scfg SidecarConfig, tailer tail.WalTailer, startOffset int) (int, error) {
 	// Run two inter-dependent components:
 	// (1) Prometheus reader
 	// (2) Queue manager

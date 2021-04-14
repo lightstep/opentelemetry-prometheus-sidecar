@@ -24,7 +24,6 @@ import (
 	"net/url"
 	"os"
 	"runtime"
-	"strings"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -38,13 +37,11 @@ import (
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/prometheus"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/retrieval"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/supervisor"
-	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/version"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
-	"github.com/prometheus/prometheus/tsdb/wal"
 	grpcMetadata "google.golang.org/grpc/metadata"
 
 	// register grpc compressors
@@ -75,21 +72,6 @@ func main() {
 	if !Main() {
 		os.Exit(1)
 	}
-}
-
-type prometheusReader interface {
-	Run(context.Context, int) error
-	Next()
-	CurrentSegment() int
-}
-
-func newTailer(ctx context.Context, scfg internal.SidecarConfig) (*tail.Tailer, error) {
-	return tail.Tail(
-		ctx,
-		log.With(scfg.Logger, "component", "wal_reader"),
-		scfg.Prometheus.WAL,
-		scfg.Monitor,
-	)
 }
 
 func Main() bool {
@@ -182,7 +164,7 @@ func Main() bool {
 		return false
 	}
 
-	tailer, err := newTailer(ctx, scfg)
+	tailer, err := internal.NewTailer(ctx, scfg)
 	if err != nil {
 		level.Error(scfg.Logger).Log("msg", "tailing WAL failed", "err", err)
 		return false
@@ -233,24 +215,7 @@ func Main() bool {
 	level.Debug(scfg.Logger).Log("msg", "entering run state")
 	healthChecker.SetRunning()
 
-	attempts := 0
-	currentSegment := 0
-	for {
-		currentSegment, err = internal.StartComponents(ctx, scfg, tailer, startOffset)
-		if err != nil && attempts < config.DefaultMaxRetrySkipSegments && strings.Contains(err.Error(), tail.ErrSkipSegment.Error()) {
-			_ = retrieval.SaveProgressFile(cfg.Prometheus.WAL, startOffset)
-			tailer, err = newTailer(ctx, scfg)
-			if err != nil {
-				level.Error(scfg.Logger).Log("msg", "tailing WAL failed", "err", err)
-				break
-			}
-			attempts += 1
-			startOffset = currentSegment * wal.DefaultSegmentSize
-			continue
-		}
-		break
-	}
-	if err != nil {
+	if err = internal.StartComponents(ctx, scfg, tailer, startOffset); err != nil {
 		cancelMain()
 	}
 
