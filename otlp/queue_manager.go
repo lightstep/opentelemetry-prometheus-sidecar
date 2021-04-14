@@ -31,9 +31,9 @@ import (
 	promconfig "github.com/prometheus/prometheus/config"
 	"go.opentelemetry.io/otel/metric"
 	metricsService "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
+	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	metricspb "go.opentelemetry.io/proto/otlp/metrics/v1"
 	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
-	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 
 	// gRPC Status protobuf types we may want to see.  This type
 	// is not widely used, but is the most standard way to itemize
@@ -357,12 +357,14 @@ func (t *QueueManager) calculateDesiredShards() {
 	// to shardUpdateDuration.
 	select {
 	case t.reshardChan <- numShards:
-		level.Info(t.logger).Log(
-			"msg", "send queue resharding",
-			"from", t.numShards,
-			"to", numShards,
-		)
-		t.numShards = numShards
+		if numShards != t.numShards {
+			level.Info(t.logger).Log(
+				"msg", "send queue resharding",
+				"from", t.numShards,
+				"to", numShards,
+			)
+			t.numShards = numShards
+		}
 	default:
 		level.Warn(t.logger).Log(
 			"msg", "currently resharding, skipping",

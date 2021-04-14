@@ -211,7 +211,16 @@ func TestSampleBuilder(t *testing.T) {
 				{Ref: 9, T: 9000, V: 4},
 			},
 			result: []*metric_pb.Metric{
-				nil, // Skipped by reset timestamp handling.
+				DoubleCounterPoint( // 1: second point in series, first reported.
+					Labels(
+						Label("instance", "instance1"),
+						Label("job", "job1"),
+					),
+					"metric2",
+					time.Unix(2, 0),
+					time.Unix(2, 0),
+					0,
+				),
 				DoubleCounterPoint( // 1: second point in series, first reported.
 					Labels(
 						Label("instance", "instance1"),
@@ -233,14 +242,12 @@ func TestSampleBuilder(t *testing.T) {
 					3.5,
 				),
 				DoubleCounterPoint( // 3: A reset
-					// Timestamp set to 1ms before the end time to avoid
-					// conflict, see (*seriesCache).getResetAdjusted().
 					Labels(
 						Label("instance", "instance1"),
 						Label("job", "job1"),
 					),
 					"metric2",
-					time.Unix(5, int64(-time.Millisecond)),
+					time.Unix(5, 0),
 					time.Unix(5, 0),
 					3,
 				),
@@ -315,7 +322,17 @@ func TestSampleBuilder(t *testing.T) {
 					time.Unix(8, 0),
 					13,
 				),
-				nil, // 9; Skipped by reset timestamp handling.
+				IntCounterPoint( // 9
+					// An integer counter.
+					Labels(
+						Label("instance", "instance1"),
+						Label("job", "job1"),
+					),
+					"metric4",
+					time.Unix(6, 0),
+					time.Unix(6, 0),
+					0,
+				),
 				IntCounterPoint( // 10
 					// An integer counter.
 					Labels(
@@ -336,7 +353,16 @@ func TestSampleBuilder(t *testing.T) {
 					"metric5",
 					time.Unix(8, 0),
 					22.5),
-				nil, // 12; Skipped by reset timestamp handling.
+				DoubleCounterPoint( // 12
+					Labels(
+						Label("instance", "instance1"),
+						Label("job", "job1"),
+					),
+					"metric6",
+					time.Unix(8, 0),
+					time.Unix(8, 0),
+					0,
+				),
 				DoubleCounterPoint( // 13
 					Labels(
 						Label("instance", "instance1"),
@@ -393,7 +419,16 @@ func TestSampleBuilder(t *testing.T) {
 				{Ref: 4, T: 4000, V: 4},
 			},
 			result: []*metric_pb.Metric{
-				nil, // 0: dropped by reset handling.
+				DoubleCounterPoint(
+					Labels(
+						Label("instance", "instance1"),
+						Label("job", "job1"),
+					),
+					"metric1_sum",
+					time.Unix(1, 0),
+					time.Unix(1, 0),
+					0,
+				),
 				DoubleCounterPoint(
 					Labels(
 						Label("instance", "instance1"),
@@ -414,7 +449,16 @@ func TestSampleBuilder(t *testing.T) {
 					time.Unix(2, 0),
 					2,
 				),
-				nil, // 3: dropped
+				IntCounterPoint(
+					Labels(
+						Label("instance", "instance1"),
+						Label("job", "job1"),
+					),
+					"metric1_count",
+					time.Unix(3, 0),
+					time.Unix(3, 0),
+					0,
+				),
 				IntCounterPoint(
 					Labels(
 						Label("instance", "instance1"),
@@ -486,7 +530,22 @@ func TestSampleBuilder(t *testing.T) {
 				{Ref: 10, T: 1000, V: 3},
 			},
 			result: []*metric_pb.Metric{
-				nil, // 0: skipped by reset handling.
+				DoubleHistogramPoint( // 0:
+					Labels(
+						Label("instance", "instance1"),
+						Label("job", "job1"),
+					),
+					"metric1",
+					time.Unix(1, 0),
+					time.Unix(1, 0),
+					0,
+					0,
+					DoubleHistogramBucket(0.1, 0),
+					DoubleHistogramBucket(0.5, 0),
+					DoubleHistogramBucket(1, 0),
+					DoubleHistogramBucket(2.5, 0),
+					DoubleHistogramBucket(math.Inf(+1), 0),
+				),
 				DoubleHistogramPoint( // 1:
 					Labels(
 						Label("instance", "instance1"),
@@ -503,7 +562,18 @@ func TestSampleBuilder(t *testing.T) {
 					DoubleHistogramBucket(2.5, 2),
 					DoubleHistogramBucket(math.Inf(+1), 4),
 				),
-				nil, // 2: skipped
+				DoubleHistogramPoint( // 2: histogram w/ no buckets
+					Labels(
+						Label("a", "b"),
+						Label("instance", "instance1"),
+						Label("job", "job1"),
+					),
+					"metric1",
+					time.Unix(1, 0),
+					time.Unix(1, 0),
+					0,
+					0,
+				),
 				DoubleHistogramPoint( // 3: histogram w/ no buckets
 					Labels(
 						Label("a", "b"),
@@ -526,56 +596,6 @@ func TestSampleBuilder(t *testing.T) {
 					time.Unix(1, 0),
 					3,
 				),
-			},
-		},
-		// Interval overlap handling.
-		{
-			name: "interval overlap handling",
-			series: seriesMap{
-				1: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1"),
-				2: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1"),
-			},
-			// Both instances map to the same monitored resource and will thus produce the same series.
-			metadata: promtest.MetadataMap{
-				"job1/instance1/metric1": &metadataEntry{Metric: "metric1", MetricType: textparse.MetricTypeCounter, ValueType: config.DOUBLE},
-			},
-			input: []record.RefSample{
-				// First sample for both series will define the reset timestamp.
-				{Ref: 1, T: 1000, V: 4},
-				{Ref: 2, T: 1500, V: 5},
-				// The sample for series 2 must be rejected.
-				{Ref: 1, T: 2000, V: 9},
-				{Ref: 2, T: 2500, V: 11},
-				// Both series get reset but the 2nd one is detected first.
-				// The emitted samples should flip over.
-				{Ref: 2, T: 3500, V: 3},
-				{Ref: 1, T: 3000, V: 2},
-			},
-			result: []*metric_pb.Metric{
-				nil, // Skipped by reset timestamp handling.
-				nil, // Skipped by reset timestamp handling.
-				DoubleCounterPoint(
-					Labels(
-						Label("instance", "instance1"),
-						Label("job", "job1"),
-					),
-					"metric1",
-					time.Unix(1, 0),
-					time.Unix(2, 0),
-					5,
-				),
-				nil, // Rejected because of overlap.
-				DoubleCounterPoint(
-					Labels(
-						Label("instance", "instance1"),
-						Label("job", "job1"),
-					),
-					"metric1",
-					time.Unix(3, 5e8-1e6),
-					time.Unix(3, 5e8),
-					3,
-				),
-				nil, // Rejected because of overlap.
 			},
 		},
 		// Customized metric prefix.
@@ -619,7 +639,17 @@ func TestSampleBuilder(t *testing.T) {
 				{Ref: 1, T: 3000, V: 8},
 			},
 			result: []*metric_pb.Metric{
-				nil, // Skipped by reset timestamp handling.
+				DoubleCounterPoint(
+					Labels(
+						Label("a", "1"),
+						Label("instance", "instance1"),
+						Label("job", "job1"),
+					),
+					"metric1_total",
+					time.Unix(2, 0),
+					time.Unix(2, 0),
+					0,
+				),
 				DoubleCounterPoint(
 					Labels(
 						Label("a", "1"),
@@ -649,7 +679,17 @@ func TestSampleBuilder(t *testing.T) {
 				{Ref: 1, T: 3000, V: 8},
 			},
 			result: []*metric_pb.Metric{
-				nil, // Skipped by reset timestamp handling.
+				DoubleCounterPoint(
+					Labels(
+						Label("a", "1"),
+						Label("instance", "instance1"),
+						Label("job", "job1"),
+					),
+					"metric1",
+					time.Unix(2, 0),
+					time.Unix(2, 0),
+					0,
+				),
 				DoubleCounterPoint(
 					Labels(
 						Label("a", "1"),
@@ -692,6 +732,7 @@ func TestSampleBuilder(t *testing.T) {
 		},
 		// Samples with a NaN value should be dropped.
 		{
+			name: "NaN value",
 			series: seriesMap{
 				1: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_count"),
 			},
@@ -699,23 +740,20 @@ func TestSampleBuilder(t *testing.T) {
 				"job1/instance1/metric1": &metadataEntry{Metric: "metric1_count", MetricType: textparse.MetricTypeSummary, ValueType: config.DOUBLE},
 			},
 			input: []record.RefSample{
-				// A first non-NaN sample is necessary to avoid false-positives, since the
-				// first result will always be nil due to reset timestamp handling.
-				{Ref: 1, T: 2000, V: 5},
 				{Ref: 1, T: 4000, V: math.NaN()},
 			},
 			result: []*metric_pb.Metric{
-				nil, // due to reset timestamp handling
 				nil, // due to NaN
 			},
 		},
-		// Samples with a NaN value should be dropped.
+		// Samples with a NaN value and a cumulative
 		{
+			name: "NaN and cumulative",
 			series: seriesMap{
-				1: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_count"),
+				1: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1"),
 			},
 			metadata: promtest.MetadataMap{
-				"job1/instance1/metric1": &metadataEntry{Metric: "metric1_count", MetricType: textparse.MetricTypeSummary, ValueType: config.DOUBLE},
+				"job1/instance1/metric1": &metadataEntry{Metric: "metric1", MetricType: textparse.MetricTypeCounter, ValueType: config.INT64},
 			},
 			input: []record.RefSample{
 				// A first non-NaN sample is necessary to avoid false-positives, since the
@@ -725,14 +763,23 @@ func TestSampleBuilder(t *testing.T) {
 				{Ref: 1, T: 5000, V: 9},
 			},
 			result: []*metric_pb.Metric{
-				nil, // due to reset timestamp handling
+				IntCounterPoint(
+					Labels(
+						Label("instance", "instance1"),
+						Label("job", "job1"),
+					),
+					"metric1",
+					time.Unix(2, 0),
+					time.Unix(2, 0),
+					0,
+				),
 				nil, // due to NaN
 				IntCounterPoint(
 					Labels(
 						Label("instance", "instance1"),
 						Label("job", "job1"),
 					),
-					"metric1_count",
+					"metric1",
 					time.Unix(2, 0),
 					time.Unix(5, 0),
 					4,
