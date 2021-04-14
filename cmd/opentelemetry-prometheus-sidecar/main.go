@@ -152,7 +152,7 @@ func Main() bool {
 		StartupDelayEffectiveStartTime: time.Now(),
 	})
 
-	failingSet := common.NewFailingSet(log.With(logger, "component", "failing"))
+	failingSet := common.NewFailingSet(log.With(scfg.Logger, "component", "failing"))
 
 	metadataURL, err := promURL.Parse(config.PrometheusMetadataEndpointPath)
 	if err != nil {
