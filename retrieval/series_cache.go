@@ -126,10 +126,6 @@ var (
 		"sidecar.metadata.lookups",
 		"Number of Metric series lookups",
 	)
-	seriesCacheMissingResetCounter = telemetry.NewCounter(
-		"sidecar.cumulative.missing_resets",
-		"Number of Metric series resets that were missing start time, causing gaps a series",
-	)
 
 	errSeriesNotFound        = fmt.Errorf("series ref not found")
 	errSeriesMissingMetadata = fmt.Errorf("series ref missing metadata")
@@ -311,8 +307,6 @@ func (c *seriesCache) getResetAdjusted(e *seriesCacheEntry, t int64, v float64) 
 		e.previousValue = v
 		// If we just initialized the reset timestamp, record a zero (i.e., reset).
 		// The next sample will be considered relative to resetValue.
-
-		seriesCacheMissingResetCounter.Add(context.Background(), 1, nil)
 		return t, 0
 	}
 	if v < e.previousValue {

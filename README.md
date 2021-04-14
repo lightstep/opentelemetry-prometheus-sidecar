@@ -465,9 +465,8 @@ Metrics from the subordinate process can help identify issues once the first met
 | sidecar.series.dropped | counter | number of series or metrics dropped | `key_reason`: various |
 | sidecar.points.produced | counter | number of points read from the prometheus WAL | |
 | sidecar.points.dropped | counter | number of points dropped due to errors | `key_reason`: various |
-| sidecar.points.skipped | counter | number of points skipped by filters or cumulative resets | |
+| sidecar.points.skipped | counter | number of points skipped due to filters | |
 | sidecar.metadata.lookups | counter | number of calls to lookup metadata | `error`: true, false |
-| sidecar.cumulative.missing_resets | counter | number of points skipped because cumulative reset time was not known | |
 | sidecar.series.current | gauge | number of series refs in the series cache | `status`: live, filtered, invalid |
 | sidecar.wal.size | gauge | size of the prometheus WAL | |
 | sidecar.wal.offset | gauge | current offset in the prometheus WAL | |
