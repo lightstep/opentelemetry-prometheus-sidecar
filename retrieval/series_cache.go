@@ -478,6 +478,8 @@ func (c *seriesCache) lookup(ctx context.Context, ref uint64) (retErr error) {
 			return errors.Errorf("unexpected summary suffix %q", suffix)
 		}
 	case textparse.MetricTypeHistogram:
+		// Note: It's unclear why this branch does not check for allowed
+		// suffixes the way the Summary branch does. Should it?
 		ts.Name = c.getMetricName(c.metricsPrefix, baseMetricName)
 		ts.Kind = config.CUMULATIVE
 		ts.ValueType = config.DISTRIBUTION
