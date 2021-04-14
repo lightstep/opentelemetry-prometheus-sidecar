@@ -104,7 +104,7 @@ an OpenTelemetry (https://opentelemetry.io) Protocol endpoint.
 	ProducedPointsMetric = "sidecar.points.produced"
 	DroppedPointsMetric  = "sidecar.points.dropped"
 	SkippedPointsMetric  = "sidecar.points.skipped"
-	InvalidMetricsMetric = "sidecar.metrics.invalid"
+	FailingMetricsMetric = "sidecar.metrics.failing"
 
 	OutcomeKey          = attribute.Key("outcome")
 	OutcomeSuccessValue = "success"

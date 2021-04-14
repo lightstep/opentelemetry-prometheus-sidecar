@@ -16,6 +16,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - OTLP data points re-use Resource and InstrumentationLibrary (thus are smaller). (#182)
 - Counter reset events output zero values at the reset timestamp, instead of skipping points. (#190)
+- `sidecar.metrics.invalid` broadened to include non-validation failures, renamed `sidecar.metrics.failing`. (#188)
 
 ### Removed
 

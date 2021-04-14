@@ -31,6 +31,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wal"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/attribute"
 	metrics "go.opentelemetry.io/proto/otlp/metrics/v1"
 	otlpmetrics "go.opentelemetry.io/proto/otlp/metrics/v1"
 	otlpresource "go.opentelemetry.io/proto/otlp/resource/v1"
@@ -193,15 +194,15 @@ outer:
 				droppedPointsFound = point.(*otlpmetrics.IntDataPoint).Value
 			case config.DroppedSeriesMetric:
 				droppedSeriesFound = point.(*otlpmetrics.IntDataPoint).Value
-			case config.InvalidMetricsMetric:
+			case config.FailingMetricsMetric:
 				labels := point.(*otlpmetrics.IntDataPoint).Labels
 
 				var reason, mname string
 				for _, label := range labels {
-					switch label.Key {
-					case string(common.DroppedKeyReason):
+					switch attribute.Key(label.Key) {
+					case common.DroppedKeyReason:
 						reason = label.Value
-					case "metric_name":
+					case common.MetricNameKey:
 						mname = label.Value
 					}
 				}

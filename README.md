@@ -327,8 +327,8 @@ The sidecar reports validation errors using conventions established by
 Lightstep for conveying information about _partial success_ when
 writing to the OTLP destination.  These errors are returned using gRPC
 "trailers" (a.k.a. http2 response headers) and are output as metrics
-and logs.  See `sidecar.points.dropped`, `sidecar.series.dropped`, and
-`sidecar.metrics.invalid` metrics to diagnose validation errors.
+and logs.  See the `sidecar.metrics.failing` metric to diagnose validation 
+errors.
 
 #### Resources
 
@@ -474,6 +474,7 @@ Metrics from the subordinate process can help identify issues once the first met
 | sidecar.segment.reads | counter | number of WAL segment read() calls | |
 | sidecar.segment.bytes | counter | number of WAL segment bytes read | |
 | sidecar.segment.skipped | counter | number of skipped WAL segments | |
+| sidecar.metrics.failing | gauge | failing metric names and explanations | `key_reason`, `metric_name` |
 
 ## Upstream
 
