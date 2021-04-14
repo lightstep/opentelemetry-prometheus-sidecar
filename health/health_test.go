@@ -43,7 +43,7 @@ type tester struct {
 func testController(t *testing.T) *tester {
 	cont := telemetry.InternalOnly().Controller
 	provider := cont.MeterProvider()
-	produced := metric.Must(provider.Meter("test")).NewInt64Counter(config.ProducedMetric)
+	produced := metric.Must(provider.Meter("test")).NewInt64Counter(config.ProducedPointsMetric)
 	outcome := metric.Must(provider.Meter("test")).NewInt64Counter(config.OutcomeMetric)
 
 	checker := NewChecker(cont, 0 /* uncached */, telemetry.DefaultLogger(), config.DefaultHealthCheckThresholdRatio)
@@ -106,7 +106,7 @@ func TestProducedProgress(t *testing.T) {
 		require.Equal(t, http.StatusServiceUnavailable, code)
 		require.Contains(t, result.Status,
 			fmt.Sprintf("unhealthy: %s stopped moving at %d",
-				config.ProducedMetric,
+				config.ProducedPointsMetric,
 				k,
 			),
 		)

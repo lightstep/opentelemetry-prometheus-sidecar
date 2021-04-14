@@ -327,8 +327,8 @@ The sidecar reports validation errors using conventions established by
 Lightstep for conveying information about _partial success_ when
 writing to the OTLP destination.  These errors are returned using gRPC
 "trailers" (a.k.a. http2 response headers) and are output as metrics
-and logs.  See `sidecar.points.dropped`, `sidecar.series.dropped`, and
-`sidecar.metrics.invalid` metrics to diagnose validation errors.
+and logs.  See the `sidecar.metrics.failing` metric to diagnose validation 
+errors.
 
 #### Resources
 
@@ -461,14 +461,12 @@ Metrics from the subordinate process can help identify issues once the first met
 | sidecar.queue.running | gauge | number of running shards, those which have not exited | |
 | sidecar.queue.shards | gauge | number of current shards, as set by the queue manager | |
 | sidecar.queue.size | gauge | number of samples (i.e., points) standing in a queue waiting to export | |
-| sidecar.samples.processed | histogram | number of samples (i.e., points) read in a prometheus WAL batch | |
-| sidecar.samples.produced | counter | number of samples (i.e., points) read from the prometheus WAL | |
 | sidecar.series.defined | counter | number of series defined in the WAL | |
 | sidecar.series.dropped | counter | number of series or metrics dropped | `key_reason`: various |
+| sidecar.points.produced | counter | number of points read from the prometheus WAL | |
 | sidecar.points.dropped | counter | number of points dropped due to errors | `key_reason`: various |
-| sidecar.points.skipped | counter | number of points skipped by filters or cumulative resets | |
+| sidecar.points.skipped | counter | number of points skipped due to filters | |
 | sidecar.metadata.lookups | counter | number of calls to lookup metadata | `error`: true, false |
-| sidecar.cumulative.missing_resets | counter | number of points skipped because cumulative reset time was not known | |
 | sidecar.series.current | gauge | number of series refs in the series cache | `status`: live, filtered, invalid |
 | sidecar.wal.size | gauge | size of the prometheus WAL | |
 | sidecar.wal.offset | gauge | current offset in the prometheus WAL | |
@@ -476,6 +474,7 @@ Metrics from the subordinate process can help identify issues once the first met
 | sidecar.segment.reads | counter | number of WAL segment read() calls | |
 | sidecar.segment.bytes | counter | number of WAL segment bytes read | |
 | sidecar.segment.skipped | counter | number of skipped WAL segments | |
+| sidecar.metrics.failing | gauge | failing metric names and explanations | `key_reason`, `metric_name` |
 
 ## Upstream
 

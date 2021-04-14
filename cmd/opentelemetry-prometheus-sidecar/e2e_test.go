@@ -350,9 +350,9 @@ func TestE2E(t *testing.T) {
 	}
 
 	expect := map[string][]float64{
-		"some_counter":         {1, 2, 3, 4, 5},
+		"some_counter":         {0, 1, 2, 3, 4},
 		"some_gauge":           {1, 2, 3, 4, 5},
-		"some_counter_relabel": {1, 2, 3, 4, 5},
+		"some_counter_relabel": {0, 1, 2, 3, 4},
 		"some_gauge_relabel":   {1, 2, 3, 4, 5},
 	}
 

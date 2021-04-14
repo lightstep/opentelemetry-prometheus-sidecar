@@ -22,6 +22,9 @@ var (
 		config.SkippedPointsMetric,
 		metric.WithDescription("Number of points that were skipped because of a filter"),
 	)
+)
 
-	DroppedKeyReason = attribute.Key("key_reason")
+const (
+	DroppedKeyReason attribute.Key = "key_reason"
+	MetricNameKey    attribute.Key = "metric_name"
 )

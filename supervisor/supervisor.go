@@ -380,7 +380,7 @@ func (s *Supervisor) noteHealthy(hr health.Response) string {
 	} else {
 		summary = append(summary, "msg", "sidecar is running")
 
-		summary = append(summary, hr.MetricLogSummary(config.ProcessedMetric)...)
+		summary = append(summary, hr.MetricLogSummary(config.ProducedPointsMetric)...)
 		summary = append(summary, hr.MetricLogSummary(config.OutcomeMetric)...)
 		summary = append(summary, hr.MetricLogSummary(config.DroppedSeriesMetric)...)
 		summary = append(summary, hr.MetricLogSummary(config.DroppedPointsMetric)...)

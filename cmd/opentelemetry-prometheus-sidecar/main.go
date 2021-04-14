@@ -30,6 +30,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/google/uuid"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/cmd/internal"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/common"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/health"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
@@ -151,6 +152,8 @@ func Main() bool {
 		StartupDelayEffectiveStartTime: time.Now(),
 	})
 
+	failingSet := common.NewFailingSet(log.With(logger, "component", "failing"))
+
 	metadataURL, err := promURL.Parse(config.PrometheusMetadataEndpointPath)
 	if err != nil {
 		panic(err)
@@ -182,7 +185,7 @@ func Main() bool {
 		Headers:          grpcMetadata.New(cfg.Destination.Headers),
 		Compressor:       cfg.Destination.Compression,
 		Prometheus:       cfg.Prometheus,
-		InvalidSet:       otlp.NewInvalidSet(log.With(scfg.Logger, "component", "validation")),
+		FailingSet:       failingSet,
 	})
 
 	// Start the admin server.

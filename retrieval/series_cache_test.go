@@ -457,7 +457,7 @@ func TestSeriesCache_ResetBehavior(t *testing.T) {
 		t.Fatalf("unexpected error: %s", err)
 	}
 
-	_, err := c.get(ctx, refID)
+	entry, err := c.get(ctx, refID)
 	require.NoError(t, err)
 
 	type kase struct {
@@ -465,32 +465,26 @@ func TestSeriesCache_ResetBehavior(t *testing.T) {
 		value      float64
 		reset      int64
 		cumulative float64
-		ok         bool
 	}
 
-	const pad = 1
+	const pad = 0 // OTLP allows zero-width points
 
 	// Simulate two resets.
 	for i, k := range []kase{
-		{1, 10, 1, 0, false},
-		{2, 20, 1, 10, true},
-		{3, 30, 1, 20, true},
-		{4, 40, 1, 30, true},
+		{1, 10, 1, 0},
+		{2, 20, 1, 10},
+		{3, 30, 1, 20},
+		{4, 40, 1, 30},
 
-		{5, 5, 5 - pad, 5, true},
-		{6, 10, 5 - pad, 10, true},
-		{7, 15, 5 - pad, 15, true},
+		{5, 5, 5 - pad, 5},
+		{6, 10, 5 - pad, 10},
+		{7, 15, 5 - pad, 15},
 
-		{8, 0, 8 - pad, 0, true},
-		{9, 10, 8 - pad, 10, true},
+		{8, 0, 8 - pad, 0},
+		{9, 10, 8 - pad, 10},
 	} {
-		ts, val, ok := c.getResetAdjusted(refID, k.ts, k.value)
+		ts, val := c.getResetAdjusted(entry, k.ts, k.value)
 
-		require.Equal(t, k.ok, ok, "%d", i)
-
-		if !ok {
-			continue
-		}
 		require.Equal(t, k.reset, ts, "%d", i)
 		require.Equal(t, k.cumulative, val, "%d", i)
 	}
