@@ -160,13 +160,13 @@ func (r *PrometheusReader) Run(ctx context.Context, startOffset int) error {
 	// This is also the reason for the series cache dealing with "maxSegment" hints
 	// for series rather than precise ones.
 	var (
-		started  = false
-		skipped  = 0
-		reader   = wal.NewReader(r.tailer)
-		err      error
-		lastSave time.Time
-		samples  []record.RefSample
-		series   []record.RefSeries
+		started         = false
+		startupBypassed = 0
+		reader          = wal.NewReader(r.tailer)
+		err             error
+		lastSave        time.Time
+		samples         []record.RefSample
+		series          []record.RefSeries
 	)
 Outer:
 	for reader.Next() {
@@ -217,13 +217,14 @@ Outer:
 		case record.Samples:
 			// Skip sample records before the the boundary offset.
 			if offset < startOffset {
-				skipped++
+				startupBypassed++
 				continue
 			}
 			if !started {
 				level.Info(r.logger).Log(
 					"msg", "reached first record after start offset",
-					"start_offset", startOffset, "skipped_records", skipped)
+					"start_offset", startOffset,
+					"bypassed_records", startupBypassed)
 				started = true
 			}
 			samples, err = decoder.Samples(rec, samples[:0])
@@ -231,7 +232,7 @@ Outer:
 				level.Error(r.logger).Log("decode samples", "err", err)
 				continue
 			}
-			produced, droppedPoints, skippedPoints := 0, 0, 0
+			produced, droppedPoints, filteredPoints := 0, 0, 0
 
 			for len(samples) > 0 {
 				select {
@@ -258,7 +259,7 @@ Outer:
 					continue
 				}
 				if outputSample == nil {
-					skippedPoints++
+					filteredPoints++
 					continue
 				}
 				r.appender.Append(ctx, hash, outputSample)
@@ -274,13 +275,7 @@ Outer:
 				ctx,
 				nil,
 				pointsProduced.Measurement(int64(produced)),
-				// Note: skipped points could be refined, as there
-				// are two sub-types.  Some points are skipped because
-				// of cumulative resets, and some because of filters.
-				// Both are counted, so subtract sidecar.cumulative.missing_resets
-				// from skipped points to know the true number, when
-				// there are filters.
-				common.SkippedPoints.Measurement(int64(skippedPoints)),
+				common.FilteredPoints.Measurement(int64(filteredPoints)),
 			)
 
 		case record.Tombstones:

@@ -18,9 +18,9 @@ var (
 		metric.WithDescription("Number of points that could not be exported"),
 	)
 
-	SkippedPoints = sidecar.OTelMeterMust.NewInt64Counter(
-		config.SkippedPointsMetric,
-		metric.WithDescription("Number of points that were skipped because of a filter"),
+	FilteredPoints = sidecar.OTelMeterMust.NewInt64Counter(
+		config.FilteredPointsMetric,
+		metric.WithDescription("Number of points that were not recorded because of filters"),
 	)
 )
 
