@@ -242,14 +242,12 @@ func TestSampleBuilder(t *testing.T) {
 					3.5,
 				),
 				DoubleCounterPoint( // 3: A reset
-					// Timestamp set to 1ms before the end time to avoid
-					// conflict, see (*seriesCache).getResetAdjusted().
 					Labels(
 						Label("instance", "instance1"),
 						Label("job", "job1"),
 					),
 					"metric2",
-					time.Unix(5, int64(-time.Millisecond)),
+					time.Unix(5, 0),
 					time.Unix(5, 0),
 					3,
 				),

@@ -467,7 +467,7 @@ func TestSeriesCache_ResetBehavior(t *testing.T) {
 		cumulative float64
 	}
 
-	const pad = 1
+	const pad = 0 // OTLP allows zero-width points
 
 	// Simulate two resets.
 	for i, k := range []kase{

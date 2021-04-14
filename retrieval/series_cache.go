@@ -311,12 +311,8 @@ func (c *seriesCache) getResetAdjusted(e *seriesCacheEntry, t int64, v float64) 
 	}
 	if v < e.previousValue {
 		// If the value has dropped, there's been a reset.
-		// If the series was reset, set the reset timestamp to be one millisecond
-		// before the timestamp of the current sample.
-		// We don't know the true reset time but this ensures the range is non-zero
-		// while unlikely to conflict with any previous sample.
 		e.resetValue = 0
-		e.resetTimestamp = t - 1
+		e.resetTimestamp = t
 	}
 	e.previousValue = v
 	return e.resetTimestamp, v - e.resetValue
