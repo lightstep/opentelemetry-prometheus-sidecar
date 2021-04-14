@@ -49,12 +49,7 @@ type seriesGetter interface {
 	get(ctx context.Context, ref uint64) (*seriesCacheEntry, error)
 
 	// Get the reset timestamp and adjusted value for the input sample.
-	// If false is returned, the sample should be skipped.
-	getResetAdjusted(ref uint64, t int64, v float64) (int64, float64, bool)
-
-	// Attempt to set the new most recent time range for the series with given hash.
-	// Returns false if it failed, in which case the sample must be discarded.
-	updateSampleInterval(hash uint64, start, end int64) bool
+	getResetAdjusted(entry *seriesCacheEntry, timestamp int64, value float64) (reset int64, adjusted float64)
 }
 
 // seriesCache holds a mapping from series reference to label set.
@@ -74,8 +69,6 @@ type seriesCache struct {
 	mtx            sync.Mutex
 	// Map from series reference to various cached information about it.
 	entries map[uint64]*seriesCacheEntry
-	// Map from series hash to most recently written interval.
-	intervals map[uint64]sampleInterval
 	// Map for jobs where "instance" has been relabelled
 	jobInstanceMap map[string]string
 
@@ -169,7 +162,6 @@ func newSeriesCache(
 		filters:        filters,
 		metaget:        metaget,
 		entries:        map[uint64]*seriesCacheEntry{},
-		intervals:      map[uint64]sampleInterval{},
 		metricsPrefix:  metricsPrefix,
 		renames:        renames,
 		jobInstanceMap: jobInstanceMap,
@@ -308,57 +300,20 @@ func (c *seriesCache) get(ctx context.Context, ref uint64) (*seriesCacheEntry, e
 	return e, nil
 }
 
-// updateSampleInterval attempts to set the new most recent time range for the series with given hash.
-// Returns false if it failed, in which case the sample must be discarded.
-func (c *seriesCache) updateSampleInterval(hash uint64, start, end int64) bool {
-	iv, ok := c.intervals[hash]
-	if !ok || iv.accepts(start, end) {
-		c.intervals[hash] = sampleInterval{start, end}
-		return true
-	}
-	return false
-}
-
-type sampleInterval struct {
-	start, end int64
-}
-
-func (si *sampleInterval) accepts(start, end int64) bool {
-	return (start == si.start && end > si.end) || (start > si.start && start >= si.end)
-}
-
 // getResetAdjusted takes a sample for a referenced series and returns
 // its reset timestamp and adjusted value.
-// If the last return argument is false, the sample should be dropped.
-func (c *seriesCache) getResetAdjusted(ref uint64, t int64, v float64) (int64, float64, bool) {
-	c.mtx.Lock()
-	e, ok := c.entries[ref]
-	c.mtx.Unlock()
-	if !ok {
-		// Note: This is an improbable branch. Every code path
-		// that reaches this point has already called get(), which
-		// checks the same error condition.  If this could
-		// really happen, we'd be counting dropped data incorrectly.
-		doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
-			level.Warn(c.logger).Log(
-				"msg", "timeseries missing ref",
-				"ref", ref,
-			)
-		})
-		return 0, 0, false
-	}
+func (c *seriesCache) getResetAdjusted(e *seriesCacheEntry, t int64, v float64) (int64, float64) {
 	hasReset := e.hasReset
 	e.hasReset = true
 	if !hasReset {
 		e.resetTimestamp = t
 		e.resetValue = v
 		e.previousValue = v
-		// If we just initialized the reset timestamp, this sample should be skipped.
-		// We don't know the window over which the current cumulative value was built up over.
-		// The next sample for will be considered from this point onwards.
+		// If we just initialized the reset timestamp, record a zero (i.e., reset).
+		// The next sample will be considered relative to resetValue.
 
 		seriesCacheMissingResetCounter.Add(context.Background(), 1, nil)
-		return 0, 0, false
+		return t, 0
 	}
 	if v < e.previousValue {
 		// If the value has dropped, there's been a reset.
@@ -370,7 +325,7 @@ func (c *seriesCache) getResetAdjusted(ref uint64, t int64, v float64) (int64, f
 		e.resetTimestamp = t - 1
 	}
 	e.previousValue = v
-	return e.resetTimestamp, v - e.resetValue, true
+	return e.resetTimestamp, v - e.resetValue
 }
 
 // set the label set for the given reference.

@@ -43,7 +43,7 @@ func TestValidationErrorReporting(t *testing.T) {
 	}
 
 	// Create a WAL with 3 series, 5 points.  Two of them are
-	// counters, so after resets we have 3 series, 3 points.
+	// counters, so after resets we have 3 series, 5 points.
 	dir, err := ioutil.TempDir("", "test_validation")
 	if err != nil {
 		t.Fatal(err)
@@ -160,16 +160,16 @@ func TestValidationErrorReporting(t *testing.T) {
 	timer := time.NewTimer(time.Second * 10)
 	defer timer.Stop()
 
-	// Wait for 3 specific points, then 3 specific meta points.
-	var droppedPointsFound, droppedSeriesFound, skippedPointsFound int64
+	// Wait for 3 specific points, then 2 specific meta points.
+	var droppedPointsFound, droppedSeriesFound int64
 	var got = 0
 outer:
-	for got < 3 || droppedPointsFound == 0 || droppedSeriesFound == 0 || skippedPointsFound == 0 {
+	for got < 5 || droppedPointsFound == 0 || droppedSeriesFound == 0 {
 		var data *metrics.ResourceMetrics
 		select {
 		case data = <-ms.metrics:
 		case <-timer.C:
-			t.Errorf("test timeout")
+			t.Error("test timeout: ", got, droppedPointsFound, droppedSeriesFound)
 			break outer
 		}
 
@@ -183,14 +183,16 @@ outer:
 		) error {
 			switch name {
 			case "counter", "gauge", "correct":
-				require.InEpsilon(t, 100, point.(*otlpmetrics.DoubleDataPoint).Value, 0.01)
+				if point.(*otlpmetrics.DoubleDataPoint).Value == 0 {
+					// OK!
+				} else {
+					require.InEpsilon(t, 100, point.(*otlpmetrics.DoubleDataPoint).Value, 0.01)
+				}
 				got++
 			case config.DroppedPointsMetric:
 				droppedPointsFound = point.(*otlpmetrics.IntDataPoint).Value
 			case config.DroppedSeriesMetric:
 				droppedSeriesFound = point.(*otlpmetrics.IntDataPoint).Value
-			case config.SkippedPointsMetric:
-				skippedPointsFound = point.(*otlpmetrics.IntDataPoint).Value
 			case config.InvalidMetricsMetric:
 				labels := point.(*otlpmetrics.IntDataPoint).Labels
 
@@ -225,7 +227,6 @@ outer:
 	// Correct drop summary:
 	require.Equal(t, int64(2), droppedPointsFound) // from server response
 	require.Equal(t, int64(1), droppedSeriesFound) // from server response
-	require.Equal(t, int64(2), skippedPointsFound) // number of cumulative resets
 
 	for _, expect := range []string{
 		// We didn't start the trace service but received data.
