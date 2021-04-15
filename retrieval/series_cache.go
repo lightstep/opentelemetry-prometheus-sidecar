@@ -158,14 +158,15 @@ func newSeriesCache(
 		logger = log.NewNopLogger()
 	}
 	sc := &seriesCache{
-		logger:          logger,
-		dir:             dir,
-		filters:         filters,
-		metaget:         metaget,
-		entries:         map[uint64]*seriesCacheEntry{},
-		metricsPrefix:   metricsPrefix,
-		renames:         renames,
-		jobInstanceMap:  jobInstanceMap,
+		logger:         logger,
+		dir:            dir,
+		filters:        filters,
+		metaget:        metaget,
+		entries:        map[uint64]*seriesCacheEntry{},
+		metricsPrefix:  metricsPrefix,
+		renames:        renames,
+		jobInstanceMap: jobInstanceMap,
+
 		failingReporter: failingReporter,
 	}
 
