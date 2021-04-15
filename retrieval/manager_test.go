@@ -33,6 +33,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/textparse"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wal"
+	"github.com/stretchr/testify/require"
 	metric_pb "go.opentelemetry.io/proto/otlp/metrics/v1"
 	resource_pb "go.opentelemetry.io/proto/otlp/resource/v1"
 )
@@ -201,6 +202,7 @@ func TestReader_Progress(t *testing.T) {
 		}, resourceMetric(s))
 	}
 
+	require.EqualValues(t, map[string]bool{}, failingSet)
 }
 
 func resourceMetric(m *metric_pb.Metric) *metric_pb.ResourceMetrics {
@@ -266,5 +268,4 @@ func TestHashSeries(t *testing.T) {
 			t.Fatalf("hash for different series did not change")
 		}
 	}
-
 }
