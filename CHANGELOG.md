@@ -11,21 +11,25 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Added
 
 - New metric `sidecar.points.produced` counts total points produced from the WAL. (#187)
+- `sidecar.metrics.failing` includes explanation for all unreported metrics, labeled by `key_reason` and `metric_name`, now covers filtered points, metadata errors, and explanations from the server. (#191)
 
 ### Changed
 
 - OTLP data points re-use Resource and InstrumentationLibrary (thus are smaller). (#182)
 - `sidecar.metrics.invalid` broadened to include non-validation failures, renamed `sidecar.metrics.failing`. (#188)
+- Counter reset events output zero values at the reset timestamp, instead of skipping points. (#190)
 
 ### Removed
 
 - Removed counters `sidecar.samples.produced` & `sidecar.samples.processed`. (#187)
+- Removed counter `sidecar.cumulative.missing_resets`. (#190)
+- Removed overlap detection, this cannot happen without the MonitoredResource transform removed in #2. (#190)
 
 ## [0.21.1](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.21.1) - 2021-04-06
 
 ### Removed
 
-- Removed healthcheck metrics from telemetry traces
+- Removed healthcheck metrics from telemetry traces. (#184)
 
 ## [0.21.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.21.0) - 2021-04-06
 

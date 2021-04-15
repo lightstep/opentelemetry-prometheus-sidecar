@@ -23,6 +23,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/common"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry/doevery"
@@ -49,12 +50,7 @@ type seriesGetter interface {
 	get(ctx context.Context, ref uint64) (*seriesCacheEntry, error)
 
 	// Get the reset timestamp and adjusted value for the input sample.
-	// If false is returned, the sample should be skipped.
-	getResetAdjusted(ref uint64, t int64, v float64) (int64, float64, bool)
-
-	// Attempt to set the new most recent time range for the series with given hash.
-	// Returns false if it failed, in which case the sample must be discarded.
-	updateSampleInterval(hash uint64, start, end int64) bool
+	getResetAdjusted(entry *seriesCacheEntry, timestamp int64, value float64) (reset int64, adjusted float64)
 }
 
 // seriesCache holds a mapping from series reference to label set.
@@ -74,12 +70,12 @@ type seriesCache struct {
 	mtx            sync.Mutex
 	// Map from series reference to various cached information about it.
 	entries map[uint64]*seriesCacheEntry
-	// Map from series hash to most recently written interval.
-	intervals map[uint64]sampleInterval
 	// Map for jobs where "instance" has been relabelled
 	jobInstanceMap map[string]string
 
 	currentSeriesObs metric.Int64UpDownSumObserver
+
+	failingReporter common.FailingReporter
 }
 
 type seriesCacheEntry struct {
@@ -97,6 +93,7 @@ type seriesCacheEntry struct {
 	// expressions.
 	lset labels.Labels
 
+	name   string
 	suffix string
 	hash   uint64
 
@@ -133,10 +130,6 @@ var (
 		"sidecar.metadata.lookups",
 		"Number of Metric series lookups",
 	)
-	seriesCacheMissingResetCounter = telemetry.NewCounter(
-		"sidecar.cumulative.missing_resets",
-		"Number of Metric series resets that were missing start time, causing gaps a series",
-	)
 
 	errSeriesNotFound        = fmt.Errorf("series ref not found")
 	errSeriesMissingMetadata = fmt.Errorf("series ref missing metadata")
@@ -159,6 +152,7 @@ func newSeriesCache(
 	metaget MetadataGetter,
 	metricsPrefix string,
 	jobInstanceMap map[string]string,
+	failingReporter common.FailingReporter,
 ) *seriesCache {
 	if logger == nil {
 		logger = log.NewNopLogger()
@@ -169,10 +163,11 @@ func newSeriesCache(
 		filters:        filters,
 		metaget:        metaget,
 		entries:        map[uint64]*seriesCacheEntry{},
-		intervals:      map[uint64]sampleInterval{},
 		metricsPrefix:  metricsPrefix,
 		renames:        renames,
 		jobInstanceMap: jobInstanceMap,
+
+		failingReporter: failingReporter,
 	}
 
 	sc.currentSeriesObs = sidecar.OTelMeterMust.NewInt64UpDownSumObserver(
@@ -297,80 +292,37 @@ func (c *seriesCache) get(ctx context.Context, ref uint64) (*seriesCacheEntry, e
 
 	if e.shouldTryLookup() {
 		if err := c.lookup(ctx, ref); err != nil {
-			return nil, err
+			return nil, errors.Wrap(err, e.name)
 		}
 	}
 
 	if !e.populated() {
-		return nil, errSeriesMissingMetadata
+		return nil, errors.Wrapf(errSeriesMissingMetadata, e.name)
 	}
 
 	return e, nil
 }
 
-// updateSampleInterval attempts to set the new most recent time range for the series with given hash.
-// Returns false if it failed, in which case the sample must be discarded.
-func (c *seriesCache) updateSampleInterval(hash uint64, start, end int64) bool {
-	iv, ok := c.intervals[hash]
-	if !ok || iv.accepts(start, end) {
-		c.intervals[hash] = sampleInterval{start, end}
-		return true
-	}
-	return false
-}
-
-type sampleInterval struct {
-	start, end int64
-}
-
-func (si *sampleInterval) accepts(start, end int64) bool {
-	return (start == si.start && end > si.end) || (start > si.start && start >= si.end)
-}
-
 // getResetAdjusted takes a sample for a referenced series and returns
 // its reset timestamp and adjusted value.
-// If the last return argument is false, the sample should be dropped.
-func (c *seriesCache) getResetAdjusted(ref uint64, t int64, v float64) (int64, float64, bool) {
-	c.mtx.Lock()
-	e, ok := c.entries[ref]
-	c.mtx.Unlock()
-	if !ok {
-		// Note: This is an improbable branch. Every code path
-		// that reaches this point has already called get(), which
-		// checks the same error condition.  If this could
-		// really happen, we'd be counting dropped data incorrectly.
-		doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
-			level.Warn(c.logger).Log(
-				"msg", "timeseries missing ref",
-				"ref", ref,
-			)
-		})
-		return 0, 0, false
-	}
+func (c *seriesCache) getResetAdjusted(e *seriesCacheEntry, t int64, v float64) (int64, float64) {
 	hasReset := e.hasReset
 	e.hasReset = true
 	if !hasReset {
 		e.resetTimestamp = t
 		e.resetValue = v
 		e.previousValue = v
-		// If we just initialized the reset timestamp, this sample should be skipped.
-		// We don't know the window over which the current cumulative value was built up over.
-		// The next sample for will be considered from this point onwards.
-
-		seriesCacheMissingResetCounter.Add(context.Background(), 1, nil)
-		return 0, 0, false
+		// If we just initialized the reset timestamp, record a zero (i.e., reset).
+		// The next sample will be considered relative to resetValue.
+		return t, 0
 	}
 	if v < e.previousValue {
 		// If the value has dropped, there's been a reset.
-		// If the series was reset, set the reset timestamp to be one millisecond
-		// before the timestamp of the current sample.
-		// We don't know the true reset time but this ensures the range is non-zero
-		// while unlikely to conflict with any previous sample.
 		e.resetValue = 0
-		e.resetTimestamp = t - 1
+		e.resetTimestamp = t
 	}
 	e.previousValue = v
-	return e.resetTimestamp, v - e.resetValue, true
+	return e.resetTimestamp, v - e.resetValue
 }
 
 // set the label set for the given reference.
@@ -379,18 +331,22 @@ func (c *seriesCache) getResetAdjusted(ref uint64, t int64, v float64) (int64, f
 func (c *seriesCache) set(ctx context.Context, ref uint64, lset labels.Labels, maxSegment int) error {
 	exported := c.filters == nil || matchFilters(lset, c.filters)
 
+	name := lset.Get("__name__")
+
 	if !exported {
 		// We can forget these labels forever, don't care b/c
 		// they didn't match.  We'll keep this in our entries
 		// map so that we can distinguish dropped points from
 		// filtered points.
 		lset = nil
+		c.failingReporter.Set("filtered", name)
 	}
 
 	c.mtx.Lock()
 	c.entries[ref] = &seriesCacheEntry{
 		maxSegment: maxSegment,
 		lset:       lset,
+		name:       name,
 	}
 	c.mtx.Unlock()
 	return c.lookup(ctx, ref)
@@ -411,11 +367,20 @@ func (c *seriesCache) lookup(ctx context.Context, ref uint64) (retErr error) {
 	c.mtx.Unlock()
 
 	if entry.lset == nil {
-		// in which case the entry did not match the filters
+		// in which case the entry did not match the filters.  it was
+		// added to failingReporter in set().
 		return nil
 	}
 
-	defer seriesCacheLookupCounter.Add(ctx, 1, &retErr)
+	failedReason := "unknown"
+
+	defer func() {
+		seriesCacheLookupCounter.Add(ctx, 1, &retErr)
+		if retErr == nil {
+			return
+		}
+		c.failingReporter.Set(failedReason, entry.name)
+	}()
 
 	entryLabels := copyLabels(entry.lset)
 
@@ -428,36 +393,38 @@ func (c *seriesCache) lookup(ctx context.Context, ref uint64) (retErr error) {
 	}
 
 	var (
-		metricName     = entry.lset.Get("__name__")
 		baseMetricName string
 		suffix         string
 		job            = entry.lset.Get("job")
 		instance       = entry.lset.Get(c.jobInstanceKey(job))
 	)
-	meta, err := c.metaget.Get(ctx, job, instance, metricName)
+	meta, err := c.metaget.Get(ctx, job, instance, entry.name)
 	if err != nil {
-		return errors.Wrap(err, "get metadata")
+		failedReason = "metadata_error"
+		return err
 	}
 
 	if meta == nil {
 		// The full name didn't turn anything up. Check again in case it's a summary,
 		// histogram, or counter without the metric name suffix.
 		var ok bool
-		if baseMetricName, suffix, ok = stripComplexMetricSuffix(metricName); ok {
+		if baseMetricName, suffix, ok = stripComplexMetricSuffix(entry.name); ok {
 			meta, err = c.metaget.Get(ctx, job, instance, baseMetricName)
 			if err != nil {
-				return errors.Wrap(err, "get metadata")
+				failedReason = "metadata_error"
+				return err
 			}
 		}
 		if meta == nil {
 			doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
 				level.Warn(c.logger).Log(
 					"msg", "metadata not found",
-					"metric_name", metricName,
+					"metric_name", entry.name,
 					"labels", fmt.Sprint(entry.lset),
 				)
 			})
-			return nil
+			failedReason = "metadata_missing"
+			return errSeriesMissingMetadata
 		}
 	}
 	// Handle label modifications for histograms early so we don't build the label map twice.
@@ -472,7 +439,7 @@ func (c *seriesCache) lookup(ctx context.Context, ref uint64) (retErr error) {
 	}
 
 	ts := tsDesc{
-		Name:   c.getMetricName(c.metricsPrefix, metricName),
+		Name:   c.getMetricName(c.metricsPrefix, entry.name),
 		Labels: entryLabels,
 	}
 	sort.Sort(&ts.Labels)
@@ -498,10 +465,13 @@ func (c *seriesCache) lookup(ctx context.Context, ref uint64) (retErr error) {
 		ts.Kind = config.CUMULATIVE
 		ts.ValueType = config.DOUBLE
 	case textparse.MetricTypeHistogram:
+		// Note: It's unclear why this branch does not check for allowed
+		// suffixes the way the Summary branch does. Should it?
 		ts.Name = c.getMetricName(c.metricsPrefix, baseMetricName)
 		ts.Kind = config.CUMULATIVE
 		ts.ValueType = config.DISTRIBUTION
 	default:
+		failedReason = "unknown_type"
 		return errors.Errorf("unexpected metric type %s", meta.MetricType)
 	}
 

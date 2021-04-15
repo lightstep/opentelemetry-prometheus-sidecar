@@ -16,7 +16,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"net/http"
 	"os"
 	"os/exec"
@@ -24,10 +23,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-kit/kit/log"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/internal/promtest"
-	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 	traces "go.opentelemetry.io/proto/otlp/trace/v1"
 )
@@ -54,7 +50,7 @@ func TestMain(m *testing.M) {
 
 func (ts *testServer) runPrometheusService(cfg promtest.Config) {
 	fp := promtest.NewFakePrometheus(cfg)
-	address := fmt.Sprint("0.0.0.0:19093")
+	address := "0.0.0.0:19093"
 	server := &http.Server{
 		Addr:    address,
 		Handler: fp.ServeMux(),
@@ -164,7 +160,6 @@ func TestMainExitOnFailure(t *testing.T) {
 }
 
 func TestParseFilters(t *testing.T) {
-	logger := log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
 	for _, tt := range []struct {
 		name         string
 		filtersets   []string
@@ -175,7 +170,7 @@ func TestParseFilters(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			// Test success cases.
-			parsed, err := parseFilters(logger, tt.filtersets)
+			parsed, err := parseFilters(tt.filtersets)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -194,7 +189,7 @@ func TestParseFilters(t *testing.T) {
 		{"Empty filterset", []string{""}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			if _, err := parseFilters(logger, tt.filtersets); err == nil {
+			if _, err := parseFilters(tt.filtersets); err == nil {
 				t.Fatalf("expected error, but got none")
 			}
 		})
@@ -275,6 +270,8 @@ func TestSuperStackDump(t *testing.T) {
 		t.Errorf("execution error: %v", err)
 		return
 	}
+	timer := time.NewTimer(time.Second * 10)
+	defer timer.Stop()
 
 	var lock sync.Mutex
 	var diagSpans []*traces.ResourceSpans
@@ -289,6 +286,10 @@ func TestSuperStackDump(t *testing.T) {
 		defer lock.Unlock()
 		for {
 			select {
+			case <-timer.C:
+				t.Log("timeout waiting for spans")
+				t.FailNow()
+				return
 			case rs := <-ts.spans:
 				// Note: below searching for a stack dump and
 				// a few key strings, as a simple test.  TODO:
@@ -354,40 +355,4 @@ func TestSuperStackDump(t *testing.T) {
 
 	require.True(t, foundCrash, "expected to find a crash report")
 	require.Contains(t, berr.String(), "metadata not found")
-}
-
-type fakePrometheusReader struct {
-	attempts int
-	err      error
-}
-
-func (r *fakePrometheusReader) Run(context.Context, int) error {
-	return r.err
-}
-func (r *fakePrometheusReader) Next() {
-	r.attempts += 1
-}
-func (r *fakePrometheusReader) CurrentSegment() int {
-	return 0
-}
-
-func TestErrSkipSegment(t *testing.T) {
-	maxAttempts := 5
-
-	r := fakePrometheusReader{}
-	err := runReader(context.Background(), &r, "", 0, maxAttempts)
-	require.Nil(t, err, "unexpected error")
-	require.Equal(t, 0, r.attempts)
-
-	anotherErr := errors.New("unexpected error")
-	r = fakePrometheusReader{err: anotherErr}
-	err = runReader(context.Background(), &r, "", 0, maxAttempts)
-	require.Equal(t, anotherErr, err)
-	require.Equal(t, 0, r.attempts)
-
-	// looping should only happen for ErrSkipSegment
-	r = fakePrometheusReader{err: tail.ErrSkipSegment}
-	err = runReader(context.Background(), &r, "", 0, maxAttempts)
-	require.Equal(t, tail.ErrSkipSegment, err)
-	require.Equal(t, 5, r.attempts)
 }

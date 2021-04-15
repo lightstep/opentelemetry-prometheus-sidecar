@@ -87,14 +87,10 @@ func (b *sampleBuilder) next(ctx context.Context, samples []record.RefSample) (*
 	labels := protoStringLabels(entry.desc.Labels)
 
 	var resetTimestamp int64
-	var ok bool
 	switch entry.metadata.MetricType {
 	case textparse.MetricTypeCounter:
 		var value float64
-		resetTimestamp, value, ok = b.series.getResetAdjusted(sample.Ref, sample.T, sample.V)
-		if !ok {
-			return nil, 0, tailSamples, nil
-		}
+		resetTimestamp, value = b.series.getResetAdjusted(entry, sample.T, sample.V)
 
 		if entry.metadata.ValueType == config.INT64 {
 			point.Data = &metric_pb.Metric_IntSum{
@@ -169,16 +165,14 @@ func (b *sampleBuilder) next(ctx context.Context, samples []record.RefSample) (*
 		return nil, 0, tailSamples, errors.Errorf("unexpected metric type %s", entry.metadata.MetricType)
 	}
 
-	if !b.series.updateSampleInterval(entry.hash, resetTimestamp, sample.T) {
-		return nil, 0, tailSamples, nil
-	}
 	if b.maxPointAge > 0 {
 		when := time.Unix(sample.T/1000, int64(time.Duration(sample.T%1000)*time.Millisecond))
 		if time.Since(when) > b.maxPointAge {
+			// Note: Counts as a skipped point (as if
+			// filtered out), not a dropped point.
 			return nil, 0, tailSamples, nil
 		}
 	}
-
 	return point, entry.hash, tailSamples, nil
 }
 
@@ -439,7 +433,7 @@ Loop:
 		}
 		lastTimestamp = s.T
 
-		rt, v, ok := b.series.getResetAdjusted(s.Ref, s.T, s.V)
+		rt, v := b.series.getResetAdjusted(e, s.T, s.V)
 
 		switch name[len(baseName):] {
 		case metricSuffixSum:
@@ -460,12 +454,6 @@ Loop:
 			dist.values = append(dist.values, uint64(v))
 		default:
 			break Loop
-		}
-		// If a series appeared for the first time, we won't get a valid reset timestamp yet.
-		// This may happen if the histogram is entirely new or if new series appeared through bucket changes.
-		// We skip the entire histogram sample in this case.
-		if !ok {
-			skip = true
 		}
 		consumed++
 	}

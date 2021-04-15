@@ -65,38 +65,40 @@ func Main() bool {
 		return false
 	}
 
-	logger := internal.NewLogger(cfg, false)
+	scfg := internal.SidecarConfig{
+		Logger:     internal.NewLogger(cfg, false),
+		MainConfig: cfg,
+		InstanceId: "stresstest-prometheus-sidecar-001",
+	}
 
-	telemetry.StaticSetup(logger)
+	telemetry.StaticSetup(scfg.Logger)
 
-	level.Info(logger).Log("msg", "stresstest starting")
+	level.Info(scfg.Logger).Log("msg", "stresstest starting")
 
 	telem := internal.StartTelemetry(
-		cfg,
+		scfg,
 		"stresstest-prometheus-sidecar",
-		"stresstest-prometheus-sidecar-001",
 		false,
-		logger,
 	)
 	if telem != nil {
 		defer telem.Shutdown(context.Background())
 	}
 
-	outputURL, _ := url.Parse(cfg.Destination.Endpoint)
+	outputURL, _ := url.Parse(scfg.Destination.Endpoint)
 
 	scf := internal.NewOTLPClientFactory(otlp.ClientConfig{
-		Logger:           log.With(logger, "component", "storage"),
+		Logger:           log.With(scfg.Logger, "component", "storage"),
 		URL:              outputURL,
-		Timeout:          cfg.Destination.Timeout.Duration,
-		RootCertificates: cfg.Security.RootCertificates,
-		Headers:          grpcMetadata.New(cfg.Destination.Headers),
-		FailingSet:       common.NewFailingSet(logger),
+		Timeout:          scfg.Destination.Timeout.Duration,
+		RootCertificates: scfg.Security.RootCertificates,
+		Headers:          grpcMetadata.New(scfg.Destination.Headers),
+		FailingReporter:  common.NewFailingSet(scfg.Logger),
 	})
 
-	queueManager, err := otlp.NewQueueManager(
-		log.With(logger, "component", "queue_manager"),
-		cfg.QueueConfig(),
-		cfg.Destination.Timeout.Duration,
+	queueManager, _ := otlp.NewQueueManager(
+		log.With(scfg.Logger, "component", "queue_manager"),
+		scfg.QueueConfig(),
+		scfg.Destination.Timeout.Duration,
 		scf,
 		&fakeTailer{time.Now()},
 		otlptest.Resource(
@@ -105,7 +107,7 @@ func Main() bool {
 	)
 
 	if err := queueManager.Start(); err != nil {
-		level.Error(logger).Log("could not start queue manager")
+		level.Error(scfg.Logger).Log("could not start queue manager")
 	}
 
 	defer queueManager.Stop()

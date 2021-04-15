@@ -33,6 +33,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/textparse"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wal"
+	"github.com/stretchr/testify/require"
 	metric_pb "go.opentelemetry.io/proto/otlp/metrics/v1"
 	resource_pb "go.opentelemetry.io/proto/otlp/resource/v1"
 )
@@ -92,7 +93,8 @@ func TestReader_Progress(t *testing.T) {
 		"job1/inst1/metric1": &config.MetadataEntry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, Help: "help"},
 	}
 
-	r := NewPrometheusReader(nil, dir, tailer, nil, nil, metadataMap, &nopAppender{}, "", 0, nil)
+	failingSet := testFailingReporter{}
+	r := NewPrometheusReader(nil, dir, tailer, nil, nil, metadataMap, &nopAppender{}, "", 0, nil, failingSet)
 	r.progressSaveInterval = 200 * time.Millisecond
 
 	// Populate sample data
@@ -157,7 +159,8 @@ func TestReader_Progress(t *testing.T) {
 	}
 
 	recorder := &nopAppender{}
-	r = NewPrometheusReader(nil, dir, tailer, nil, nil, metadataMap, recorder, "", 0, nil)
+
+	r = NewPrometheusReader(nil, dir, tailer, nil, nil, metadataMap, recorder, "", 0, nil, failingSet)
 	go r.Run(ctx, progressOffset)
 
 	// Wait for reader to process until the end.
@@ -199,6 +202,7 @@ func TestReader_Progress(t *testing.T) {
 		}, resourceMetric(s))
 	}
 
+	require.EqualValues(t, map[string]bool{}, failingSet)
 }
 
 func resourceMetric(m *metric_pb.Metric) *metric_pb.ResourceMetrics {
@@ -264,5 +268,4 @@ func TestHashSeries(t *testing.T) {
 			t.Fatalf("hash for different series did not change")
 		}
 	}
-
 }
