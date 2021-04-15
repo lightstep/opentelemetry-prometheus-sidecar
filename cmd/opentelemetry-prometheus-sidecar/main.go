@@ -118,18 +118,18 @@ func Main() bool {
 	// Should this process act as supervisor?  This uses the supervisor
 	// environment variable to avoid recursion.
 	isSupervisor := !cfg.DisableSupervisor && os.Getenv(supervisorEnv) == ""
+	logger := internal.NewLogger(cfg, isSupervisor)
 
 	scfg := internal.SidecarConfig{
-		ClientFactory: nil,
-		Monitor:       nil,
-		// Configure logging and diagnostics.
-		Logger: internal.NewLogger(cfg, isSupervisor),
-		// Unique identifer for this process.
-		InstanceId:    uuid.New().String(),
-		Matchers:      [][]*labels.Matcher{},
-		MetricRenames: metricRenames,
-		MetadataCache: nil,
-		MainConfig:    cfg,
+		ClientFactory:   nil,
+		Monitor:         nil,
+		Logger:          logger,
+		InstanceId:      uuid.New().String(),
+		Matchers:        [][]*labels.Matcher{},
+		MetricRenames:   metricRenames,
+		MetadataCache:   nil,
+		MainConfig:      cfg,
+		FailingReporter: common.NewFailingSet(log.With(logger, "component", "failing_metrics")),
 	}
 
 	telemetry.StaticSetup(scfg.Logger)
@@ -176,8 +176,6 @@ func Main() bool {
 		StartupDelayEffectiveStartTime: time.Now(),
 	})
 
-	failingSet := common.NewFailingSet(log.With(scfg.Logger, "component", "failing"))
-
 	metadataURL, err := promURL.Parse(config.PrometheusMetadataEndpointPath)
 	if err != nil {
 		panic(err)
@@ -214,7 +212,7 @@ func Main() bool {
 		Headers:          grpcMetadata.New(scfg.Destination.Headers),
 		Compressor:       scfg.Destination.Compression,
 		Prometheus:       scfg.Prometheus,
-		FailingSet:       failingSet,
+		FailingReporter:  scfg.FailingReporter,
 	})
 
 	queueManager, err := otlp.NewQueueManager(
@@ -271,6 +269,7 @@ func Main() bool {
 		scfg.OpenTelemetry.MetricsPrefix,
 		scfg.Prometheus.MaxPointAge.Duration,
 		scfg.Monitor.GetScrapeConfig(),
+		scfg.FailingReporter,
 	)
 
 	// Run two inter-depdendent components:

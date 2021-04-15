@@ -92,7 +92,7 @@ func Main() bool {
 		Timeout:          scfg.Destination.Timeout.Duration,
 		RootCertificates: scfg.Security.RootCertificates,
 		Headers:          grpcMetadata.New(scfg.Destination.Headers),
-		FailingSet:       common.NewFailingSet(scfg.Logger),
+		FailingReporter:  common.NewFailingSet(scfg.Logger),
 	})
 
 	queueManager, _ := otlp.NewQueueManager(

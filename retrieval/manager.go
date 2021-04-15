@@ -64,6 +64,7 @@ func NewPrometheusReader(
 	metricsPrefix string,
 	maxPointAge time.Duration,
 	scrapeConfig []*promconfig.ScrapeConfig,
+	failingReporter common.FailingReporter,
 ) *PrometheusReader {
 	if logger == nil {
 		logger = log.NewNopLogger()
@@ -80,6 +81,7 @@ func NewPrometheusReader(
 		metricsPrefix:        metricsPrefix,
 		maxPointAge:          maxPointAge,
 		scrapeConfig:         scrapeConfig,
+		failingReporter:      failingReporter,
 	}
 }
 
@@ -95,6 +97,7 @@ type PrometheusReader struct {
 	metricsPrefix        string
 	maxPointAge          time.Duration
 	scrapeConfig         []*promconfig.ScrapeConfig
+	failingReporter      common.FailingReporter
 }
 
 func (r *PrometheusReader) Next() {
@@ -147,7 +150,7 @@ func (r *PrometheusReader) Run(ctx context.Context, startOffset int) error {
 		r.metadataGetter,
 		r.metricsPrefix,
 		jobInstanceMap,
-		nil, // @@@ TODO
+		r.failingReporter,
 	)
 	go seriesCache.run(ctx)
 

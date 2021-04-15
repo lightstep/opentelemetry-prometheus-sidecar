@@ -23,6 +23,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/common"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry/doevery"
@@ -52,10 +53,6 @@ type seriesGetter interface {
 	getResetAdjusted(entry *seriesCacheEntry, timestamp int64, value float64) (reset int64, adjusted float64)
 }
 
-type failingReporter interface {
-	Set(reason, metricName string)
-}
-
 // seriesCache holds a mapping from series reference to label set.
 // It can garbage collect obsolete entries based on the most recent WAL checkpoint.
 // Implements seriesGetter.
@@ -79,7 +76,7 @@ type seriesCache struct {
 	currentSeriesObs metric.Int64UpDownSumObserver
 
 	// TODO: initialize me after #189 merges.
-	failingReporter failingReporter
+	failingReporter common.FailingReporter
 }
 
 type seriesCacheEntry struct {
@@ -156,7 +153,7 @@ func newSeriesCache(
 	metaget MetadataGetter,
 	metricsPrefix string,
 	jobInstanceMap map[string]string,
-	failingReporter failingReporter,
+	failingReporter common.FailingReporter,
 ) *seriesCache {
 	if logger == nil {
 		logger = log.NewNopLogger()

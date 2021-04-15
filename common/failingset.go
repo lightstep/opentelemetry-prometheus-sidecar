@@ -30,6 +30,11 @@ import (
 )
 
 type (
+	// FailingReporter is an interface for FailingSet
+	FailingReporter interface {
+		Set(reason, metricName string)
+	}
+
 	// FailingSet reports a set of gauges to describe failing data points.
 	FailingSet struct {
 		observer metric.Int64ValueObserver
