@@ -223,7 +223,7 @@ func Main() bool {
 		scfg.Destination.Timeout.Duration,
 		scfg.ClientFactory,
 		tailer,
-		retrieval.LabelsToResource(createPrimaryDestinationResourceLabels(scfg.InstanceId, scfg.Destination.Attributes)),
+		retrieval.LabelsToResource(createPrimaryDestinationResourceLabels(scfg)),
 	)
 	if err != nil {
 		level.Error(scfg.Logger).Log("msg", "creating queue manager failed", "err", err)
@@ -350,7 +350,7 @@ func parseFilters(filters []string) ([][]*labels.Matcher, error) {
 
 // createPrimaryDestinationResourceLabels returns the OTLP resources
 // to use for the primary destination.
-func createPrimaryDestinationResourceLabels(svcInstanceId string, extraLabels map[string]string) labels.Labels {
+func createPrimaryDestinationResourceLabels(scfg internal.SidecarConfig) labels.Labels {
 	// Note: there is minor benefit in including an external label
 	// to indicate the process ID here.  See
 	// https://github.com/lightstep/opentelemetry-prometheus-sidecar/issues/44
@@ -358,7 +358,7 @@ func createPrimaryDestinationResourceLabels(svcInstanceId string, extraLabels ma
 	// commented out (and a test in e2e_test.go):
 	// extraLabels[externalLabelPrefix+string(semconv.ServiceInstanceIDKey)]
 	// = svcInstanceId
-	return labels.FromMap(extraLabels)
+	return labels.FromMap(scfg.Destination.Attributes)
 }
 
 func selfTest(ctx context.Context, scfg internal.SidecarConfig) error {
