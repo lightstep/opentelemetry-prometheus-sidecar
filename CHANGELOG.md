@@ -15,8 +15,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Changed
 
 - OTLP data points re-use Resource and InstrumentationLibrary (thus are smaller). (#182)
-- Counter reset events output zero values at the reset timestamp, instead of skipping points. (#190)
 - `sidecar.metrics.invalid` broadened to include non-validation failures, renamed `sidecar.metrics.failing`. (#188)
+- Counter reset events output zero values at the reset timestamp, instead of skipping points. (#190)
 
 ### Removed
 
@@ -28,7 +28,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Removed
 
-- Removed healthcheck metrics from telemetry traces
+- Removed healthcheck metrics from telemetry traces. (#184)
 
 ## [0.21.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.21.0) - 2021-04-06
 

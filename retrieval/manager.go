@@ -233,7 +233,7 @@ Outer:
 				level.Error(r.logger).Log("decode samples", "err", err)
 				continue
 			}
-			produced, droppedPoints, filteredPoints := 0, 0, 0
+			produced, droppedPoints, skippedPoints := 0, 0, 0
 
 			for len(samples) > 0 {
 				select {
@@ -260,7 +260,7 @@ Outer:
 					continue
 				}
 				if outputSample == nil {
-					filteredPoints++
+					skippedPoints++
 					continue
 				}
 				r.appender.Append(ctx, hash, outputSample)
@@ -272,12 +272,11 @@ Outer:
 					common.DroppedKeyReason.String("metadata"),
 				)
 			}
-			sidecar.OTelMeter.RecordBatch(
-				ctx,
-				nil,
-				pointsProduced.Measurement(int64(produced)),
-				common.FilteredPoints.Measurement(int64(filteredPoints)),
-			)
+			if skippedPoints != 0 {
+				common.SkippedPoints.Add(ctx, int64(skippedPoints))
+			}
+
+			pointsProduced.Add(ctx, int64(produced))
 
 		case record.Tombstones:
 		default:

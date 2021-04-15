@@ -383,7 +383,7 @@ func (s *Supervisor) noteHealthy(hr health.Response) string {
 		summary = append(summary, hr.MetricLogSummary(config.ProducedPointsMetric)...)
 		summary = append(summary, hr.MetricLogSummary(config.DroppedSeriesMetric)...)
 		summary = append(summary, hr.MetricLogSummary(config.DroppedPointsMetric)...)
-		summary = append(summary, hr.MetricLogSummary(config.FilteredPointsMetric)...)
+		summary = append(summary, hr.MetricLogSummary(config.SkippedPointsMetric)...)
 		summary = append(summary, hr.MetricLogSummary(config.OutcomeMetric)...)
 	}
 
