@@ -23,7 +23,6 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
-	"github.com/lightstep/opentelemetry-prometheus-sidecar/common"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry/doevery"
@@ -53,6 +52,10 @@ type seriesGetter interface {
 	getResetAdjusted(entry *seriesCacheEntry, timestamp int64, value float64) (reset int64, adjusted float64)
 }
 
+type failingReporter interface {
+	Set(reason, metricName string)
+}
+
 // seriesCache holds a mapping from series reference to label set.
 // It can garbage collect obsolete entries based on the most recent WAL checkpoint.
 // Implements seriesGetter.
@@ -76,7 +79,7 @@ type seriesCache struct {
 	currentSeriesObs metric.Int64UpDownSumObserver
 
 	// TODO: initialize me after #189 merges.
-	failingSet *common.FailingSet
+	failingReporter failingReporter
 }
 
 type seriesCacheEntry struct {
@@ -153,19 +156,21 @@ func newSeriesCache(
 	metaget MetadataGetter,
 	metricsPrefix string,
 	jobInstanceMap map[string]string,
+	failingReporter failingReporter,
 ) *seriesCache {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
 	sc := &seriesCache{
-		logger:         logger,
-		dir:            dir,
-		filters:        filters,
-		metaget:        metaget,
-		entries:        map[uint64]*seriesCacheEntry{},
-		metricsPrefix:  metricsPrefix,
-		renames:        renames,
-		jobInstanceMap: jobInstanceMap,
+		logger:          logger,
+		dir:             dir,
+		filters:         filters,
+		metaget:         metaget,
+		entries:         map[uint64]*seriesCacheEntry{},
+		metricsPrefix:   metricsPrefix,
+		renames:         renames,
+		jobInstanceMap:  jobInstanceMap,
+		failingReporter: failingReporter,
 	}
 
 	sc.currentSeriesObs = sidecar.OTelMeterMust.NewInt64UpDownSumObserver(
@@ -290,12 +295,12 @@ func (c *seriesCache) get(ctx context.Context, ref uint64) (*seriesCacheEntry, e
 
 	if e.shouldTryLookup() {
 		if err := c.lookup(ctx, ref); err != nil {
-			return nil, errors.Wrapf(err, "name: %s", e.name)
+			return nil, errors.Wrap(err, e.name)
 		}
 	}
 
 	if !e.populated() {
-		return nil, errors.Wrapf(errSeriesMissingMetadata, "name: %s", e.name)
+		return nil, errors.Wrapf(errSeriesMissingMetadata, e.name)
 	}
 
 	return e, nil
@@ -337,7 +342,7 @@ func (c *seriesCache) set(ctx context.Context, ref uint64, lset labels.Labels, m
 		// map so that we can distinguish dropped points from
 		// filtered points.
 		lset = nil
-		c.failingSet.Set("filtered", name)
+		c.failingReporter.Set("filtered", name)
 	}
 
 	c.mtx.Lock()
@@ -366,7 +371,7 @@ func (c *seriesCache) lookup(ctx context.Context, ref uint64) (retErr error) {
 
 	if entry.lset == nil {
 		// in which case the entry did not match the filters.  it was
-		// added to failingSet in set().
+		// added to failingReporter in set().
 		return nil
 	}
 
@@ -377,7 +382,7 @@ func (c *seriesCache) lookup(ctx context.Context, ref uint64) (retErr error) {
 		if retErr == nil {
 			return
 		}
-		c.failingSet.Set(failedReason, entry.name)
+		c.failingReporter.Set(failedReason, entry.name)
 	}()
 
 	entryLabels := copyLabels(entry.lset)

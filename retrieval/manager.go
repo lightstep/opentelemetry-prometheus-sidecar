@@ -147,6 +147,7 @@ func (r *PrometheusReader) Run(ctx context.Context, startOffset int) error {
 		r.metadataGetter,
 		r.metricsPrefix,
 		jobInstanceMap,
+		nil, // @@@ TODO
 	)
 	go seriesCache.run(ctx)
 

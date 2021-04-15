@@ -16,6 +16,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -207,6 +208,8 @@ outer:
 					}
 				}
 				invalid[reason+"/"+mname] = true
+			default:
+				fmt.Println("HOW ABOUT", name)
 			}
 			return nil
 		}, data)

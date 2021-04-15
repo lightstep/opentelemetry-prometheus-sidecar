@@ -16,6 +16,8 @@ package retrieval
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -33,6 +35,12 @@ import (
 	"github.com/prometheus/prometheus/tsdb/wal"
 	"github.com/stretchr/testify/require"
 )
+
+type testFailingReporter map[string]bool
+
+func (tr testFailingReporter) Set(reason, name string) {
+	tr[fmt.Sprint(reason, "/", name)] = true
+}
 
 // This test primarily verifies the garbage collection logic of the cache.
 // The getters are verified integrated into the sample builder in transform_test.go
@@ -53,10 +61,12 @@ func TestScrapeCache_GarbageCollect(t *testing.T) {
 		}
 	}()
 	logger := log.NewLogfmtLogger(logBuffer)
+	testFailing := testFailingReporter{}
 	c := newSeriesCache(logger, dir, nil, nil,
 		promtest.MetadataMap{"//": &config.MetadataEntry{MetricType: textparse.MetricTypeGauge, ValueType: config.DOUBLE}},
 		"",
 		nil,
+		testFailing,
 	)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -165,11 +175,14 @@ func TestScrapeCache_GarbageCollect(t *testing.T) {
 			t.Fatalf("unexpected label set for ref %d: %s", i, entry.lset)
 		}
 	}
+	require.EqualValues(t, map[string]bool{}, testFailing)
 }
 
 func TestSeriesCache_Lookup(t *testing.T) {
 	metadataMap := promtest.MetadataMap{}
-	c := newSeriesCache(telemetry.DefaultLogger(), "", nil, nil, metadataMap, "", nil)
+	testFailing := testFailingReporter{}
+
+	c := newSeriesCache(telemetry.DefaultLogger(), "", nil, nil, metadataMap, "", nil, testFailing)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -185,14 +198,15 @@ func TestSeriesCache_Lookup(t *testing.T) {
 	}
 
 	// Set a series but the config.
-	if err := c.set(ctx, refID, labels.FromStrings("__name__", "metric1", "job", "job1", "instance", "inst1"), 5); err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
+	err = c.set(ctx, refID, labels.FromStrings("__name__", "metric1", "job", "job1", "instance", "inst1"), 5)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, errSeriesMissingMetadata), err)
+
 	// We should still not receive anything.
 	entry, err = c.get(ctx, refID)
-	if err != errSeriesMissingMetadata {
-		t.Fatalf("unexpected error: %s", err)
-	}
+	require.Error(t, err)
+	require.True(t, errors.Is(err, errSeriesMissingMetadata), err)
+
 	if entry != nil {
 		t.Fatalf("unexpected series entry found: %v", entry)
 	}
@@ -209,6 +223,10 @@ func TestSeriesCache_Lookup(t *testing.T) {
 	if entry == nil || err != nil {
 		t.Errorf("expected metadata but got none, error: %s", err)
 	}
+
+	require.EqualValues(t, map[string]bool{
+		"metadata_missing/metric1": true,
+	}, testFailing)
 }
 
 func TestSeriesCache_LookupMetadataNotFound(t *testing.T) {
@@ -220,25 +238,30 @@ func TestSeriesCache_LookupMetadataNotFound(t *testing.T) {
 	}()
 	logger := log.NewLogfmtLogger(logBuffer)
 	metadataMap := promtest.MetadataMap{}
-	c := newSeriesCache(logger, "", nil, nil, metadataMap, "", nil)
+	testFailing := testFailingReporter{}
+	c := newSeriesCache(logger, "", nil, nil, metadataMap, "", nil, testFailing)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	const refID = 1
 	// Set will trigger a refresh.
-	if err := c.set(ctx, refID, labels.FromStrings("__name__", "metric1", "job", "job1", "instance", "inst1"), 5); err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
+	err := c.set(ctx, refID, labels.FromStrings("__name__", "metric1", "job", "job1", "instance", "inst1"), 5)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, errSeriesMissingMetadata), err)
 
 	// Get shouldn't find data because of the previous error.
 	entry, err := c.get(ctx, refID)
-	if err != errSeriesMissingMetadata {
-		t.Fatalf("unexpected error: %s", err)
-	}
+	require.Error(t, err)
+	require.True(t, errors.Is(err, errSeriesMissingMetadata), err)
+
 	if entry != nil {
 		t.Fatalf("unexpected series entry found: %v", entry)
 	}
+
+	require.EqualValues(t, map[string]bool{
+		"metadata_missing/metric1": true,
+	}, testFailing)
 }
 
 func TestSeriesCache_Filter(t *testing.T) {
@@ -253,13 +276,14 @@ func TestSeriesCache_Filter(t *testing.T) {
 		}
 	}()
 	logger := log.NewLogfmtLogger(logBuffer)
+	testFailing := testFailingReporter{}
 	c := newSeriesCache(logger, "", [][]*labels.Matcher{
 		{
 			&labels.Matcher{Type: labels.MatchEqual, Name: "a", Value: "a1"},
 			&labels.Matcher{Type: labels.MatchEqual, Name: "b", Value: "b1"},
 		},
 		{&labels.Matcher{Type: labels.MatchEqual, Name: "c", Value: "c1"}},
-	}, nil, metadataMap, "", nil)
+	}, nil, metadataMap, "", nil, testFailing)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -286,6 +310,10 @@ func TestSeriesCache_Filter(t *testing.T) {
 	if _, err := c.get(ctx, 100); err != nil {
 		t.Fatalf("error retrieving metric: %s", err)
 	}
+
+	require.EqualValues(t, map[string]bool{
+		"filtered/metric1": true,
+	}, testFailing)
 }
 
 func TestSeriesCache_Filter_Complex(t *testing.T) {
@@ -306,12 +334,13 @@ func TestSeriesCache_Filter_Complex(t *testing.T) {
 		return m
 	}
 	logger := log.NewLogfmtLogger(logBuffer)
+	testFailing := testFailingReporter{}
 	c := newSeriesCache(logger, "", [][]*labels.Matcher{
 		{
 			mustNewMatcher(labels.MatchRegexp, "__name__", "github.+"),
 			mustNewMatcher(labels.MatchRegexp, "category", "issues.+"),
 		},
-	}, nil, metadataMap, "", nil)
+	}, nil, metadataMap, "", nil, testFailing)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -335,6 +364,11 @@ func TestSeriesCache_Filter_Complex(t *testing.T) {
 			require.True(t, err == nil && entry == nil, "Err %v", err)
 		}
 	}
+
+	require.EqualValues(t, map[string]bool{
+		"filtered/slack_metric":  true,
+		"filtered/github_metric": true,
+	}, testFailing)
 }
 
 func TestSeriesCache_RenameMetric(t *testing.T) {
@@ -350,9 +384,10 @@ func TestSeriesCache_RenameMetric(t *testing.T) {
 		}
 	}()
 	logger := log.NewLogfmtLogger(logBuffer)
+	testFailing := testFailingReporter{}
 	c := newSeriesCache(logger, "", nil,
 		map[string]string{"metric2": "metric3"},
-		metadataMap, "", nil)
+		metadataMap, "", nil, testFailing)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -383,6 +418,8 @@ func TestSeriesCache_RenameMetric(t *testing.T) {
 	if want := getMetricName("", "metric3"); entry.desc.Name != want {
 		t.Fatalf("want proto metric name %q but got %q", want, entry.desc.Name)
 	}
+
+	require.EqualValues(t, map[string]bool{}, testFailing)
 }
 
 func TestSeriesCache_Relabel(t *testing.T) {
@@ -398,9 +435,11 @@ func TestSeriesCache_Relabel(t *testing.T) {
 		}
 	}()
 	logger := log.NewLogfmtLogger(logBuffer)
+	testFailing := testFailingReporter{}
 	c := newSeriesCache(logger, "", nil,
 		map[string]string{"metric2": "metric3"},
-		metadataMap, "", map[string]string{"job1": "other_instance_label"})
+		metadataMap, "", map[string]string{"job1": "other_instance_label"},
+		testFailing)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -431,6 +470,8 @@ func TestSeriesCache_Relabel(t *testing.T) {
 	if want := getMetricName("", "metric3"); entry.desc.Name != want {
 		t.Fatalf("want proto metric name %q but got %q", want, entry.desc.Name)
 	}
+
+	require.EqualValues(t, map[string]bool{}, testFailing)
 }
 
 func TestSeriesCache_ResetBehavior(t *testing.T) {
@@ -446,7 +487,8 @@ func TestSeriesCache_ResetBehavior(t *testing.T) {
 	metadataMap := promtest.MetadataMap{
 		"job1/inst1/metric1": &config.MetadataEntry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: config.DOUBLE},
 	}
-	c := newSeriesCache(logger, "", nil, nil, metadataMap, "", nil)
+	testFailing := testFailingReporter{}
+	c := newSeriesCache(logger, "", nil, nil, metadataMap, "", nil, testFailing)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -488,4 +530,6 @@ func TestSeriesCache_ResetBehavior(t *testing.T) {
 		require.Equal(t, k.reset, ts, "%d", i)
 		require.Equal(t, k.cumulative, val, "%d", i)
 	}
+
+	require.EqualValues(t, map[string]bool{}, testFailing)
 }
