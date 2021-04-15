@@ -273,6 +273,8 @@ func TestSuperStackDump(t *testing.T) {
 		t.Errorf("execution error: %v", err)
 		return
 	}
+	timer := time.NewTimer(time.Second * 10)
+	defer timer.Stop()
 
 	var lock sync.Mutex
 	var diagSpans []*traces.ResourceSpans
@@ -287,6 +289,10 @@ func TestSuperStackDump(t *testing.T) {
 		defer lock.Unlock()
 		for {
 			select {
+			case <-timer.C:
+				t.Log("timeout waiting for spans")
+				t.FailNow()
+				return
 			case rs := <-ts.spans:
 				// Note: below searching for a stack dump and
 				// a few key strings, as a simple test.  TODO:
