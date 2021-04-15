@@ -23,6 +23,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/common"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry/doevery"
@@ -73,6 +74,8 @@ type seriesCache struct {
 	jobInstanceMap map[string]string
 
 	currentSeriesObs metric.Int64UpDownSumObserver
+
+	failingReporter common.FailingReporter
 }
 
 type seriesCacheEntry struct {
@@ -90,6 +93,7 @@ type seriesCacheEntry struct {
 	// expressions.
 	lset labels.Labels
 
+	name   string
 	suffix string
 	hash   uint64
 
@@ -148,6 +152,7 @@ func newSeriesCache(
 	metaget MetadataGetter,
 	metricsPrefix string,
 	jobInstanceMap map[string]string,
+	failingReporter common.FailingReporter,
 ) *seriesCache {
 	if logger == nil {
 		logger = log.NewNopLogger()
@@ -161,6 +166,8 @@ func newSeriesCache(
 		metricsPrefix:  metricsPrefix,
 		renames:        renames,
 		jobInstanceMap: jobInstanceMap,
+
+		failingReporter: failingReporter,
 	}
 
 	sc.currentSeriesObs = sidecar.OTelMeterMust.NewInt64UpDownSumObserver(
@@ -285,12 +292,12 @@ func (c *seriesCache) get(ctx context.Context, ref uint64) (*seriesCacheEntry, e
 
 	if e.shouldTryLookup() {
 		if err := c.lookup(ctx, ref); err != nil {
-			return nil, err
+			return nil, errors.Wrap(err, e.name)
 		}
 	}
 
 	if !e.populated() {
-		return nil, errSeriesMissingMetadata
+		return nil, errors.Wrapf(errSeriesMissingMetadata, e.name)
 	}
 
 	return e, nil
@@ -324,18 +331,22 @@ func (c *seriesCache) getResetAdjusted(e *seriesCacheEntry, t int64, v float64) 
 func (c *seriesCache) set(ctx context.Context, ref uint64, lset labels.Labels, maxSegment int) error {
 	exported := c.filters == nil || matchFilters(lset, c.filters)
 
+	name := lset.Get("__name__")
+
 	if !exported {
 		// We can forget these labels forever, don't care b/c
 		// they didn't match.  We'll keep this in our entries
 		// map so that we can distinguish dropped points from
 		// filtered points.
 		lset = nil
+		c.failingReporter.Set("filtered", name)
 	}
 
 	c.mtx.Lock()
 	c.entries[ref] = &seriesCacheEntry{
 		maxSegment: maxSegment,
 		lset:       lset,
+		name:       name,
 	}
 	c.mtx.Unlock()
 	return c.lookup(ctx, ref)
@@ -356,11 +367,20 @@ func (c *seriesCache) lookup(ctx context.Context, ref uint64) (retErr error) {
 	c.mtx.Unlock()
 
 	if entry.lset == nil {
-		// in which case the entry did not match the filters
+		// in which case the entry did not match the filters.  it was
+		// added to failingReporter in set().
 		return nil
 	}
 
-	defer seriesCacheLookupCounter.Add(ctx, 1, &retErr)
+	failedReason := "unknown"
+
+	defer func() {
+		seriesCacheLookupCounter.Add(ctx, 1, &retErr)
+		if retErr == nil {
+			return
+		}
+		c.failingReporter.Set(failedReason, entry.name)
+	}()
 
 	entryLabels := copyLabels(entry.lset)
 
@@ -373,36 +393,38 @@ func (c *seriesCache) lookup(ctx context.Context, ref uint64) (retErr error) {
 	}
 
 	var (
-		metricName     = entry.lset.Get("__name__")
 		baseMetricName string
 		suffix         string
 		job            = entry.lset.Get("job")
 		instance       = entry.lset.Get(c.jobInstanceKey(job))
 	)
-	meta, err := c.metaget.Get(ctx, job, instance, metricName)
+	meta, err := c.metaget.Get(ctx, job, instance, entry.name)
 	if err != nil {
-		return errors.Wrap(err, "get metadata")
+		failedReason = "metadata_error"
+		return err
 	}
 
 	if meta == nil {
 		// The full name didn't turn anything up. Check again in case it's a summary,
 		// histogram, or counter without the metric name suffix.
 		var ok bool
-		if baseMetricName, suffix, ok = stripComplexMetricSuffix(metricName); ok {
+		if baseMetricName, suffix, ok = stripComplexMetricSuffix(entry.name); ok {
 			meta, err = c.metaget.Get(ctx, job, instance, baseMetricName)
 			if err != nil {
-				return errors.Wrap(err, "get metadata")
+				failedReason = "metadata_error"
+				return err
 			}
 		}
 		if meta == nil {
 			doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
 				level.Warn(c.logger).Log(
 					"msg", "metadata not found",
-					"metric_name", metricName,
+					"metric_name", entry.name,
 					"labels", fmt.Sprint(entry.lset),
 				)
 			})
-			return nil
+			failedReason = "metadata_missing"
+			return errSeriesMissingMetadata
 		}
 	}
 	// Handle label modifications for histograms early so we don't build the label map twice.
@@ -417,7 +439,7 @@ func (c *seriesCache) lookup(ctx context.Context, ref uint64) (retErr error) {
 	}
 
 	ts := tsDesc{
-		Name:   c.getMetricName(c.metricsPrefix, metricName),
+		Name:   c.getMetricName(c.metricsPrefix, entry.name),
 		Labels: entryLabels,
 	}
 	sort.Sort(&ts.Labels)
@@ -453,13 +475,17 @@ func (c *seriesCache) lookup(ctx context.Context, ref uint64) (retErr error) {
 			// Note: this branch has been seen for a
 			// _bucket suffix, indicating a mix of
 			// histogram and summary conventions.
-			return errors.Errorf("unexpected summary metric name suffix %q", suffix)
+			failedReason = "invalid_suffix"
+			return errors.Errorf("unexpected summary suffix %q", suffix)
 		}
 	case textparse.MetricTypeHistogram:
+		// Note: It's unclear why this branch does not check for allowed
+		// suffixes the way the Summary branch does. Should it?
 		ts.Name = c.getMetricName(c.metricsPrefix, baseMetricName)
 		ts.Kind = config.CUMULATIVE
 		ts.ValueType = config.DISTRIBUTION
 	default:
+		failedReason = "unknown_type"
 		return errors.Errorf("unexpected metric type %s", meta.MetricType)
 	}
 

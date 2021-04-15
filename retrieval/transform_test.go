@@ -161,6 +161,7 @@ func TestSampleBuilder(t *testing.T) {
 		input         []record.RefSample
 		result        []*metric_pb.Metric
 		errors        []func(error) bool
+		failures      map[string]bool
 	}{
 		{
 			name: "basics",
@@ -396,6 +397,10 @@ func TestSampleBuilder(t *testing.T) {
 				isMissingMetadata,
 				isMissingMetadata,
 				isMissingMetadata,
+			},
+			failures: map[string]bool{
+				"metadata_missing/metric1":         true,
+				"metadata_missing/metric_notfound": true,
 			},
 		},
 		// Summary metrics.
@@ -830,7 +835,8 @@ func TestSampleBuilder(t *testing.T) {
 				var s *metric_pb.Metric
 				var result []*metric_pb.Metric
 
-				series := newSeriesCache(nil, "", nil, nil, c.metadata, c.metricsPrefix, nil)
+				testFailing := testFailingReporter{}
+				series := newSeriesCache(nil, "", nil, nil, c.metadata, c.metricsPrefix, nil, testFailing)
 				for ref, s := range c.series {
 					series.set(ctx, ref, s, 0)
 				}
@@ -858,6 +864,12 @@ func TestSampleBuilder(t *testing.T) {
 				if len(result) != len(c.result) {
 					t.Errorf("mismatching count %d of received samples, want %d", len(result), len(c.result))
 				}
+
+				if c.failures == nil {
+					c.failures = testFailingReporter{}
+				}
+
+				require.EqualValues(t, c.failures, testFailing)
 			})
 	}
 }

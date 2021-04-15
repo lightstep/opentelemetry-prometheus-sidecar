@@ -64,6 +64,7 @@ func NewPrometheusReader(
 	metricsPrefix string,
 	maxPointAge time.Duration,
 	scrapeConfig []*promconfig.ScrapeConfig,
+	failingReporter common.FailingReporter,
 ) *PrometheusReader {
 	if logger == nil {
 		logger = log.NewNopLogger()
@@ -80,6 +81,7 @@ func NewPrometheusReader(
 		metricsPrefix:        metricsPrefix,
 		maxPointAge:          maxPointAge,
 		scrapeConfig:         scrapeConfig,
+		failingReporter:      failingReporter,
 	}
 }
 
@@ -95,6 +97,7 @@ type PrometheusReader struct {
 	metricsPrefix        string
 	maxPointAge          time.Duration
 	scrapeConfig         []*promconfig.ScrapeConfig
+	failingReporter      common.FailingReporter
 }
 
 func (r *PrometheusReader) Next() {
@@ -147,6 +150,7 @@ func (r *PrometheusReader) Run(ctx context.Context, startOffset int) error {
 		r.metadataGetter,
 		r.metricsPrefix,
 		jobInstanceMap,
+		r.failingReporter,
 	)
 	go seriesCache.run(ctx)
 
@@ -160,13 +164,13 @@ func (r *PrometheusReader) Run(ctx context.Context, startOffset int) error {
 	// This is also the reason for the series cache dealing with "maxSegment" hints
 	// for series rather than precise ones.
 	var (
-		started  = false
-		skipped  = 0
-		reader   = wal.NewReader(r.tailer)
-		err      error
-		lastSave time.Time
-		samples  []record.RefSample
-		series   []record.RefSeries
+		started         = false
+		startupBypassed = 0
+		reader          = wal.NewReader(r.tailer)
+		err             error
+		lastSave        time.Time
+		samples         []record.RefSample
+		series          []record.RefSeries
 	)
 Outer:
 	for reader.Next() {
@@ -217,13 +221,14 @@ Outer:
 		case record.Samples:
 			// Skip sample records before the the boundary offset.
 			if offset < startOffset {
-				skipped++
+				startupBypassed++
 				continue
 			}
 			if !started {
 				level.Info(r.logger).Log(
 					"msg", "reached first record after start offset",
-					"start_offset", startOffset, "skipped_records", skipped)
+					"start_offset", startOffset,
+					"bypassed_records", startupBypassed)
 				started = true
 			}
 			samples, err = decoder.Samples(rec, samples[:0])
@@ -270,18 +275,11 @@ Outer:
 					common.DroppedKeyReason.String("metadata"),
 				)
 			}
-			sidecar.OTelMeter.RecordBatch(
-				ctx,
-				nil,
-				pointsProduced.Measurement(int64(produced)),
-				// Note: skipped points could be refined, as there
-				// are two sub-types.  Some points are skipped because
-				// of cumulative resets, and some because of filters.
-				// Both are counted, so subtract sidecar.cumulative.missing_resets
-				// from skipped points to know the true number, when
-				// there are filters.
-				common.SkippedPoints.Measurement(int64(skippedPoints)),
-			)
+			if skippedPoints != 0 {
+				common.SkippedPoints.Add(ctx, int64(skippedPoints))
+			}
+
+			pointsProduced.Add(ctx, int64(produced))
 
 		case record.Tombstones:
 		default:

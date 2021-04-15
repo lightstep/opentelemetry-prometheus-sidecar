@@ -95,6 +95,7 @@ func runComponents(ctx context.Context, scfg SidecarConfig, tailer tail.WalTaile
 		scfg.OpenTelemetry.MetricsPrefix,
 		scfg.Prometheus.MaxPointAge.Duration,
 		scfg.Monitor.GetScrapeConfig(),
+		scfg.FailingReporter,
 	)
 
 	var g run.Group

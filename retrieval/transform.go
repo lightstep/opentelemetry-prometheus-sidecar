@@ -166,6 +166,8 @@ func (b *sampleBuilder) next(ctx context.Context, samples []record.RefSample) (*
 	if b.maxPointAge > 0 {
 		when := time.Unix(sample.T/1000, int64(time.Duration(sample.T%1000)*time.Millisecond))
 		if time.Since(when) > b.maxPointAge {
+			// Note: Counts as a skipped point (as if
+			// filtered out), not a dropped point.
 			return nil, 0, tailSamples, nil
 		}
 	}
