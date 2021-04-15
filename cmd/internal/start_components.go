@@ -66,8 +66,8 @@ func StartComponents(ctx context.Context, scfg SidecarConfig, tailer tail.WalTai
 				break
 			}
 			attempts += 1
-			tailer.SetCurrentSegment(currentSegment + 1)
-			startOffset = (currentSegment + 1) * wal.DefaultSegmentSize
+			tailer.SetCurrentSegment(currentSegment)
+			startOffset = currentSegment * wal.DefaultSegmentSize
 			continue
 		}
 		break
