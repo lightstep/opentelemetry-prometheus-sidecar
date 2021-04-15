@@ -48,10 +48,14 @@ func StartComponents(ctx context.Context, scfg SidecarConfig, tailer tail.WalTai
 			_ = retrieval.SaveProgressFile(scfg.Prometheus.WAL, startOffset)
 			tailer, err = NewTailer(ctx, scfg)
 			if err != nil {
-				level.Error(scfg.Logger).Log("msg", "tailing WAL failed", "err", err)
+				_ = level.Error(scfg.Logger).Log("msg", "tailing WAL failed", "err", err)
 				break
 			}
 			attempts += 1
+			// SetCurrentSegment is being called here to ensure that the tailer
+			// is able to continue past truncated logs after initialization
+			// this addresses the case where a segment is detected as truncated
+			// and its reason for being truncated is *not* a checkpoint happening
 			tailer.SetCurrentSegment(currentSegment)
 			startOffset = currentSegment * wal.DefaultSegmentSize
 			continue
@@ -76,7 +80,7 @@ func runComponents(ctx context.Context, scfg SidecarConfig, tailer tail.WalTaile
 		retrieval.LabelsToResource(createPrimaryDestinationResourceLabels(scfg.InstanceId, scfg.Destination.Attributes)),
 	)
 	if err != nil {
-		level.Error(scfg.Logger).Log("msg", "creating queue manager failed", "err", err)
+		_ = level.Error(scfg.Logger).Log("msg", "creating queue manager failed", "err", err)
 		return currentSegment, err
 	}
 
@@ -97,14 +101,14 @@ func runComponents(ctx context.Context, scfg SidecarConfig, tailer tail.WalTaile
 	{
 		g.Add(
 			func() error {
-				level.Info(scfg.Logger).Log("msg", "starting Prometheus reader", "segment", startOffset/wal.DefaultSegmentSize)
+				_ = level.Info(scfg.Logger).Log("msg", "starting Prometheus reader", "segment", startOffset/wal.DefaultSegmentSize)
 				return prometheusReader.Run(ctx, startOffset)
 			},
 			func(err error) {
 				// Prometheus reader needs to be stopped before closing the TSDB
 				// so that it doesn't try to write samples to a closed storage.
 				// See the use of `stopCh` below to explain how this works.
-				level.Info(scfg.Logger).Log("msg", "stopping Prometheus reader")
+				_ = level.Info(scfg.Logger).Log("msg", "stopping Prometheus reader")
 			},
 		)
 	}
@@ -115,13 +119,13 @@ func runComponents(ctx context.Context, scfg SidecarConfig, tailer tail.WalTaile
 				if err := queueManager.Start(); err != nil {
 					return err
 				}
-				level.Info(scfg.Logger).Log("msg", "starting OpenTelemetry writer")
+				_ = level.Info(scfg.Logger).Log("msg", "starting OpenTelemetry writer")
 				<-stopCh
 				return nil
 			},
 			func(err error) {
 				if err := queueManager.Stop(); err != nil {
-					level.Error(scfg.Logger).Log(
+					_ = level.Error(scfg.Logger).Log(
 						"msg", "stopping OpenTelemetry writer",
 						"err", err,
 					)
@@ -132,7 +136,7 @@ func runComponents(ctx context.Context, scfg SidecarConfig, tailer tail.WalTaile
 	}
 
 	if err := g.Run(); err != nil {
-		level.Error(scfg.Logger).Log("msg", "run loop error", "err", err)
+		_ = level.Error(scfg.Logger).Log("msg", "run loop error", "err", err)
 		return prometheusReader.CurrentSegment(), err
 	}
 	return prometheusReader.CurrentSegment(), nil
