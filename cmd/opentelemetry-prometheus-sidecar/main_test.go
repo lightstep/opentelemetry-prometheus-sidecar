@@ -24,7 +24,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-kit/kit/log"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/internal/promtest"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
 	"github.com/pkg/errors"
@@ -164,7 +163,6 @@ func TestMainExitOnFailure(t *testing.T) {
 }
 
 func TestParseFilters(t *testing.T) {
-	logger := log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
 	for _, tt := range []struct {
 		name         string
 		filtersets   []string
@@ -175,7 +173,7 @@ func TestParseFilters(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			// Test success cases.
-			parsed, err := parseFilters(logger, tt.filtersets)
+			parsed, err := parseFilters(tt.filtersets)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -194,7 +192,7 @@ func TestParseFilters(t *testing.T) {
 		{"Empty filterset", []string{""}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			if _, err := parseFilters(logger, tt.filtersets); err == nil {
+			if _, err := parseFilters(tt.filtersets); err == nil {
 				t.Fatalf("expected error, but got none")
 			}
 		})
