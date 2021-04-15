@@ -14,15 +14,15 @@ import (
 
 type ShutdownFunc func(context.Context)
 
-func StartTelemetry(cfg config.MainConfig, defaultSvcName string, svcInstanceId string, isSuper bool, logger log.Logger) *telemetry.Telemetry {
-	diagConfig := cfg.Diagnostics
+func StartTelemetry(scfg SidecarConfig, defaultSvcName string, isSuper bool) *telemetry.Telemetry {
+	diagConfig := scfg.Diagnostics
 
-	if cfg.DisableDiagnostics {
+	if scfg.DisableDiagnostics {
 		return telemetry.InternalOnly()
 	}
 
 	if diagConfig.Endpoint == "" {
-		diagConfig = cfg.Destination
+		diagConfig = scfg.Destination
 	}
 
 	if diagConfig.Endpoint == "" {
@@ -31,9 +31,9 @@ func StartTelemetry(cfg config.MainConfig, defaultSvcName string, svcInstanceId 
 
 	// reportingPeriod should be faster than the health check period,
 	// because we are using metrics data for internal health checking.
-	reportingPeriod := cfg.Admin.HealthCheckPeriod.Duration / 2
+	reportingPeriod := scfg.Admin.HealthCheckPeriod.Duration / 2
 
-	return startTelemetry(diagConfig, reportingPeriod, defaultSvcName, svcInstanceId, isSuper, logger)
+	return startTelemetry(diagConfig, reportingPeriod, defaultSvcName, scfg.InstanceId, isSuper, scfg.Logger)
 }
 
 func startTelemetry(diagConfig config.OTLPConfig, reportingPeriod time.Duration, defaultSvcName string, svcInstanceId string, isSuper bool, logger log.Logger) *telemetry.Telemetry {

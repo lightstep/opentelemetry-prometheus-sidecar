@@ -7,27 +7,13 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
-	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/otlp"
-	"github.com/lightstep/opentelemetry-prometheus-sidecar/prometheus"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/retrieval"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
 	"github.com/oklog/run"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb/wal"
 )
-
-type SidecarConfig struct {
-	ClientFactory otlp.StorageClientFactory
-	Monitor       *prometheus.Monitor
-	Logger        log.Logger
-	InstanceId    string
-	Filters       [][]*labels.Matcher
-	MetricRenames map[string]string
-	MetadataCache *metadata.Cache
-
-	config.MainConfig
-}
 
 // createPrimaryDestinationResourceLabels returns the OTLP resources
 // to use for the primary destination.
@@ -98,7 +84,7 @@ func runComponents(ctx context.Context, scfg SidecarConfig, tailer tail.WalTaile
 		log.With(scfg.Logger, "component", "prom_wal"),
 		scfg.Prometheus.WAL,
 		tailer,
-		scfg.Filters,
+		scfg.Matchers,
 		scfg.MetricRenames,
 		scfg.MetadataCache,
 		queueManager,

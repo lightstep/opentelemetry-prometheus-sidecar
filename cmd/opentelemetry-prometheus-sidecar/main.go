@@ -94,26 +94,24 @@ func Main() bool {
 	isSupervisor := !cfg.DisableSupervisor && os.Getenv(supervisorEnv) == ""
 
 	scfg := internal.SidecarConfig{
-		nil,
-		nil,
+		ClientFactory: nil,
+		Monitor:       nil,
 		// Configure logging and diagnostics.
-		internal.NewLogger(cfg, isSupervisor),
+		Logger: internal.NewLogger(cfg, isSupervisor),
 		// Unique identifer for this process.
-		uuid.New().String(),
-		[][]*labels.Matcher{},
-		metricRenames,
-		nil,
-		cfg,
+		InstanceId:    uuid.New().String(),
+		Matchers:      [][]*labels.Matcher{},
+		MetricRenames: metricRenames,
+		MetadataCache: nil,
+		MainConfig:    cfg,
 	}
 
 	telemetry.StaticSetup(scfg.Logger)
 
 	telem := internal.StartTelemetry(
-		cfg,
+		scfg,
 		"opentelemetry-prometheus-sidecar",
-		scfg.InstanceId,
 		isSupervisor,
-		scfg.Logger,
 	)
 	if telem != nil {
 		defer telem.Shutdown(context.Background())
@@ -129,7 +127,7 @@ func Main() bool {
 	defer cancelMain()
 
 	healthChecker := health.NewChecker(
-		telem.Controller, cfg.Admin.HealthCheckPeriod.Duration, scfg.Logger, cfg.Admin.HealthCheckThresholdRatio,
+		telem.Controller, scfg.Admin.HealthCheckPeriod.Duration, scfg.Logger, scfg.Admin.HealthCheckThresholdRatio,
 	)
 
 	httpClient := &http.Client{
@@ -137,14 +135,14 @@ func Main() bool {
 		// Transport: otelhttp.NewTransport(http.DefaultTransport),
 	}
 
-	scfg.Filters, err = parseFilters(scfg.Logger, cfg.Filters)
+	scfg.Matchers, err = parseFilters(scfg.Filters)
 	if err != nil {
 		level.Error(scfg.Logger).Log("msg", "error parsing --filter", "err", err)
 		return false
 	}
 
 	// Parse was validated already, ignore error.
-	promURL, _ := url.Parse(cfg.Prometheus.Endpoint)
+	promURL, _ := url.Parse(scfg.Prometheus.Endpoint)
 
 	scfg.Monitor = prometheus.NewMonitor(config.PromReady{
 		Logger:                         log.With(scfg.Logger, "component", "prom_ready"),
@@ -173,18 +171,18 @@ func Main() bool {
 		return false
 	}
 
-	outputURL, _ := url.Parse(cfg.Destination.Endpoint)
+	outputURL, _ := url.Parse(scfg.Destination.Endpoint)
 
-	cfg.Destination.Headers[config.AgentKey] = config.AgentMainValue
+	scfg.Destination.Headers[config.AgentKey] = config.AgentMainValue
 
 	scfg.ClientFactory = internal.NewOTLPClientFactory(otlp.ClientConfig{
 		Logger:           log.With(scfg.Logger, "component", "storage"),
 		URL:              outputURL,
-		Timeout:          cfg.Destination.Timeout.Duration,
-		RootCertificates: cfg.Security.RootCertificates,
-		Headers:          grpcMetadata.New(cfg.Destination.Headers),
-		Compressor:       cfg.Destination.Compression,
-		Prometheus:       cfg.Prometheus,
+		Timeout:          scfg.Destination.Timeout.Duration,
+		RootCertificates: scfg.Security.RootCertificates,
+		Headers:          grpcMetadata.New(scfg.Destination.Headers),
+		Compressor:       scfg.Destination.Compression,
+		Prometheus:       scfg.Prometheus,
 		FailingSet:       failingSet,
 	})
 
@@ -192,7 +190,7 @@ func Main() bool {
 	go func() {
 		defer cancelMain()
 
-		server := newAdminServer(healthChecker, cfg.Admin, scfg.Logger)
+		server := newAdminServer(healthChecker, scfg.Admin, scfg.Logger)
 
 		go func() {
 			level.Debug(scfg.Logger).Log("msg", "starting admin server")
@@ -238,7 +236,7 @@ func usage(err error) {
 
 // parseFilters parses two flags that contain PromQL-style metric/label selectors and
 // returns a list of the resulting matchers.
-func parseFilters(logger log.Logger, filters []string) ([][]*labels.Matcher, error) {
+func parseFilters(filters []string) ([][]*labels.Matcher, error) {
 	var matchers [][]*labels.Matcher
 	for _, f := range filters {
 		m, err := parser.ParseMetricSelector(f)
