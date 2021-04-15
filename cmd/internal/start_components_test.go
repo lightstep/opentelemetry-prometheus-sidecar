@@ -74,25 +74,8 @@ func TestStartComponents(t *testing.T) {
 
 	tailer = fakeTailer{
 		readError: tail.ErrSkipSegment,
-		// readError: errors.New("failed to read"),
 	}
 	err = StartComponents(ctx, scfg, &tailer, 0)
 	require.Error(t, err)
 
-	// r := fakePrometheusReader{}
-	// err := runReader(context.Background(), &r, "", 0, maxAttempts, logger, nil)
-	// require.Nil(t, err, "unexpected error")
-	// require.Equal(t, 0, r.attempts)
-
-	// anotherErr := errors.New("unexpected error")
-	// r = fakePrometheusReader{err: anotherErr}
-	// err = runReader(context.Background(), &r, "", 0, maxAttempts, logger, nil)
-	// require.Equal(t, anotherErr, err)
-	// require.Equal(t, 0, r.attempts)
-
-	// // looping should only happen for ErrSkipSegment
-	// r = fakePrometheusReader{err: tail.ErrSkipSegment}
-	// err = runReader(context.Background(), &r, "", 0, maxAttempts, logger, nil)
-	// require.Equal(t, tail.ErrSkipSegment, err)
-	// require.Equal(t, 5, r.attempts)
 }
