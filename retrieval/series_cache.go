@@ -75,7 +75,6 @@ type seriesCache struct {
 
 	currentSeriesObs metric.Int64UpDownSumObserver
 
-	// TODO: initialize me after #189 merges.
 	failingReporter common.FailingReporter
 }
 
