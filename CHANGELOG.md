@@ -11,6 +11,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Added
 
 - New metric `sidecar.points.produced` counts total points produced from the WAL. (#187)
+- `sidecar.metrics.invalid` includes explanation for all unreported metrics, labeled by `key_reason` and `metric_name`, now covers filtered points, metadata errors, and explainations from the server. (#191)
 
 ### Changed
 
