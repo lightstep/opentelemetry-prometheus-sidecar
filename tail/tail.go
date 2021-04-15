@@ -81,8 +81,18 @@ var (
 		),
 	)
 
-	ErrSkipSegment   = errors.New("skip truncated WAL segment")
+	ErrSkipSegment = errors.New("skip truncated WAL segment")
 )
+
+type WalTailer interface {
+	Size() (int, error)
+	Next()
+	Offset() int
+	Close() error
+	CurrentSegment() int
+	Read(b []byte) (int, error)
+	SetCurrentSegment(int)
+}
 
 // Tailer tails a write ahead log in a given directory.
 type Tailer struct {
@@ -221,7 +231,7 @@ func (t *Tailer) getCurrentSegment() int {
 // Offset is reset as in incNextSegment()
 // as we *just* started pointing to the *current*
 // segment.
-func (t *Tailer) setCurrentSegment(segment int) {
+func (t *Tailer) SetCurrentSegment(segment int) {
 	t.mtx.Lock()
 	defer t.mtx.Unlock()
 	t.nextSegment = segment + 1
@@ -449,7 +459,7 @@ func (t *Tailer) Read(b []byte) (int, error) {
 		next, err := openSegment(t.dir, nextSegment)
 
 		if err == record.ErrNotFound && promSeg > nextSegment {
-			t.setCurrentSegment(promSeg)
+			t.SetCurrentSegment(promSeg)
 			level.Warn(t.logger).Log(
 				"msg", "past WAL segment not found, sidecar may have dragged behind. Consider increasing min-shards, max-shards and max-timeseries-per-request values",
 				"segment", nextSegment,

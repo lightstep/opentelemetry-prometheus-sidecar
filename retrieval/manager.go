@@ -56,7 +56,7 @@ type MetadataGetter interface {
 func NewPrometheusReader(
 	logger log.Logger,
 	walDirectory string,
-	tailer *tail.Tailer,
+	tailer tail.WalTailer,
 	filters [][]*labels.Matcher,
 	metricRenames map[string]string,
 	metadataGetter MetadataGetter,
@@ -86,7 +86,7 @@ func NewPrometheusReader(
 type PrometheusReader struct {
 	logger               log.Logger
 	walDirectory         string
-	tailer               *tail.Tailer
+	tailer               tail.WalTailer
 	filters              [][]*labels.Matcher
 	metricRenames        map[string]string
 	metadataGetter       MetadataGetter
