@@ -330,7 +330,7 @@ Loop:
 		}
 		lastTimestamp = s.T
 
-		rt, v, ok := b.series.getResetAdjusted(s.Ref, s.T, s.V)
+		rt, v := b.series.getResetAdjusted(e, s.T, s.V)
 
 		switch e.suffix {
 		case metricSuffixSum:
@@ -353,11 +353,6 @@ Loop:
 			})
 		default:
 			break Loop
-		}
-		// If a series appeared for the first time, we won't get a valid reset timestamp yet.
-		// We skip the entire summary sample in this case.
-		if !ok {
-			skip = true
 		}
 		consumed++
 	}

@@ -465,6 +465,19 @@ func TestSampleBuilder(t *testing.T) {
 				{Ref: 7, T: 1000, V: 3},
 			},
 			result: []*metric_pb.Metric{
+				DoubleSummaryPoint( // 0:
+					Labels(
+						Label("instance", "instance1"),
+						Label("job", "job1"),
+					),
+					"metric1",
+					time.Unix(1, 0),
+					time.Unix(1, 0),
+					0,
+					0,
+					DoubleSummaryQuantileValue(0.5, 0),
+					DoubleSummaryQuantileValue(0.9, 0),
+				),
 				DoubleSummaryPoint( // 1:
 					Labels(
 						Label("instance", "instance1"),
@@ -478,7 +491,18 @@ func TestSampleBuilder(t *testing.T) {
 					DoubleSummaryQuantileValue(0.5, float64(0.7) - float64(0.3)),
 					DoubleSummaryQuantileValue(0.9, float64(0.8) - float64(0.6)),
 				),
-				nil, // 2: skipped
+				DoubleSummaryPoint( // 2: summary w/ no quantile values
+					Labels(
+						Label("a", "b"),
+						Label("instance", "instance1"),
+						Label("job", "job1"),
+					),
+					"metric1",
+					time.Unix(1, 0),
+					time.Unix(1, 0),
+					0,
+					0,
+				),
 				DoubleSummaryPoint( // 3: summary w/ no quantile values
 					Labels(
 						Label("a", "b"),
@@ -796,7 +820,7 @@ func TestSampleBuilder(t *testing.T) {
 					0,
 				),
 				nil, // due to NaN
-				DoubleSummaryPoint(
+				IntCounterPoint(
 					Labels(
 						Label("instance", "instance1"),
 						Label("job", "job1"),
@@ -804,7 +828,6 @@ func TestSampleBuilder(t *testing.T) {
 					"metric1",
 					time.Unix(2, 0),
 					time.Unix(5, 0),
-					0,
 					4,
 				),
 			},
