@@ -24,7 +24,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -81,8 +80,18 @@ var (
 		),
 	)
 
-	ErrSkipSegment   = errors.New("skip truncated WAL segment")
+	ErrSkipSegment = errors.New("skip truncated WAL segment")
 )
+
+type WalTailer interface {
+	Size() (int, error)
+	Next()
+	Offset() int
+	Close() error
+	CurrentSegment() int
+	Read(b []byte) (int, error)
+	SetCurrentSegment(int)
+}
 
 // Tailer tails a write ahead log in a given directory.
 type Tailer struct {
@@ -110,15 +119,25 @@ func Tail(ctx context.Context, logger log.Logger, dir string, promMon *prometheu
 		monitor: promMon,
 	}
 	cpdir, k, err := wal.LastCheckpoint(dir)
+
 	if errors.Cause(err) == record.ErrNotFound {
 		// TODO: Test this code path, where the sidecar starts before
 		// Prometheus ever begins recording a WAL.  This can lead to
 		// an indefinite wait if misconfigured.
+		level.Info(logger).Log(
+			"msg", "initializing with an empty WAL",
+			"directory", dir,
+		)
 		t.cur = ioutil.NopCloser(bytes.NewReader(nil))
 		t.nextSegment = 0
 	} else if err != nil {
 		return nil, errors.Wrap(err, "retrieve last checkpoint")
 	} else {
+		level.Info(logger).Log(
+			"msg", "starting from checkpoint",
+			"directory", dir,
+		)
+
 		// Open the entire checkpoint first. It has to be consumed before
 		// the tailer proceeds to any segments.  During this initial
 		// segment the segment number equals the checkpoint and the
@@ -221,7 +240,7 @@ func (t *Tailer) getCurrentSegment() int {
 // Offset is reset as in incNextSegment()
 // as we *just* started pointing to the *current*
 // segment.
-func (t *Tailer) setCurrentSegment(segment int) {
+func (t *Tailer) SetCurrentSegment(segment int) {
 	t.mtx.Lock()
 	defer t.mtx.Unlock()
 	t.nextSegment = segment + 1
@@ -364,7 +383,7 @@ func (t *Tailer) Read(b []byte) (int, error) {
 				level.Warn(t.logger).Log(
 					"msg", "scraping for current WAL segment",
 					"err", err,
-					"wal_contents", fmt.Sprint(dirContents(t.dir)),
+					"wal_contents", dirContents(t.dir),
 				)
 			})
 			continue
@@ -401,6 +420,7 @@ func (t *Tailer) Read(b []byte) (int, error) {
 					"msg", "WAL reader waiting for fsync",
 					"segment", currentSegment,
 					"offset", currentOffset,
+					"wal_contents", dirContents(t.dir),
 				)
 			})
 
@@ -417,6 +437,7 @@ func (t *Tailer) Read(b []byte) (int, error) {
 					"msg", "truncated WAL segment",
 					"segment", currentSegment,
 					"offset", currentOffset,
+					"wal_contents", dirContents(t.dir),
 				)
 			})
 			segmentSkipCounter.Add(t.ctx, 1)
@@ -429,6 +450,7 @@ func (t *Tailer) Read(b []byte) (int, error) {
 					"msg", "WAL segment in the future",
 					"prometheus_current", promSeg,
 					"sidecar_current", currentSegment,
+					"wal_contents", dirContents(t.dir),
 				)
 			})
 			return 0, errors.Errorf(
@@ -449,12 +471,12 @@ func (t *Tailer) Read(b []byte) (int, error) {
 		next, err := openSegment(t.dir, nextSegment)
 
 		if err == record.ErrNotFound && promSeg > nextSegment {
-			t.setCurrentSegment(promSeg)
+			t.SetCurrentSegment(promSeg)
 			level.Warn(t.logger).Log(
 				"msg", "past WAL segment not found, sidecar may have dragged behind. Consider increasing min-shards, max-shards and max-timeseries-per-request values",
 				"segment", nextSegment,
 				"current", promSeg,
-				"checkpoint", getCheckpointFilenames(t.dir),
+				"wal_contents", dirContents(t.dir),
 			)
 			next, err = openSegment(t.dir, promSeg)
 			if err != nil {
@@ -477,32 +499,6 @@ func (t *Tailer) Read(b []byte) (int, error) {
 	}
 }
 
-// getCheckpointFilenames looks for checkpoint filenames, in order to
-// debug cases where the sidecar dragged behind the current Prometheus
-// segment. A single checkpoint file should exist at all times, but
-// we check for more in case of exotic scenarios.
-func getCheckpointFilenames(dir string) string {
-	files, err := ioutil.ReadDir(dir)
-	if err != nil {
-		return ""
-	}
-	var filenames string
-	found := false
-	for _, entry := range files {
-		name := entry.Name()
-		if !strings.HasPrefix(name, checkpointPrefix) {
-			continue
-		}
-
-		if found {
-			filenames += ","
-		}
-		found = true
-		filenames += name[len(checkpointPrefix):]
-	}
-	return filenames
-}
-
 // openSegment finds a WAL segment with a name that parses to n. This
 // way we do not need to know how wide the segment filename is (i.e.,
 // how many zeros to pad with).
@@ -522,14 +518,14 @@ func openSegment(dir string, n int) (io.ReadCloser, error) {
 	return nil, record.ErrNotFound
 }
 
-func dirContents(dir string) []string {
+func dirContents(dir string) string {
 	var r []string
 	files, err := ioutil.ReadDir(dir)
 	if err != nil {
-		return nil
+		return fmt.Sprintf("%s: %s", dir, err)
 	}
 	for _, entry := range files {
 		r = append(r, entry.Name())
 	}
-	return r
+	return fmt.Sprint(r)
 }

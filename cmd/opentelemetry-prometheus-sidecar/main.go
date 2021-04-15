@@ -24,7 +24,6 @@ import (
 	"net/url"
 	"os"
 	"runtime"
-	"strings"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -39,14 +38,11 @@ import (
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/prometheus"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/retrieval"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/supervisor"
-	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
-	"github.com/oklog/run"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/version"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
-	"github.com/prometheus/prometheus/tsdb/wal"
 	grpcMetadata "google.golang.org/grpc/metadata"
 
 	// register grpc compressors
@@ -76,28 +72,6 @@ const externalLabelPrefix = "__external_"
 func main() {
 	if !Main() {
 		os.Exit(1)
-	}
-}
-
-type prometheusReader interface {
-	Run(context.Context, int) error
-	Next()
-	CurrentSegment() int
-}
-
-func runReader(ctx context.Context, reader prometheusReader, walDir string, startOffset int, maxRetries int) error {
-	var err error
-	attempts := 0
-	for {
-		err = reader.Run(ctx, startOffset)
-		if err != nil && attempts < maxRetries && strings.Contains(err.Error(), tail.ErrSkipSegment.Error()) {
-			_ = retrieval.SaveProgressFile(walDir, startOffset)
-			reader.Next()
-			attempts += 1
-			startOffset = reader.CurrentSegment() * wal.DefaultSegmentSize
-			continue
-		}
-		return err
 	}
 }
 
@@ -189,12 +163,7 @@ func Main() bool {
 		return false
 	}
 
-	tailer, err := tail.Tail(
-		ctx,
-		log.With(scfg.Logger, "component", "wal_reader"),
-		scfg.Prometheus.WAL,
-		scfg.Monitor,
-	)
+	tailer, err := internal.NewTailer(ctx, scfg)
 	if err != nil {
 		level.Error(scfg.Logger).Log("msg", "tailing WAL failed", "err", err)
 		return false
@@ -214,19 +183,6 @@ func Main() bool {
 		Prometheus:       scfg.Prometheus,
 		FailingReporter:  scfg.FailingReporter,
 	})
-
-	queueManager, err := otlp.NewQueueManager(
-		log.With(scfg.Logger, "component", "queue_manager"),
-		scfg.QueueConfig(),
-		scfg.Destination.Timeout.Duration,
-		scfg.ClientFactory,
-		tailer,
-		retrieval.LabelsToResource(createPrimaryDestinationResourceLabels(scfg)),
-	)
-	if err != nil {
-		level.Error(scfg.Logger).Log("msg", "creating queue manager failed", "err", err)
-		return false
-	}
 
 	// Start the admin server.
 	go func() {
@@ -258,65 +214,8 @@ func Main() bool {
 	level.Debug(scfg.Logger).Log("msg", "entering run state")
 	healthChecker.SetRunning()
 
-	prometheusReader := retrieval.NewPrometheusReader(
-		log.With(scfg.Logger, "component", "prom_wal"),
-		scfg.Prometheus.WAL,
-		tailer,
-		scfg.Matchers,
-		metricRenames,
-		scfg.MetadataCache,
-		queueManager,
-		scfg.OpenTelemetry.MetricsPrefix,
-		scfg.Prometheus.MaxPointAge.Duration,
-		scfg.Monitor.GetScrapeConfig(),
-		scfg.FailingReporter,
-	)
-
-	// Run two inter-depdendent components:
-	// (1) Prometheus reader
-	// (2) Queue manager
-	// TODO: Replace this with x/sync/errgroup
-	var g run.Group
-	{
-		g.Add(
-			func() error {
-				level.Info(scfg.Logger).Log("msg", "starting Prometheus reader", "segment", startOffset/wal.DefaultSegmentSize)
-				return runReader(ctx, prometheusReader, scfg.Prometheus.WAL, startOffset, config.DefaultMaxRetrySkipSegments)
-			},
-			func(err error) {
-				// Prometheus reader needs to be stopped before closing the TSDB
-				// so that it doesn't try to write samples to a closed storage.
-				// See the use of `stopCh` below to explain how this works.
-				level.Info(scfg.Logger).Log("msg", "stopping Prometheus reader")
-				cancelMain()
-			},
-		)
-	}
-	{
-		stopCh := make(chan struct{})
-		g.Add(
-			func() error {
-				if err := queueManager.Start(); err != nil {
-					return err
-				}
-				level.Info(scfg.Logger).Log("msg", "starting OpenTelemetry writer")
-				<-stopCh
-				return nil
-			},
-			func(err error) {
-				if err := queueManager.Stop(); err != nil {
-					level.Error(scfg.Logger).Log(
-						"msg", "stopping OpenTelemetry writer",
-						"err", err,
-					)
-				}
-				close(stopCh)
-			},
-		)
-	}
-	if err := g.Run(); err != nil {
-		level.Error(scfg.Logger).Log("msg", "run loop error", "err", err)
-		return false
+	if err = internal.StartComponents(ctx, scfg, tailer, startOffset); err != nil {
+		cancelMain()
 	}
 
 	// SIGTERM causes graceful shutdown.
@@ -345,19 +244,6 @@ func parseFilters(filters []string) ([][]*labels.Matcher, error) {
 		matchers = append(matchers, m)
 	}
 	return matchers, nil
-}
-
-// createPrimaryDestinationResourceLabels returns the OTLP resources
-// to use for the primary destination.
-func createPrimaryDestinationResourceLabels(scfg internal.SidecarConfig) labels.Labels {
-	// Note: there is minor benefit in including an external label
-	// to indicate the process ID here.  See
-	// https://github.com/lightstep/opentelemetry-prometheus-sidecar/issues/44
-	// Until resources are serialized once per request, leave this
-	// commented out (and a test in e2e_test.go):
-	// extraLabels[externalLabelPrefix+string(semconv.ServiceInstanceIDKey)]
-	// = svcInstanceId
-	return labels.FromMap(scfg.Destination.Attributes)
 }
 
 func selfTest(ctx context.Context, scfg internal.SidecarConfig) error {
