@@ -330,6 +330,14 @@ writing to the OTLP destination.  These errors are returned using gRPC
 and logs.  See the `sidecar.metrics.failing` metric to diagnose validation 
 errors.
 
+#### Metadata errors
+
+The sidecar may encounter errors between itself and Prometheus,
+including failures to locate metadata about a targets that Prometheus
+no longer knows about.  Missing metadata, Prometheus API errors, and
+other forms of inconsistency are reported using
+`sidecar.metrics.failing` with `key_reason` and `metric_name` attributes.
+
 #### Resources
 
 Use the `--destination.attribute=KEY=VALUE` flag to add additional resource attributes to all exported timeseries.
