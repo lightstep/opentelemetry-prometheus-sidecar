@@ -242,52 +242,6 @@ func DoubleHistogramCumulative(name, desc, unit string, idps ...*otlpmetrics.Dou
 	}
 }
 
-type DoubleSummaryQuantileValueStruct struct {
-	Quantile float64
-	Value    float64
-}
-
-func DoubleSummaryQuantileValue(quantile, value float64) DoubleSummaryQuantileValueStruct {
-	return DoubleSummaryQuantileValueStruct{
-		Quantile: quantile,
-		Value   : value,
-	}
-}
-
-func DoubleSummaryDataPoint(labels []*otlpcommon.StringKeyValue, start, end time.Time, sum float64, count uint64, quantiles ...DoubleSummaryQuantileValueStruct) *otlpmetrics.DoubleSummaryDataPoint {
-	quantileValues := make([]*otlpmetrics.DoubleSummaryDataPoint_ValueAtQuantile, 0, len(quantiles))
-	for _, value := range quantiles {
-		quantileValues = append(quantileValues, &otlpmetrics.DoubleSummaryDataPoint_ValueAtQuantile{
-			Quantile: value.Quantile,
-			Value:    value.Value,
-		})
-	}
-	return &otlpmetrics.DoubleSummaryDataPoint{
-		Labels:            labels,
-		StartTimeUnixNano: uint64(start.UnixNano()),
-		TimeUnixNano:      uint64(end.UnixNano()),
-		Sum:               sum,
-		Count:             count,
-		QuantileValues:    quantileValues,
-	}
-}
-
-func DoubleSummary(name, desc, unit string, dps ...*otlpmetrics.DoubleSummaryDataPoint) *otlpmetrics.Metric {
-	if len(dps) == 0 {
-		dps = []*otlpmetrics.DoubleSummaryDataPoint{}
-	}
-	return &otlpmetrics.Metric{
-		Name:        name,
-		Description: desc,
-		Unit:        unit,
-		Data: &otlpmetrics.Metric_DoubleSummary{
-			DoubleSummary: &otlpmetrics.DoubleSummary{
-				DataPoints: dps,
-			},
-		},
-	}
-}
-
 // Visitor is used because it takes around 50 lines of code to
 // traverse an OTLP request, with looping over Resource,
 // Instrumentation Library, the list of Metrics, and six distinct
