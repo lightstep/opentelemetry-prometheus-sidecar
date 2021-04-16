@@ -227,12 +227,13 @@ func (t *QueueManager) Append(ctx context.Context, hash uint64, sample *metricsp
 // Start the queue manager sending samples to the remote storage.
 // Does not block.
 func (t *QueueManager) Start() error {
+	t.shardsMtx.Lock()
+	defer t.shardsMtx.Unlock()
+
 	t.wg.Add(2)
 	go t.updateShardsLoop()
 	go t.reshardLoop()
 
-	t.shardsMtx.Lock()
-	defer t.shardsMtx.Unlock()
 	t.shards.start()
 
 	return nil
@@ -243,10 +244,11 @@ func (t *QueueManager) Start() error {
 func (t *QueueManager) Stop() error {
 	level.Info(t.logger).Log("msg", "stopping remote storage")
 	close(t.quit)
-	t.wg.Wait()
 
 	t.shardsMtx.Lock()
 	defer t.shardsMtx.Unlock()
+
+	t.wg.Wait()
 	t.shards.stop()
 
 	level.Info(t.logger).Log("msg", "remote storage stopped")
