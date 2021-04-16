@@ -461,9 +461,23 @@ func (c *seriesCache) lookup(ctx context.Context, ref uint64) (retErr error) {
 			ts.ValueType = meta.ValueType
 		}
 	case textparse.MetricTypeSummary:
-		ts.Name = c.getMetricName(c.metricsPrefix, baseMetricName)
-		ts.Kind = config.CUMULATIVE
-		ts.ValueType = config.DOUBLE
+		switch suffix {
+		case metricSuffixSum:
+			ts.Kind = config.CUMULATIVE
+			ts.ValueType = config.DOUBLE
+		case metricSuffixCount:
+			ts.Kind = config.CUMULATIVE
+			ts.ValueType = config.INT64
+		case "": // Actual quantiles.
+			ts.Kind = config.GAUGE
+			ts.ValueType = config.DOUBLE
+		default:
+			// Note: this branch has been seen for a
+			// _bucket suffix, indicating a mix of
+			// histogram and summary conventions.
+			failedReason = "invalid_suffix"
+			return errors.Errorf("unexpected summary suffix %q", suffix)
+		}
 	case textparse.MetricTypeHistogram:
 		// Note: It's unclear why this branch does not check for allowed
 		// suffixes the way the Summary branch does. Should it?
