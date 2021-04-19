@@ -14,4 +14,4 @@ jobs:
         CF_API_KEY: ${{ secrets.CODEFRESH_API_TOKEN }}
       id: run-pipeline
       with:
-        args: '-v key1=value1 -v key2=value2'
+        args: '-v FOO=BAR -v key2=value2'
