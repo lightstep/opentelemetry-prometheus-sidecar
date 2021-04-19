@@ -22,7 +22,7 @@ jobs:
         PIPELINE_NAME: 'otel-sidecar-cicd/deploy-to-staging'
         CF_API_KEY: ${{ secrets.CODEFRESH_API_TOKEN }}
         #MY_ENV_VAR: "FOOBAR"
-        MY_ENV_VAR: {{ env.SHORT_GITHUB_SHA }}
+        MY_ENV_VAR: ${{ env.SHORT_GITHUB_SHA }}
       id: run-pipeline
       with:
         args: -v GITHUB_REF=${{ github.ref }} -v GITHUB_SHA=$GITHUB_SHA -v MY_ENV_VAR=${{ env.MY_ENV_VAR }}  -v SHORT_GITHUB_SHA=${{ env.SHORT_GITHUB_SHA }}
