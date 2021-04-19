@@ -2,7 +2,7 @@ name: Deploy
 on:
   push:
     tags:
-      - 'd*'
+      - '*'
 jobs:
   build:
     runs-on: ubuntu-latest
