@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Codefresh pipeline runner
-      uses: codefresh-io/codefresh-pipeline-runner@v5
+      uses: codefresh-io/codefresh-pipeline-runner@v7
       env:
         PIPELINE_NAME: 'otel-sidecar-cicd/deploy-to-staging'
         CF_API_KEY: ${{ secrets.CODEFRESH_API_TOKEN }}
