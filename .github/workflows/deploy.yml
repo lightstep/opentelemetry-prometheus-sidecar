@@ -7,10 +7,19 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
-    - name: Run a one-line script
-      run: echo "Trigger on TAGS with a prefix of d"
-    - name: Run a multi-line script
-      run: |
-        echo "Only on tags with prefix of d"
-        echo "Only on tags with prefix of d"
+#    - uses: actions/checkout@v2
+
+#    - name: Run a one-line script
+#      run: echo "Trigger on TAGS with a prefix of d"
+
+#    - name: Run a multi-line script
+#      run: |
+#        echo "Only on tags with prefix of d"
+#        echo "Only on tags with prefix of d"
+
+    - name: Codefresh pipeline runner
+      uses: codefresh-io/codefresh-pipeline-runner@v5
+      env:
+        PIPELINE_NAME: 'otel-sidecar-cicd/deploy-to-staging'
+        CF_API_KEY: ${{ secrets.CODEFRESH_API_TOKEN }}
+      id: run-pipeline
