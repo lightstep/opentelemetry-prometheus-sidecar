@@ -5,7 +5,7 @@ on:
       - 'd*'
 
 env:
-  GITHUB_SHA=${{ github.sha }}
+  GITHUB_SHA: ${{ github.sha }}
   
 jobs:
   build:
