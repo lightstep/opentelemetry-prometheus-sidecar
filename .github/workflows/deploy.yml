@@ -3,10 +3,15 @@ on:
   push:
     tags:
       - 'd*'
+
+env:
+  GITHUB_SHA=${{ github.sha }}
+  
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+  
 
     - name: Codefresh pipeline runner
       uses: codefresh-io/codefresh-pipeline-runner@v7
@@ -14,7 +19,7 @@ jobs:
         PIPELINE_NAME: 'otel-sidecar-cicd/deploy-to-staging'
         CF_API_KEY: ${{ secrets.CODEFRESH_API_TOKEN }}
         #MY_ENV_VAR: "FOOBAR"
-        MY_ENV_VAR: $GITHUB_REF
+        MY_ENV_VAR: $GITHUB_SHA
       id: run-pipeline
       with:
-        args: -v GITHUB_REF=${{ github.ref }} -v GITHUB_SHA=${{ github.sha }} -v MY_ENV_VAR=${{ env.MY_ENV_VAR }}
+        args: -v GITHUB_REF=${{ github.ref }} -v GITHUB_SHA=$GITHUB_SHA -v MY_ENV_VAR=${{ env.MY_ENV_VAR }}
