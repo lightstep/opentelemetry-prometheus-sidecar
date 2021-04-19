@@ -9,6 +9,8 @@ jobs:
     steps:
     - name: Codefresh pipeline runner
       uses: codefresh-io/codefresh-pipeline-runner@v5
+      with:
+        args: '-v FOO=BAR'
       env:
         PIPELINE_NAME: 'otel-sidecar-cicd/deploy-to-staging'
         CF_API_KEY: ${{ secrets.CODEFRESH_API_TOKEN }}
