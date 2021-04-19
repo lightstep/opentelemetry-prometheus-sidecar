@@ -17,6 +17,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"math/rand"
 	"sync"
 	"time"
 	"unsafe"
@@ -99,6 +100,7 @@ type QueueManager struct {
 	reshardChan chan int
 	quit        chan struct{}
 	wg          sync.WaitGroup
+	rnd         *rand.Rand
 
 	samplesIn, samplesOut, samplesOutDuration *ewmaRate
 	walSize, walOffset                        *ewmaRate
@@ -132,6 +134,7 @@ func NewQueueManager(logger log.Logger, cfg promconfig.QueueConfig, timeout time
 		numShards:   cfg.MinShards,
 		reshardChan: make(chan int),
 		quit:        make(chan struct{}),
+		rnd:         rand.New(rand.NewSource(rand.Int63())),
 
 		samplesIn:          newEWMARate(ewmaWeight, shardUpdateDuration),
 		samplesOut:         newEWMARate(ewmaWeight, shardUpdateDuration),
@@ -214,11 +217,17 @@ func NewQueueManager(logger log.Logger, cfg promconfig.QueueConfig, timeout time
 
 // Append queues a sample to be sent to the OpenTelemetry API.
 // Always returns nil.
-func (t *QueueManager) Append(ctx context.Context, hash uint64, sample *metricspb.Metric) error {
+func (t *QueueManager) Append(ctx context.Context, sample *metricspb.Metric) error {
 	t.queueLengthCounter.Add(ctx, 1)
+	t.samplesIn.incr(1)
+	shards := t.shards.shards
 
 	t.shardsMtx.RLock()
-	t.shards.enqueue(hash, sample)
+
+	shardIndex := t.rnd.Intn(len(shards))
+
+	shards[shardIndex].queue <- queueEntry{sample: sample}
+
 	t.shardsMtx.RUnlock()
 
 	return nil
@@ -448,16 +457,6 @@ func (s *shardCollection) stop() {
 	for _, shard := range s.shards {
 		close(shard.queue)
 	}
-}
-
-func (s *shardCollection) enqueue(hash uint64, sample *metricspb.Metric) {
-	s.qm.samplesIn.incr(1)
-	shardIndex := hash % uint64(len(s.shards))
-
-	// Note: this would block indefinitely if sendSamples() blocks
-	// indefinitely.  The caller retries this at a faster interval
-	// in case a resharding occurs first.
-	s.shards[shardIndex].queue <- queueEntry{sample: sample}
 }
 
 func (s *shardCollection) runShard(i int) {

@@ -95,7 +95,6 @@ type seriesCacheEntry struct {
 
 	name   string
 	suffix string
-	hash   uint64
 
 	// Whether the series has been reset/initialized yet. This is false only for
 	// the first sample of a new series in the cache, which causes the initial
@@ -492,7 +491,6 @@ func (c *seriesCache) lookup(ctx context.Context, ref uint64) (retErr error) {
 	entry.desc = &ts
 	entry.metadata = meta
 	entry.suffix = suffix
-	entry.hash = hashSeries(ts)
 
 	return nil
 }
