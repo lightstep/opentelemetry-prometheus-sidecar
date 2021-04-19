@@ -9,8 +9,8 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Run a one-line script
-      run: echo "Trigger on ALL branches"
+      run: echo "Trigger on TAGS with a prefix of d"
     - name: Run a multi-line script
       run: |
-        echo "Only on featuer branches1"
-        echo "Only on featuer branches2"
+        echo "Only on tags with prefix of d"
+        echo "Only on tags with prefix of d"
