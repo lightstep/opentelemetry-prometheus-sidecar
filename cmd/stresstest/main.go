@@ -18,7 +18,6 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
-	"math/rand"
 	"net/url"
 	"os"
 	"time"
@@ -129,7 +128,7 @@ func Main() bool {
 
 	ctx := context.Background()
 	for {
-		queueManager.Append(ctx, rand.Uint64(), m)
+		queueManager.Append(ctx, m)
 	}
 }
 

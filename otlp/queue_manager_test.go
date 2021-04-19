@@ -236,8 +236,8 @@ func TestSampleDeliverySimple(t *testing.T) {
 	}
 
 	// These should be received by the client.
-	for i, s := range samples {
-		m.Append(ctx, uint64(i), s)
+	for _, s := range samples {
+		m.Append(ctx, s)
 	}
 	m.Start()
 	defer m.Stop()
@@ -290,8 +290,8 @@ func TestSampleDeliveryMultiShard(t *testing.T) {
 
 	c.expectSamples(samples)
 	// These should be received by the client.
-	for i, s := range samples {
-		m.Append(ctx, uint64(i), s)
+	for _, s := range samples {
+		m.Append(ctx, s)
 	}
 
 	c.waitForExpectedSamples(t)
@@ -347,16 +347,16 @@ func TestSampleDeliveryTimeout(t *testing.T) {
 
 	// Send the samples twice, waiting for the samples in the meantime.
 	c.expectSamples(samples1)
-	for i, s := range samples1 {
-		m.Append(ctx, uint64(i), s)
+	for _, s := range samples1 {
+		m.Append(ctx, s)
 	}
 	c.waitForExpectedSamples(t)
 
 	c.resetExpectedSamples()
 	c.expectSamples(samples2)
 
-	for i, s := range samples2 {
-		m.Append(ctx, uint64(i), s)
+	for _, s := range samples2 {
+		m.Append(ctx, s)
 	}
 	c.waitForExpectedSamples(t)
 }
@@ -400,8 +400,8 @@ func TestSampleDeliveryOrder(t *testing.T) {
 	m.Start()
 	defer m.Stop()
 	// These should be received by the client.
-	for i, s := range samples {
-		m.Append(ctx, uint64(i), s)
+	for _, s := range samples {
+		m.Append(ctx, s)
 	}
 
 	c.waitForExpectedSamples(t)
@@ -519,8 +519,8 @@ func TestSpawnNotMoreThanMaxConcurrentSendsGoroutines(t *testing.T) {
 
 	ctx := context.Background()
 
-	for i, s := range samples {
-		m.Append(ctx, uint64(i), s)
+	for _, s := range samples {
+		m.Append(ctx, s)
 	}
 
 	// Wait until the runShard() loops drain the queue.  If things went right, it

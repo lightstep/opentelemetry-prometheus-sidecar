@@ -845,7 +845,7 @@ func TestSampleBuilder(t *testing.T) {
 
 				for k := 0; len(c.input) > 0; k++ {
 					var err error
-					s, _, c.input, err = b.next(context.Background(), c.input)
+					s, c.input, err = b.next(context.Background(), c.input)
 
 					result = append(result, s)
 

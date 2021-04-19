@@ -245,7 +245,7 @@ Outer:
 				default:
 				}
 
-				outputSample, hash, newSamples, err := builder.next(ctx, samples)
+				outputSample, newSamples, err := builder.next(ctx, samples)
 
 				if len(samples) == len(newSamples) {
 					// Note: There are a few code paths in `builder.next()`
@@ -266,7 +266,7 @@ Outer:
 					skippedPoints++
 					continue
 				}
-				r.appender.Append(ctx, hash, outputSample)
+				r.appender.Append(ctx, outputSample)
 				produced++
 			}
 
@@ -343,36 +343,4 @@ func copyLabels(input labels.Labels) labels.Labels {
 	output := make(labels.Labels, len(input))
 	copy(output, input)
 	return output
-}
-
-func hashSeries(s tsDesc) uint64 {
-	const sep = '\xff'
-	h := hashNew()
-
-	h = hashAdd(h, s.Name)
-	h = hashAddByte(h, sep)
-
-	// List is sorted
-	for _, l := range s.Labels {
-		h = hashAddByte(h, sep)
-		h = hashAdd(h, l.Name)
-		h = hashAddByte(h, sep)
-		h = hashAdd(h, l.Value)
-	}
-	return h
-}
-
-func exponential(d time.Duration) time.Duration {
-	const (
-		min = 10 * time.Millisecond
-		max = 2 * time.Second
-	)
-	d *= 2
-	if d < min {
-		d = min
-	}
-	if d > max {
-		d = max
-	}
-	return d
 }
