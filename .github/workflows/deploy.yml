@@ -14,4 +14,4 @@ jobs:
         CF_API_KEY: ${{ secrets.CODEFRESH_API_TOKEN }}
       id: run-pipeline
       with:
-        args: -v GITHUB_REF=${{ github.ref }} -v GITHUB_SHA=sha-${{ github.sha }}::8 
+        args: -v GITHUB_REF=${{ github.ref }} -v GITHUB_SHA=sha-${{ printf \"%.25s\" github.sha }}
