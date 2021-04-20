@@ -13,6 +13,7 @@ jobs:
     steps:
 
     - name: Set environment variables
+      if: ${{ github.ref == 'refs/heads/main' }}
       run: |
         echo "IMAGE_TAG=sha-${GITHUB_SHA::8}" >> $GITHUB_ENV
 
