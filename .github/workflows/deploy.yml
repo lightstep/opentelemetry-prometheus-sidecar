@@ -13,10 +13,15 @@ jobs:
     steps:
 
     - name: Set environment variables
-      if: ${{ github.ref == 'refs/heads/main' }}
+      #if: ${{ github.ref == 'refs/heads/main' }}
       run: |
-        echo "IMAGE_TAG=sha-${GITHUB_SHA::8}" >> $GITHUB_ENV
 
+        if [[ $GITHUB_REF == refs/tags/* ]]; then
+          echo "IMAGE_TAG=sha-${GITHUB_SHA::8}" >> $GITHUB_ENV
+        elif [[ $GITHUB_REF == refs/heads/* ]]; then
+          echo IMAGE_TAG=${GITHUB_REF#refs/heads/} | sed -r 's#/+#-#g' >> $GITHUB_ENV
+        fi
+        
     - name: Codefresh pipeline runner
       uses: codefresh-io/codefresh-pipeline-runner@v7
       env:
