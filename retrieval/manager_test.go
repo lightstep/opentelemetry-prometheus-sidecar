@@ -43,7 +43,7 @@ type nopAppender struct {
 	samples []*metric_pb.Metric
 }
 
-func (a *nopAppender) Append(_ context.Context, hash uint64, s *metric_pb.Metric) error {
+func (a *nopAppender) Append(_ context.Context, s *metric_pb.Metric) error {
 	a.lock.Lock()
 	defer a.lock.Unlock()
 
@@ -238,34 +238,5 @@ func TestReader_ProgressFile(t *testing.T) {
 	}
 	if offset != 12345 {
 		t.Fatalf("expected progress offset %d but got %d", 12345, offset)
-	}
-}
-
-func TestHashSeries(t *testing.T) {
-	a := tsDesc{
-		Name:   "mtype1",
-		Labels: labels.Labels{{"l3", "l3"}, {"l4", "l4"}},
-	}
-	// Hash a many times and ensure the hash doesn't change. This checks that we don't produce different
-	// hashes by unordered map iteration.
-	hash := hashSeries(a)
-	for i := 0; i < 1000; i++ {
-		if hashSeries(a) != hash {
-			t.Fatalf("hash changed for same series")
-		}
-	}
-	for _, b := range []tsDesc{
-		{
-			Name:   "mtype2",
-			Labels: labels.Labels{{"l3", "l3"}, {"l4", "l4"}},
-		},
-		{
-			Name:   "mtype1",
-			Labels: labels.Labels{{"l3", "l3-"}, {"l4", "l4"}},
-		},
-	} {
-		if hashSeries(b) == hash {
-			t.Fatalf("hash for different series did not change")
-		}
 	}
 }

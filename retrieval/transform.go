@@ -40,12 +40,9 @@ var (
 	errHistogramMetadataMissing = errors.New("histogram metadata missing")
 )
 
-// Appender appends a time series with exactly one data point. A hash for the series
-// (but not the data point) must be provided.
-// The client may cache the computed hash more easily, which is why its part of the call
-// and not done by the Appender's implementation.
+// Appender appends a time series with exactly one data point.
 type Appender interface {
-	Append(ctx context.Context, hash uint64, s *metric_pb.Metric) error
+	Append(ctx context.Context, s *metric_pb.Metric) error
 }
 
 type sampleBuilder struct {
@@ -60,25 +57,25 @@ type sampleBuilder struct {
 // nil timeseries and a nil error.  These are observable as the difference between
 // "processed" and "produced" in the calling code (see manager.go).  TODO: Add
 // a label to identify each of the paths below.
-func (b *sampleBuilder) next(ctx context.Context, samples []record.RefSample) (*metric_pb.Metric, uint64, []record.RefSample, error) {
+func (b *sampleBuilder) next(ctx context.Context, samples []record.RefSample) (*metric_pb.Metric, []record.RefSample, error) {
 	sample := samples[0]
 	tailSamples := samples[1:]
 
 	if math.IsNaN(sample.V) {
 		// Note: This includes stale markers, which are
 		// specific NaN values defined in prometheus/tsdb.
-		return nil, 0, tailSamples, nil
+		return nil, tailSamples, nil
 	}
 
 	entry, err := b.series.get(ctx, sample.Ref)
 
 	if err != nil {
-		return nil, 0, tailSamples, errors.Wrap(err, "get series information")
+		return nil, tailSamples, errors.Wrap(err, "get series information")
 	}
 
 	if entry == nil {
 		// The point belongs to a filtered-out series.
-		return nil, 0, tailSamples, nil
+		return nil, tailSamples, nil
 	}
 
 	// Allocate the proto and fill in its metadata.
@@ -131,7 +128,7 @@ func (b *sampleBuilder) next(ctx context.Context, samples []record.RefSample) (*
 				DoubleGauge: doubleGauge(labels, sample.T, sample.V),
 			}
 		default:
-			return nil, 0, tailSamples, errors.Errorf("unexpected metric name suffix %q", entry.suffix)
+			return nil, tailSamples, errors.Errorf("unexpected metric name suffix %q", entry.suffix)
 		}
 
 	case textparse.MetricTypeHistogram:
@@ -141,7 +138,7 @@ func (b *sampleBuilder) next(ctx context.Context, samples []record.RefSample) (*
 		var value *metric_pb.DoubleHistogramDataPoint
 		value, resetTimestamp, tailSamples, err = b.buildHistogram(ctx, entry.metadata.Metric, entry.lset, samples)
 		if value == nil || err != nil {
-			return nil, 0, tailSamples, err
+			return nil, tailSamples, err
 		}
 
 		value.Labels = labels
@@ -160,7 +157,7 @@ func (b *sampleBuilder) next(ctx context.Context, samples []record.RefSample) (*
 		}
 
 	default:
-		return nil, 0, tailSamples, errors.Errorf("unexpected metric type %s", entry.metadata.MetricType)
+		return nil, tailSamples, errors.Errorf("unexpected metric type %s", entry.metadata.MetricType)
 	}
 
 	if b.maxPointAge > 0 {
@@ -168,10 +165,10 @@ func (b *sampleBuilder) next(ctx context.Context, samples []record.RefSample) (*
 		if time.Since(when) > b.maxPointAge {
 			// Note: Counts as a skipped point (as if
 			// filtered out), not a dropped point.
-			return nil, 0, tailSamples, nil
+			return nil, tailSamples, nil
 		}
 	}
-	return point, entry.hash, tailSamples, nil
+	return point, tailSamples, nil
 }
 
 func protoLabel(l labels.Label) *common_pb.KeyValue {

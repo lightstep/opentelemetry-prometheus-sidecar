@@ -8,6 +8,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+### Changed
+
+- Performance: do not require in-order writes, use random load balancing. (#198)
+
 ## [0.22.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.22.0) - 2021-04-16
 
 ### Added
