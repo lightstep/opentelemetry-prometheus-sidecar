@@ -47,7 +47,7 @@ type SizedMetric struct {
 
 // Appender appends a time series with exactly one data point.
 type Appender interface {
-	Append(ctx context.Context, s SizedMetric)
+	Append(s SizedMetric)
 }
 
 type sampleBuilder struct {

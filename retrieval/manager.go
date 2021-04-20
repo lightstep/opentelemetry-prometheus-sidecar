@@ -273,9 +273,7 @@ Outer:
 				produced++
 			}
 
-			for _, out := range r.reduceSamples(outputs) {
-				r.appender.Append(ctx, out)
-			}
+			r.appendSamples(outputs)
 
 			if droppedPoints != 0 {
 				common.DroppedPoints.Add(ctx, int64(droppedPoints),
@@ -352,7 +350,7 @@ func copyLabels(input labels.Labels) labels.Labels {
 	return output
 }
 
-func (r *PrometheusReader) reduceSamples(samples []*metric_pb.Metric) []SizedMetric {
+func (r *PrometheusReader) appendSamples(samples []*metric_pb.Metric) {
 	const batchLimit = 1 << 12 // TODO
 
 	smap := map[string][]*metric_pb.Metric{}
@@ -360,8 +358,6 @@ func (r *PrometheusReader) reduceSamples(samples []*metric_pb.Metric) []SizedMet
 	for _, s := range samples {
 		smap[s.Name] = append(smap[s.Name], s)
 	}
-
-	var res []SizedMetric
 
 	for name, pms := range smap {
 		total := len(name)
@@ -387,14 +383,12 @@ func (r *PrometheusReader) reduceSamples(samples []*metric_pb.Metric) []SizedMet
 				pms = pms[1:]
 			}
 
-			res = append(res, SizedMetric{
+			r.appender.Append(SizedMetric{
 				Metric: pm0,
 				Size:   total, // Note: approximate is OK.
 			})
 		}
 	}
-
-	return res
 }
 
 // combine assumes that each Metric contains one data point and tries

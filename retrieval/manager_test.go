@@ -43,7 +43,7 @@ type nopAppender struct {
 	samples []SizedMetric
 }
 
-func (a *nopAppender) Append(_ context.Context, s SizedMetric) {
+func (a *nopAppender) Append(s SizedMetric) {
 	a.lock.Lock()
 	defer a.lock.Unlock()
 

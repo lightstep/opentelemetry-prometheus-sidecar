@@ -217,8 +217,8 @@ func NewQueueManager(logger log.Logger, cfg promconfig.QueueConfig, timeout time
 }
 
 // Append queues a sample to be sent to the OpenTelemetry API.
-func (t *QueueManager) Append(ctx context.Context, sample retrieval.SizedMetric) {
-	t.queueLengthCounter.Add(ctx, 1)
+func (t *QueueManager) Append(sample retrieval.SizedMetric) {
+	t.queueLengthCounter.Add(context.Background(), 1)
 	t.samplesIn.incr(1)
 	shards := t.shards.shards
 
