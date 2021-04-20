@@ -267,3 +267,5 @@ func TestCombinePair(t *testing.T) {
 	require.True(t, combine(p1, p2))
 	require.Equal(t, p1, otlptest.DoubleGauge("test", "", "", dp1, dp2))
 }
+
+// TODO: Test appendSamples() batching logic
