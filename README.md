@@ -478,6 +478,7 @@ Metrics from the subordinate process can help identify issues once the first met
 | sidecar.series.current | gauge | number of series refs in the series cache | `status`: live, filtered, invalid |
 | sidecar.wal.size | gauge | size of the prometheus WAL | |
 | sidecar.wal.offset | gauge | current offset in the prometheus WAL | |
+| sidecar.refs.collected | counter | number of WAL series refs removed from memory by garbage collection | `error`: true, false |
 | sidecar.segment.opens | counter | number of WAL segment open() calls | |
 | sidecar.segment.reads | counter | number of WAL segment read() calls | |
 | sidecar.segment.bytes | counter | number of WAL segment bytes read | |
