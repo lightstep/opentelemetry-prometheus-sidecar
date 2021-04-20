@@ -24,6 +24,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -80,7 +81,8 @@ var (
 		),
 	)
 
-	ErrSkipSegment = errors.New("skip truncated WAL segment")
+	ErrSkipSegment          = errors.New("skip truncated WAL segment")
+	ErrCheckpointInProgress = errors.New("checkpoint in progress, timeout exceeded")
 )
 
 type WalTailer interface {
@@ -107,6 +109,66 @@ type Tailer struct {
 	offset      int // Bytes read within the current reader.
 }
 
+type checkpointRef struct {
+	name  string
+	index int
+}
+
+// listCheckpoints used to ignore all checkpoints w/ .tmp extensions, this
+// is fine for most cases. In the case of the sidecar starting up, it's possible
+// that prometheus has decided to trigger a checkpoint before the sidecar has
+// caught up. This causes all sorts of problems w/ series references missing. To
+// address this, the sidecar must check if a checkpoint is underway
+func listCheckpoints(dir string) (refs []checkpointRef, err error) {
+	files, err := ioutil.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	for i := 0; i < len(files); i++ {
+		fi := files[i]
+		if !strings.HasPrefix(fi.Name(), checkpointPrefix) {
+			continue
+		}
+		if !fi.IsDir() {
+			return nil, errors.Errorf("checkpoint %s is not a directory", fi.Name())
+		}
+		parts := strings.Split(fi.Name(), ".")
+		if len(parts) < 2 {
+			continue
+		}
+
+		idx, err := strconv.Atoi(parts[1])
+		if err != nil {
+			continue
+		}
+
+		refs = append(refs, checkpointRef{name: fi.Name(), index: idx})
+	}
+
+	sort.Slice(refs, func(i, j int) bool {
+		return refs[i].index < refs[j].index
+	})
+
+	return refs, nil
+}
+
+// lastCheckpoint returns the directory name and index of the most recent checkpoint.
+// If dir does not contain any checkpoints, ErrNotFound is returned.
+func lastCheckpoint(dir string) (string, int, error) {
+	checkpoints, err := listCheckpoints(dir)
+	if err != nil {
+		return "", 0, err
+	}
+
+	if len(checkpoints) == 0 {
+		return "", 0, record.ErrNotFound
+	}
+
+	checkpoint := checkpoints[len(checkpoints)-1]
+	return filepath.Join(dir, checkpoint.name), checkpoint.index, nil
+}
+
 // Tail the prometheus/tsdb write ahead log in the given directory. Checkpoints
 // are read before reading any WAL segments.
 // Tailing may fail if we are racing with the DB itself in deleting obsolete checkpoints
@@ -118,7 +180,28 @@ func Tail(ctx context.Context, logger log.Logger, dir string, promMon *prometheu
 		logger:  logger,
 		monitor: promMon,
 	}
-	cpdir, k, err := wal.LastCheckpoint(dir)
+
+	var cpdir string
+	var k int
+	var err error
+	startTime := time.Now()
+	for {
+		cpdir, k, err = lastCheckpoint(dir)
+		if time.Since(startTime) > config.DefaultCheckpointInProgressPeriod {
+			return nil, ErrCheckpointInProgress
+		}
+		if strings.HasSuffix(cpdir, ".tmp") {
+			doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
+				level.Warn(t.logger).Log(
+					"msg", "checkpoint in progress, waiting",
+					"checkpoint", cpdir,
+				)
+			})
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+		break
+	}
 
 	if errors.Cause(err) == record.ErrNotFound {
 		// TODO: Test this code path, where the sidecar starts before
