@@ -40,9 +40,14 @@ var (
 	errHistogramMetadataMissing = errors.New("histogram metadata missing")
 )
 
+type SizedMetric struct {
+	*metric_pb.Metric
+	Size int
+}
+
 // Appender appends a time series with exactly one data point.
 type Appender interface {
-	Append(ctx context.Context, s *metric_pb.Metric) error
+	Append(ctx context.Context, s SizedMetric)
 }
 
 type sampleBuilder struct {

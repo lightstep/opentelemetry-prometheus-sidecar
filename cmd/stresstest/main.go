@@ -29,8 +29,10 @@ import (
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/internal/otlptest"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/otlp"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/retrieval"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	grpcMetadata "google.golang.org/grpc/metadata"
+	"google.golang.org/protobuf/proto"
 )
 
 type (
@@ -128,7 +130,10 @@ func Main() bool {
 
 	ctx := context.Background()
 	for {
-		queueManager.Append(ctx, m)
+		queueManager.Append(ctx, retrieval.SizedMetric{
+			Metric: m,
+			Size:   proto.Size(m),
+		})
 	}
 }
 

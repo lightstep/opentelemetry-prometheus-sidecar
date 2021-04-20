@@ -40,18 +40,17 @@ import (
 
 type nopAppender struct {
 	lock    sync.Mutex
-	samples []*metric_pb.Metric
+	samples []SizedMetric
 }
 
-func (a *nopAppender) Append(_ context.Context, s *metric_pb.Metric) error {
+func (a *nopAppender) Append(_ context.Context, s SizedMetric) {
 	a.lock.Lock()
 	defer a.lock.Unlock()
 
 	a.samples = append(a.samples, s)
-	return nil
 }
 
-func (a *nopAppender) getSamples() []*metric_pb.Metric {
+func (a *nopAppender) getSamples() []SizedMetric {
 	a.lock.Lock()
 	defer a.lock.Unlock()
 
@@ -199,7 +198,7 @@ func TestReader_Progress(t *testing.T) {
 				t.Fatalf("unexpected record %d for offset %d", i, tseconds)
 			}
 			return nil
-		}, resourceMetric(s))
+		}, resourceMetric(s.Metric))
 	}
 
 	require.EqualValues(t, map[string]bool{}, failingSet)
@@ -239,4 +238,32 @@ func TestReader_ProgressFile(t *testing.T) {
 	if offset != 12345 {
 		t.Fatalf("expected progress offset %d but got %d", 12345, offset)
 	}
+}
+
+func TestCombinePair(t *testing.T) {
+	t1 := time.Now()
+	t2 := t1.Add(time.Second)
+	t3 := t2.Add(time.Second)
+	t4 := t3.Add(time.Second)
+
+	dp1 := otlptest.DoubleDataPoint(
+		otlptest.Labels(
+			otlptest.Label("A", "B"),
+			otlptest.Label("C", "D"),
+		),
+		t1, t2, 10,
+	)
+	dp2 := otlptest.DoubleDataPoint(
+		otlptest.Labels(
+			otlptest.Label("A", "C"),
+			otlptest.Label("B", "D"),
+		),
+		t3, t4, 20,
+	)
+
+	p1 := otlptest.DoubleGauge("test", "", "", dp1)
+	p2 := otlptest.DoubleGauge("test", "", "", dp2)
+
+	require.True(t, combine(p1, p2))
+	require.Equal(t, p1, otlptest.DoubleGauge("test", "", "", dp1, dp2))
 }

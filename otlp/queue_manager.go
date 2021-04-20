@@ -26,6 +26,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/retrieval"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry/doevery"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/version"
@@ -216,8 +217,7 @@ func NewQueueManager(logger log.Logger, cfg promconfig.QueueConfig, timeout time
 }
 
 // Append queues a sample to be sent to the OpenTelemetry API.
-// Always returns nil.
-func (t *QueueManager) Append(ctx context.Context, sample *metricspb.Metric) error {
+func (t *QueueManager) Append(ctx context.Context, sample retrieval.SizedMetric) {
 	t.queueLengthCounter.Add(ctx, 1)
 	t.samplesIn.incr(1)
 	shards := t.shards.shards
@@ -226,11 +226,9 @@ func (t *QueueManager) Append(ctx context.Context, sample *metricspb.Metric) err
 
 	shardIndex := t.rnd.Intn(len(shards))
 
-	shards[shardIndex].queue <- queueEntry{sample: sample}
+	shards[shardIndex].queue <- sample
 
 	t.shardsMtx.RUnlock()
-
-	return nil
 }
 
 // Start the queue manager sending samples to the remote storage.
@@ -414,17 +412,13 @@ func (t *QueueManager) reshard(n int) {
 	oldShards.stop()
 }
 
-type queueEntry struct {
-	sample *metricspb.Metric
-}
-
 type shard struct {
-	queue chan queueEntry
+	queue chan retrieval.SizedMetric
 }
 
 func newShard(cfg promconfig.QueueConfig) shard {
 	return shard{
-		queue: make(chan queueEntry, cfg.Capacity),
+		queue: make(chan retrieval.SizedMetric, cfg.Capacity),
 	}
 }
 
@@ -486,7 +480,10 @@ func (s *shardCollection) runShard(i int) {
 	for {
 		select {
 		case entry, ok := <-shard.queue:
-			sample := entry.sample
+			sample := entry.Metric
+
+			// TODO: use entry Size
+			_ = entry.Size
 
 			if !ok {
 				// The queue was closed by a stop() event.  Flush and return.
