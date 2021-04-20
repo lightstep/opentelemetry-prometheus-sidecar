@@ -2,9 +2,9 @@ name: Deploy
 on:
   push:
     tags:
-      - 'd*'
+      - 'v*'
     branches:
-      - '**'
+      - main
 
 env:
   GITHUB_SHA: ${{ github.sha }}
