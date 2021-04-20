@@ -14,7 +14,8 @@ jobs:
 
     - name: setup
       shell: bash
-      run: export SHORT_GITHUB_SHA=sha-${GITHUB_SHA::8}
+      run: env
+
 
     - name: Codefresh pipeline runner
       uses: codefresh-io/codefresh-pipeline-runner@v7
