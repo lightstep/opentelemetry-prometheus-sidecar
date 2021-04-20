@@ -218,7 +218,7 @@ func Tail(ctx context.Context, logger log.Logger, dir string, promMon *prometheu
 	} else {
 		level.Info(logger).Log(
 			"msg", "starting from checkpoint",
-			"directory", dir,
+			"directory", cpdir,
 		)
 
 		// Open the entire checkpoint first. It has to be consumed before
