@@ -220,12 +220,11 @@ func NewQueueManager(logger log.Logger, cfg promconfig.QueueConfig, timeout time
 func (t *QueueManager) Append(ctx context.Context, sample *metricspb.Metric) error {
 	t.queueLengthCounter.Add(ctx, 1)
 	t.samplesIn.incr(1)
-	shards := t.shards.shards
 
 	t.shardsMtx.RLock()
 
+	shards := t.shards.shards
 	shardIndex := t.rnd.Intn(len(shards))
-
 	shards[shardIndex].queue <- queueEntry{sample: sample}
 
 	t.shardsMtx.RUnlock()
