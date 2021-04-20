@@ -81,8 +81,7 @@ var (
 		),
 	)
 
-	ErrSkipSegment          = errors.New("skip truncated WAL segment")
-	ErrCheckpointInProgress = errors.New("checkpoint in progress, timeout exceeded")
+	ErrSkipSegment = errors.New("skip truncated WAL segment")
 )
 
 type WalTailer interface {
@@ -118,7 +117,16 @@ type checkpointRef struct {
 // is fine for most cases. In the case of the sidecar starting up, it's possible
 // that prometheus has decided to trigger a checkpoint before the sidecar has
 // caught up. This causes all sorts of problems w/ series references missing. To
-// address this, the sidecar must check if a checkpoint is underway
+// address this, the sidecar must check if a checkpoint is underway. The contents
+// of the WAL directory may look like this:
+//  wal/
+//      checkpoint.00000011.tmp
+//      checkpoint.00000121.tmp
+//      checkpoint.00009910
+//      checkpoint.00009933.tmp
+//
+// The old .tmp directories may have been leftover from previous checkpointing
+// that failed during the checkpoint and they can be safely ignored.
 func listCheckpoints(dir string) (refs []checkpointRef, err error) {
 	files, err := ioutil.ReadDir(dir)
 	if err != nil {
@@ -184,11 +192,14 @@ func Tail(ctx context.Context, logger log.Logger, dir string, promMon *prometheu
 	var cpdir string
 	var k int
 	var err error
-	startTime := time.Now()
+	ctx, cancel := context.WithTimeout(t.ctx, config.DefaultCheckpointInProgressPeriod)
+	defer cancel()
 	for {
 		cpdir, k, err = lastCheckpoint(dir)
-		if time.Since(startTime) > config.DefaultCheckpointInProgressPeriod {
-			return nil, ErrCheckpointInProgress
+		select {
+		case <-ctx.Done():
+			return nil, errors.Wrap(ctx.Err(), "checkpoint in progress")
+		default:
 		}
 		if strings.HasSuffix(cpdir, ".tmp") {
 			doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
