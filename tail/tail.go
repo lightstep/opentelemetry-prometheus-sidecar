@@ -197,7 +197,7 @@ func Tail(ctx context.Context, logger log.Logger, dir string, promMon *prometheu
 					"checkpoint", cpdir,
 				)
 			})
-			time.Sleep(100 * time.Millisecond)
+			time.Sleep(1 * time.Second)
 			continue
 		}
 		break
