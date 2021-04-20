@@ -4,7 +4,7 @@ on:
     tags:
       - 'd*'
     branches:
-      - 'bobclarke/*'
+      - 'bobclarke*'
 
 env:
   GITHUB_SHA: ${{ github.sha }}
