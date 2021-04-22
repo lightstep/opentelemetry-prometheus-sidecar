@@ -10,12 +10,14 @@ on:
      - 'bobclarke*'
 
 jobs:
+
+  #------------------------------------------------------------------
   setup:
     runs-on: ubuntu-latest
     steps:
     - name: determine-image-tag
-      # Figure out whether this is a tag push or a merge to main and set
-      # an IMAGE_TAG variable acordingly 
+      # Figure out whether this is a tag push or a merge to main 
+      # and set an IMAGE_TAG variable acordingly 
       run: |
 
         GITHUB_SHA=${{ github.event.workflow_run.head_sha }}
@@ -34,13 +36,14 @@ jobs:
         cat share/image_tag.txt
     
     - name: save-image-tag-to-file
-      # Upload the file containing the IMAGE_TAG info so that the next job 
-      # can read it
+      # Upload the file containing the IMAGE_TAG info so that 
+      # the next job can read it
       uses: actions/upload-artifact@master
       with:
         name: image-tag
         path: share 
 
+#------------------------------------------------------------------
 
   deploy-staging:
     # Job to deploy to staging
@@ -67,4 +70,23 @@ jobs:
  #     id: run-pipeline
  #     with:
  #       args: -v IMAGE_TAG=${{ env.IMAGE_TAG }}
+
+#------------------------------------------------------------------
+
+   deploy-public:
+    # Job to deploy to staging
+    needs: setup
+    environment:
+      name: public    
+    runs-on: ubuntu-latest
+    steps:
+    - name: get-image-tag-from-file
+      # Read the image tag from file
+      uses: actions/download-artifact@master
+      with:
+        name: image-tag
+        path: share
+      run:
+        ls -al share
+        cat share/image_tag.txt
 
