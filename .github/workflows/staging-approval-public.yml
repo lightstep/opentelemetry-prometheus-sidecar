@@ -1,4 +1,4 @@
-name: Stage Approve Deploy
+name: staging-approval-public
 on:
   workflow_run:
     # Triger this workflow if either the "Build and push Docker images"
