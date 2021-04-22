@@ -5,15 +5,13 @@ on:
     # or the "Release and Tag" complete
     workflows: ["Build and push Docker images", "Release and Tag"]
     types: [completed]
-  push:
-    branches:
-     - 'bobclarke*'
 
 jobs:
 
   #------------------------------------------------------------------
   setup:
     runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     steps:
     - name: determine-image-tag
       # Figure out whether this is a tag push or a merge to main 
