@@ -73,7 +73,7 @@ jobs:
 
 #------------------------------------------------------------------
 
-   deploy-public:
+  deploy-public:
     # Job to deploy to staging
     needs: setup
     environment:
