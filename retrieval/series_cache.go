@@ -130,6 +130,16 @@ var (
 		"Number of Metric series lookups",
 	)
 
+	seriesCacheRefsCollected = telemetry.NewCounter(
+		"sidecar.refs.collected",
+		"Number of series refs garbage collected",
+	)
+
+	seriesRefsNotFoundCounter = sidecar.OTelMeterMust.NewInt64Counter(
+		"sidecar.refs.notfound",
+		metric.WithDescription("Number of series ref lookups that were not found"),
+	)
+
 	errSeriesNotFound        = fmt.Errorf("series ref not found")
 	errSeriesMissingMetadata = fmt.Errorf("series ref missing metadata")
 )
@@ -218,7 +228,10 @@ func (c *seriesCache) run(ctx context.Context) {
 
 // garbageCollect drops obsolete cache entries based on the contents of the most
 // recent checkpoint.
-func (c *seriesCache) garbageCollect() error {
+func (c *seriesCache) garbageCollect() (retErr error) {
+	var collected int64
+	defer seriesCacheRefsCollected.Add(context.Background(), collected, &retErr)
+
 	cpDir, cpNum, err := wal.LastCheckpoint(c.dir)
 	if errors.Cause(err) == record.ErrNotFound {
 		return nil // Nothing to do.
@@ -270,6 +283,7 @@ func (c *seriesCache) garbageCollect() error {
 	for ref, entry := range c.entries {
 		if _, ok := exists[ref]; !ok && entry.maxSegment <= cpNum {
 			delete(c.entries, ref)
+			collected++
 		}
 	}
 	c.lastCheckpoint = cpNum
@@ -282,6 +296,15 @@ func (c *seriesCache) get(ctx context.Context, ref uint64) (*seriesCacheEntry, e
 	c.mtx.Unlock()
 
 	if !ok {
+		// This is a very serious condition, probably
+		// indicates some kind of incomplete checkpoint was
+		// read.
+		//
+		// Since these cannot be tracked distinctly from the
+		// other conditions below when observed by the caller
+		// (presently, because we do not use status codes,
+		// only error=true or error=false).
+		seriesRefsNotFoundCounter.Add(context.Background(), 1)
 		return nil, errSeriesNotFound
 	}
 

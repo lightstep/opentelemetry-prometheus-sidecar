@@ -220,12 +220,11 @@ func NewQueueManager(logger log.Logger, cfg promconfig.QueueConfig, timeout time
 func (t *QueueManager) Append(sample retrieval.SizedMetric) {
 	t.queueLengthCounter.Add(context.Background(), 1)
 	t.samplesIn.incr(1)
-	shards := t.shards.shards
 
 	t.shardsMtx.RLock()
 
+	shards := t.shards.shards
 	shardIndex := t.rnd.Intn(len(shards))
-
 	shards[shardIndex].queue <- sample
 
 	t.shardsMtx.RUnlock()
