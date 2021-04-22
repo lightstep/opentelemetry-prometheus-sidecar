@@ -58,10 +58,18 @@ jobs:
       with:
         name: image-tag
         path: share
+
     - name: debug    
       run: |
         ls -al share
-        cat share/image_tag.txt
+        echo reading image_tag as $(cat share/image_tag.txt)
+        echo "IMAGE_TAG=$(cat share/image_tag.txt)" >> $GITHUB_ENV
+        echo IMAGE_TAG is $IMAGE_TAG
+
+    - name: debug2
+      run: |
+        echo IMAGE_TAG is $IMAGE_TAG
+
 
  #   - name: Codefresh pipeline runner
  #     uses: codefresh-io/codefresh-pipeline-runner@v7
