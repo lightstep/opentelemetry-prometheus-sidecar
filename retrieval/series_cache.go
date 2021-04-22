@@ -104,8 +104,8 @@ type seriesCacheEntry struct {
 	// The value and timestamp of the latest reset. The timestamp is when it
 	// occurred, and the value is what it was reset to. resetValue will initially
 	// be the value of the first sample, and then 0 for every subsequent reset.
-	resetValue     float64
-	resetTimestamp int64
+	resetTimestamp    int64
+	previousTimestamp int64
 
 	// Value of the most recent point seen for the time series. If a new value is
 	// less than the previous, then the series has reset.
@@ -332,19 +332,18 @@ func (c *seriesCache) getResetAdjusted(e *seriesCacheEntry, t int64, v float64) 
 	e.hasReset = true
 	if !hasReset {
 		e.resetTimestamp = t
-		e.resetValue = v
+		e.previousTimestamp = t
 		e.previousValue = v
-		// If we just initialized the reset timestamp, record a zero (i.e., reset).
-		// The next sample will be considered relative to resetValue.
-		return t, 0
+		return t, v
 	}
 	if v < e.previousValue {
-		// If the value has dropped, there's been a reset.
-		e.resetValue = 0
-		e.resetTimestamp = t
+		// If the value has dropped, there's been a reset.  Use the
+		// previous timestamp as the reset time.
+		e.resetTimestamp = e.previousTimestamp
 	}
 	e.previousValue = v
-	return e.resetTimestamp, v - e.resetValue
+	e.previousTimestamp = t
+	return e.resetTimestamp, v
 }
 
 // set the label set for the given reference.
