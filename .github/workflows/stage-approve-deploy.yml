@@ -57,7 +57,6 @@ jobs:
         name: image-tag
         path: share
 
-
     - name: set-IMAGE_TAG-variable
       run: |
         ls -al share
@@ -93,8 +92,25 @@ jobs:
       with:
         name: image-tag
         path: share
-    - name: debug    
+
+    - name: set-IMAGE_TAG-variable
       run: |
         ls -al share
-        cat share/image_tag.txt
+        echo reading image_tag as $(cat share/image_tag.txt)
+        echo "IMAGE_TAG=$(cat share/image_tag.txt)" >> $GITHUB_ENV
+        echo IMAGE_TAG is $IMAGE_TAG
+
+    - name: debug
+      run: |
+        echo IMAGE_TAG is $IMAGE_TAG
+
+    - name: codefresh-pipeline-runner
+      uses: codefresh-io/codefresh-pipeline-runner@v7
+      env:
+        PIPELINE_NAME: 'otel-sidecar-cicd/deploy-to-public'
+        CF_API_KEY: ${{ secrets.CODEFRESH_API_TOKEN }}
+      id: run-pipeline
+      with:
+        args: -v IMAGE_TAG=${{ env.IMAGE_TAG }}
+
 
