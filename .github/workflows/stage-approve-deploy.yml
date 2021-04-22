@@ -58,6 +58,7 @@ jobs:
       with:
         name: image-tag
         path: share
+    - name: debug    
       run:
         ls -al share
         cat share/image_tag.txt
@@ -86,6 +87,7 @@ jobs:
       with:
         name: image-tag
         path: share
+    - name: debug    
       run:
         ls -al share
         cat share/image_tag.txt
