@@ -128,9 +128,8 @@ func Main() bool {
 		),
 	)
 
-	ctx := context.Background()
 	for {
-		queueManager.Append(ctx, retrieval.SizedMetric{
+		queueManager.Append(retrieval.SizedMetric{
 			Metric: m,
 			Size:   proto.Size(m),
 		})
