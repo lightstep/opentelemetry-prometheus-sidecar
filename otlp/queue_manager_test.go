@@ -205,7 +205,6 @@ func sizeMetric(s *metric_pb.Metric) retrieval.SizedMetric {
 }
 
 func TestSampleDeliverySimple(t *testing.T) {
-	ctx := context.Background()
 	dir, err := ioutil.TempDir("", "test")
 	if err != nil {
 		t.Fatal(err)
@@ -246,7 +245,7 @@ func TestSampleDeliverySimple(t *testing.T) {
 
 	// These should be received by the client.
 	for _, s := range samples {
-		m.Append(ctx, sizeMetric(s))
+		m.Append(sizeMetric(s))
 	}
 	m.Start()
 	defer m.Stop()
@@ -255,7 +254,6 @@ func TestSampleDeliverySimple(t *testing.T) {
 }
 
 func TestSampleDeliveryMultiShard(t *testing.T) {
-	ctx := context.Background()
 	dir, err := ioutil.TempDir("", "test")
 	if err != nil {
 		t.Fatal(err)
@@ -300,7 +298,7 @@ func TestSampleDeliveryMultiShard(t *testing.T) {
 	c.expectSamples(samples)
 	// These should be received by the client.
 	for _, s := range samples {
-		m.Append(ctx, sizeMetric(s))
+		m.Append(sizeMetric(s))
 	}
 
 	c.waitForExpectedSamples(t)
@@ -352,12 +350,10 @@ func TestSampleDeliveryTimeout(t *testing.T) {
 	m.Start()
 	defer m.Stop()
 
-	ctx := context.Background()
-
 	// Send the samples twice, waiting for the samples in the meantime.
 	c.expectSamples(samples1)
 	for _, s := range samples1 {
-		m.Append(ctx, sizeMetric(s))
+		m.Append(sizeMetric(s))
 	}
 	c.waitForExpectedSamples(t)
 
@@ -365,7 +361,7 @@ func TestSampleDeliveryTimeout(t *testing.T) {
 	c.expectSamples(samples2)
 
 	for _, s := range samples2 {
-		m.Append(ctx, sizeMetric(s))
+		m.Append(sizeMetric(s))
 	}
 	c.waitForExpectedSamples(t)
 }
@@ -404,13 +400,11 @@ func TestSampleDeliveryOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ctx := context.Background()
-
 	m.Start()
 	defer m.Stop()
 	// These should be received by the client.
 	for _, s := range samples {
-		m.Append(ctx, sizeMetric(s))
+		m.Append(sizeMetric(s))
 	}
 
 	c.waitForExpectedSamples(t)
@@ -526,10 +520,8 @@ func TestSpawnNotMoreThanMaxConcurrentSendsGoroutines(t *testing.T) {
 		m.Stop()
 	}()
 
-	ctx := context.Background()
-
 	for _, s := range samples {
-		m.Append(ctx, sizeMetric(s))
+		m.Append(sizeMetric(s))
 	}
 
 	// Wait until the runShard() loops drain the queue.  If things went right, it
