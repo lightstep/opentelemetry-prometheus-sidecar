@@ -59,6 +59,7 @@ jobs:
         name: image-tag
         path: share
 
+
     - name: set-IMAGE_TAG-variable
       run: |
         ls -al share
@@ -66,7 +67,7 @@ jobs:
         echo "IMAGE_TAG=$(cat share/image_tag.txt)" >> $GITHUB_ENV
         echo IMAGE_TAG is $IMAGE_TAG
 
-    - name: debug2
+    - name: debug
       run: |
         echo IMAGE_TAG is $IMAGE_TAG
 
