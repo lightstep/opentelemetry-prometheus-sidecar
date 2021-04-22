@@ -451,13 +451,11 @@ func (c *seriesCache) lookup(ctx context.Context, ref uint64) (retErr error) {
 	}
 	// Handle label modifications for histograms early so we don't build the label map twice.
 	// We have to remove the 'le' label which defines the bucket boundary.
+	// Do accordingly for summaries and its 'quantile' label.
 	if meta.MetricType == textparse.MetricTypeHistogram {
-		for i, l := range entryLabels {
-			if l.Name == "le" {
-				entryLabels = append(entryLabels[:i], entryLabels[i+1:]...)
-				break
-			}
-		}
+		entryLabels = removeSingleLabel(entryLabels, "le")
+	} else if meta.MetricType == textparse.MetricTypeSummary {
+		entryLabels = removeSingleLabel(entryLabels, "quantile")
 	}
 
 	ts := tsDesc{
@@ -513,6 +511,15 @@ func (c *seriesCache) getMetricName(prefix, name string) string {
 		name = repl
 	}
 	return getMetricName(prefix, name)
+}
+
+func removeSingleLabel(lset labels.Labels, name string) labels.Labels {
+	for i, l := range lset {
+		if l.Name == name {
+			return append(lset[:i], lset[i+1:]...)
+		}
+	}
+	return lset
 }
 
 // matchFilters checks whether any of the supplied filters passes.

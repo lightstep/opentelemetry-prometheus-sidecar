@@ -435,8 +435,8 @@ func TestSampleBuilder(t *testing.T) {
 				"job1/instance1/metric1_a_count": &metadataEntry{Metric: "metric1_a_count", MetricType: textparse.MetricTypeGauge, ValueType: config.DOUBLE},
 			},
 			series: seriesMap{
-				1: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_sum"),
-				2: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1", "quantile", "0.5"),
+				1: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1", "quantile", "0.5"),
+				2: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_sum"),
 				3: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1_count"),
 				4: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric1", "quantile", "0.9"),
 				// Add another series that only deviates by having an extra label. We must properly detect a new summary.
@@ -447,13 +447,13 @@ func TestSampleBuilder(t *testing.T) {
 				7: labels.FromStrings("job", "job1", "instance", "instance1", "a", "b", "__name__", "metric1_a_count"),
 			},
 			input: []record.RefSample{
-				{Ref: 1, T: 1000, V: 55.1},
-				{Ref: 2, T: 1000, V: 0.3},
+				{Ref: 1, T: 1000, V: 0.3},
+				{Ref: 2, T: 1000, V: 55.1},
 				{Ref: 3, T: 1000, V: 10},
 				{Ref: 4, T: 1000, V: 0.6},
 				// Second sample set should actually be emitted.
-				{Ref: 1, T: 2000, V: 123.4},
-				{Ref: 2, T: 2000, V: 0.7},
+				{Ref: 1, T: 2000, V: 0.7},
+				{Ref: 2, T: 2000, V: 123.4},
 				{Ref: 3, T: 2000, V: 21},
 				{Ref: 4, T: 2000, V: 0.8},
 				// New summary without actual quantile values – should still work.
