@@ -649,13 +649,23 @@ func TestSampleBuilder(t *testing.T) {
 			name: "custom prefix",
 			series: seriesMap{
 				1: labels.FromStrings("job", "job1", "instance", "instance1", "a", "1", "__name__", "metric1"),
+				// Summary
+				2: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric2_sum"),
+				3: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric2", "quantile", "0.5"),
+				4: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric2_count"),
+
 			},
 			metadata: promtest.MetadataMap{
 				"job1/instance1/metric1": &metadataEntry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: config.DOUBLE},
+				"job1/instance1/metric2": &metadataEntry{Metric: "metric2", MetricType: textparse.MetricTypeSummary, ValueType: config.DOUBLE},
 			},
 			metricsPrefix: "test.otel.io/",
 			input: []record.RefSample{
 				{Ref: 1, T: 1000, V: 200},
+				// Summary points
+				{Ref: 2, T: 1000, V: 55.1},
+				{Ref: 3, T: 1000, V: 0.3},
+				{Ref: 4, T: 1000, V: 10},
 			},
 			result: []*metric_pb.Metric{
 				DoubleGaugePoint(
@@ -667,6 +677,18 @@ func TestSampleBuilder(t *testing.T) {
 					"test.otel.io/metric1",
 					time.Unix(1, 0),
 					200,
+				),
+				DoubleSummaryPoint(
+					Labels(
+						Label("instance", "instance1"),
+						Label("job", "job1"),
+					),
+					"test.otel.io/metric2",
+					time.Unix(1, 0),
+					time.Unix(1, 0),
+					0,
+					0,
+					DoubleSummaryQuantileValue(0.5, 0),
 				),
 			},
 		},
