@@ -526,14 +526,13 @@ func (t *Tailer) Read(b []byte) (int, error) {
 			// the block size is not aligned, we have a serious
 			// inconsistency. Return an ErrSkipSegment to restart
 			// the reader and skip ahead
-			doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
-				level.Error(t.logger).Log(
-					"msg", "truncated WAL segment",
-					"segment", currentSegment,
-					"offset", currentOffset,
-					"wal_contents", dirContents(t.dir),
-				)
-			})
+			level.Error(t.logger).Log(
+				"msg", "truncated WAL segment",
+				"segment", currentSegment,
+				"offset", currentOffset,
+				"wal_contents", dirContents(t.dir),
+			)
+
 			segmentSkipCounter.Add(t.ctx, 1)
 			return 0, ErrSkipSegment
 		}
@@ -565,19 +564,20 @@ func (t *Tailer) Read(b []byte) (int, error) {
 		next, err := openSegment(t.dir, nextSegment)
 
 		if err == record.ErrNotFound && promSeg > nextSegment {
-			t.SetCurrentSegment(promSeg)
-			level.Warn(t.logger).Log(
+			// It's possible for the sidecar to fall behind to a point where segments
+			// have been deleted before it has a chance to process them. We used to skip
+			// the segments in order to catch up, but the right thing to do is for the
+			// Tail to re-read the checkpoint. Skipped segments could contain series
+			// records which the sidecar won't have moving forward if we just skip
+			// the missing segments. That data will be in the checkpoint though.
+			level.Error(t.logger).Log(
 				"msg", "past WAL segment not found, sidecar may have dragged behind. Consider increasing min-shards, max-shards and max-timeseries-per-request values",
 				"segment", nextSegment,
 				"current", promSeg,
 				"wal_contents", dirContents(t.dir),
 			)
-			next, err = openSegment(t.dir, promSeg)
-			if err != nil {
-				return 0, errors.Wrap(err, "open next segment")
-			}
-			t.cur = next
-			continue
+			segmentSkipCounter.Add(t.ctx, 1)
+			return 0, ErrSkipSegment
 		}
 
 		if err != nil {
