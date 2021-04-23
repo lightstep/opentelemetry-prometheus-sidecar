@@ -451,13 +451,11 @@ func (c *seriesCache) lookup(ctx context.Context, ref uint64) (retErr error) {
 	}
 	// Handle label modifications for histograms early so we don't build the label map twice.
 	// We have to remove the 'le' label which defines the bucket boundary.
+	// Do accordingly for summaries and its 'quantile' label.
 	if meta.MetricType == textparse.MetricTypeHistogram {
-		for i, l := range entryLabels {
-			if l.Name == "le" {
-				entryLabels = append(entryLabels[:i], entryLabels[i+1:]...)
-				break
-			}
-		}
+		entryLabels = removeSingleLabel(entryLabels, "le")
+	} else if meta.MetricType == textparse.MetricTypeSummary {
+		entryLabels = removeSingleLabel(entryLabels, "quantile")
 	}
 
 	ts := tsDesc{
@@ -483,22 +481,12 @@ func (c *seriesCache) lookup(ctx context.Context, ref uint64) (retErr error) {
 			ts.ValueType = meta.ValueType
 		}
 	case textparse.MetricTypeSummary:
-		switch suffix {
-		case metricSuffixSum:
-			ts.Kind = config.CUMULATIVE
-			ts.ValueType = config.DOUBLE
-		case metricSuffixCount:
-			ts.Kind = config.CUMULATIVE
-			ts.ValueType = config.INT64
-		case "": // Actual quantiles.
-			ts.Kind = config.GAUGE
-			ts.ValueType = config.DOUBLE
-		default:
-			// Note: this branch has been seen for a
-			// _bucket suffix, indicating a mix of
-			// histogram and summary conventions.
-			failedReason = "invalid_suffix"
-			return errors.Errorf("unexpected summary suffix %q", suffix)
+		ts.Kind = config.CUMULATIVE
+		ts.ValueType = config.DOUBLE
+		// No need to re-compute the name for points
+		// without suffix, i.e. no _sum nor _count suffix.
+		if suffix != "" {
+			ts.Name = c.getMetricName(c.metricsPrefix, baseMetricName)
 		}
 	case textparse.MetricTypeHistogram:
 		// Note: It's unclear why this branch does not check for allowed
@@ -523,6 +511,15 @@ func (c *seriesCache) getMetricName(prefix, name string) string {
 		name = repl
 	}
 	return getMetricName(prefix, name)
+}
+
+func removeSingleLabel(lset labels.Labels, name string) labels.Labels {
+	for i, l := range lset {
+		if l.Name == name {
+			return append(lset[:i], lset[i+1:]...)
+		}
+	}
+	return lset
 }
 
 // matchFilters checks whether any of the supplied filters passes.
