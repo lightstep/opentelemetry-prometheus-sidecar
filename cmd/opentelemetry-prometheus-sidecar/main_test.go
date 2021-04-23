@@ -304,11 +304,18 @@ func TestSuperStackDump(t *testing.T) {
 	}()
 
 	go func() {
-		for _ = range ms.metrics {
+		for {
 			// Dumping the metrics diagnostics here.
 			// TODO: add testing support to validate
 			// metrics from tests and then build more
 			// tests based on metrics.
+			select {
+			case <-ctx.Done():
+				return
+			case <-ms.metrics:
+			case <-timer.C:
+				return
+			}
 		}
 	}()
 
