@@ -11,7 +11,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Changed
 
 - Assemble multiple points per Metric, to improve compression and locality. (#220)
-- Performance: do not force in-order writes, use random load balancing. (#198)
+- Performance: do not require in-order writes, use random load balancing. (#198)
 - Observability: new metrics `sidecar.refs.collected` and `sidecar.refs.notfound` count series references removed in garbage collection and not found during lookup. (#203)
 
 ## [0.22.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.22.0) - 2021-04-16
