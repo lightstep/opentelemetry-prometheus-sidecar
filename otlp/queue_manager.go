@@ -17,7 +17,6 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"math/rand"
 	"sync"
 	"time"
 	"unsafe"
@@ -96,12 +95,11 @@ type QueueManager struct {
 	resource      *resourcepb.Resource
 
 	shardsMtx   sync.RWMutex
-	shards      *shardCollection
+	shards      map[*shard]struct{}
 	numShards   int
 	reshardChan chan int
 	quit        chan struct{}
 	wg          sync.WaitGroup
-	rnd         *rand.Rand
 
 	samplesIn, samplesOut, samplesOutDuration *ewmaRate
 	walSize, walOffset                        *ewmaRate
@@ -135,7 +133,6 @@ func NewQueueManager(logger log.Logger, cfg promconfig.QueueConfig, timeout time
 		numShards:   cfg.MinShards,
 		reshardChan: make(chan int),
 		quit:        make(chan struct{}),
-		rnd:         rand.New(rand.NewSource(rand.Int63())),
 
 		samplesIn:          newEWMARate(ewmaWeight, shardUpdateDuration),
 		samplesOut:         newEWMARate(ewmaWeight, shardUpdateDuration),
@@ -151,8 +148,10 @@ func NewQueueManager(logger log.Logger, cfg promconfig.QueueConfig, timeout time
 	}
 	t.lastSize = lastSize
 	t.lastOffset = tailer.Offset()
-
-	t.shards = t.newShardCollection(t.numShards)
+	t.shards = map[*shard]struct{}{}
+	for i := 0; i < t.numShards; i++ {
+		t.shards[t.newShard()] = struct{}{}
+	}
 
 	t.sendOutcomesCounter = sidecar.OTelMeterMust.NewInt64Counter(
 		config.OutcomeMetric,
@@ -222,12 +221,13 @@ func (t *QueueManager) Append(sample retrieval.SizedMetric) {
 	t.samplesIn.incr(1)
 
 	t.shardsMtx.RLock()
+	defer t.shardsMtx.RUnlock()
 
-	shards := t.shards.shards
-	shardIndex := t.rnd.Intn(len(shards))
-	shards[shardIndex].queue <- sample
-
-	t.shardsMtx.RUnlock()
+	for shard := range t.shards {
+		// Choose the first in Go's randomized map iteration, return.
+		shard.queue <- sample
+		return
+	}
 }
 
 // Start the queue manager sending samples to the remote storage.
@@ -240,9 +240,18 @@ func (t *QueueManager) Start() error {
 	go t.updateShardsLoop()
 	go t.reshardLoop()
 
-	t.shards.start()
+	for shard := range t.shards {
+		go t.runShard(shard)
+	}
 
 	return nil
+}
+
+// numShardsRunning is for testing
+func (t *QueueManager) numShardsRunning() int {
+	t.shardsMtx.Lock()
+	defer t.shardsMtx.Unlock()
+	return len(t.shards)
 }
 
 // Stop stops sending samples to the remote storage and waits for pending
@@ -255,7 +264,10 @@ func (t *QueueManager) Stop() error {
 	defer t.shardsMtx.Unlock()
 
 	t.wg.Wait()
-	t.shards.stop()
+
+	for sh := range t.shards {
+		close(sh.queue)
+	}
 
 	level.Info(t.logger).Log("msg", "remote storage stopped")
 	return nil
@@ -394,78 +406,54 @@ func (t *QueueManager) reshardLoop() {
 	}
 }
 
+// reshard changes the number of shards in `t.shards`.  It does not
+// adjust `t.numShards`.  This blocks until the shard number change
+// is complete, but does not wait for stopped shards to exit.
 func (t *QueueManager) reshard(n int) {
-	// Note: There is no requirement that points be written in
-	// order stated for OTLP.  We will start a new set of shards
-	// before stopping the old one.
-
-	newShards := t.newShardCollection(n)
-	newShards.start()
-
+	if n < 1 {
+		// Do not remove all running shards!
+		return
+	}
 	t.shardsMtx.Lock()
 	defer t.shardsMtx.Unlock()
 
-	oldShards := t.shards
-	t.shards = newShards
-
-	oldShards.stop()
+	for len(t.shards) < n {
+		shard := t.newShard()
+		go t.runShard(shard)
+		t.shards[shard] = struct{}{}
+	}
+	for len(t.shards) > n {
+		for sh := range t.shards {
+			delete(t.shards, sh)
+			close(sh.queue)
+			break
+		}
+	}
 }
 
 type shard struct {
 	queue chan retrieval.SizedMetric
 }
 
-func newShard(cfg promconfig.QueueConfig) shard {
-	return shard{
-		queue: make(chan retrieval.SizedMetric, cfg.Capacity),
+func (t *QueueManager) newShard() *shard {
+	return &shard{
+		queue: make(chan retrieval.SizedMetric, t.cfg.Capacity),
 	}
 }
 
-type shardCollection struct {
-	qm     *QueueManager
-	shards []shard
-	done   chan struct{}
-}
-
-func (t *QueueManager) newShardCollection(numShards int) *shardCollection {
-	shards := make([]shard, numShards)
-	for i := 0; i < numShards; i++ {
-		shards[i] = newShard(t.cfg)
-	}
-	s := &shardCollection{
-		qm:     t,
-		shards: shards,
-		done:   make(chan struct{}),
-	}
-	return s
-}
-
-func (s *shardCollection) start() {
-	for i := range s.shards {
-		go s.runShard(i)
-	}
-}
-
-func (s *shardCollection) stop() {
-	for _, shard := range s.shards {
-		close(shard.queue)
-	}
-}
-
-func (s *shardCollection) runShard(i int) {
-	client := s.qm.clientFactory.New()
+func (t *QueueManager) runShard(sh *shard) {
+	client := t.clientFactory.New()
 	defer client.Close()
-	shard := s.shards[i]
 
 	// Send batches of at most MaxSamplesPerSend samples to the remote storage.
-	pendingSamples := make([]*metricspb.Metric, 0, s.qm.cfg.MaxSamplesPerSend)
+	pendingSamples := make([]*metricspb.Metric, 0, t.cfg.MaxSamplesPerSend)
 
 	ctx := context.Background()
 
-	s.qm.queueRunningCounter.Add(ctx, 1)
-	defer s.qm.queueRunningCounter.Add(ctx, -1)
+	t.queueRunningCounter.Add(ctx, 1)
+	defer t.queueRunningCounter.Add(ctx, -1)
 
-	timer := time.NewTimer(time.Duration(s.qm.cfg.BatchSendDeadline))
+	timer := time.NewTimer(time.Duration(t.cfg.BatchSendDeadline))
 	stopTimer := func() {
 		if !timer.Stop() {
 			select {
@@ -478,67 +466,67 @@ func (s *shardCollection) runShard(i int) {
 
 	for {
 		select {
-		case entry, ok := <-shard.queue:
+		case entry, ok := <-sh.queue:
 			sample := entry.Metric
 
 			// TODO: use entry Size
 			_ = entry.Size
 
 			if !ok {
-				// The queue was closed by a stop() event.  Flush and return.
+				// The queue was closed.  Flush and return.
 				if len(pendingSamples) > 0 {
-					s.sendSamples(client, pendingSamples)
+					t.sendSamples(client, pendingSamples)
 				}
 				return
 			}
 
 			// Remove one count from the queue size metric.
-			s.qm.queueLengthCounter.Add(ctx, -1)
+			t.queueLengthCounter.Add(ctx, -1)
 
 			pendingSamples = append(pendingSamples, sample)
-			if len(pendingSamples) >= s.qm.cfg.MaxSamplesPerSend {
+			if len(pendingSamples) >= t.cfg.MaxSamplesPerSend {
 				// Send a batch.
-				s.sendSamples(client, pendingSamples)
+				t.sendSamples(client, pendingSamples)
 				pendingSamples = pendingSamples[:0]
 
 				stopTimer()
-				timer.Reset(time.Duration(s.qm.cfg.BatchSendDeadline))
+				timer.Reset(time.Duration(t.cfg.BatchSendDeadline))
 			}
 		case <-timer.C:
 			if len(pendingSamples) > 0 {
-				s.sendSamples(client, pendingSamples)
+				t.sendSamples(client, pendingSamples)
 				pendingSamples = pendingSamples[:0]
 			}
-			timer.Reset(time.Duration(s.qm.cfg.BatchSendDeadline))
+			timer.Reset(time.Duration(t.cfg.BatchSendDeadline))
 		}
 	}
 }
 
-func (s *shardCollection) sendSamples(client StorageClient, samples []*metricspb.Metric) {
+func (t *QueueManager) sendSamples(client StorageClient, samples []*metricspb.Metric) {
 	begin := time.Now()
-	s.sendSamplesWithBackoff(client, samples)
+	t.sendSamplesWithBackoff(client, samples)
 
 	// These counters are used to calculate the dynamic sharding, and as such
 	// should be maintained irrespective of success or failure.
-	s.qm.samplesOut.incr(int64(len(samples)))
-	s.qm.samplesOutDuration.incr(int64(time.Since(begin)))
+	t.samplesOut.incr(int64(len(samples)))
+	t.samplesOutDuration.incr(int64(time.Since(begin)))
 }
 
 // sendSamples to the remote storage with backoff for recoverable errors.
-func (s *shardCollection) sendSamplesWithBackoff(client StorageClient, samples []*metricspb.Metric) {
+func (t *QueueManager) sendSamplesWithBackoff(client StorageClient, samples []*metricspb.Metric) {
 	ctx := context.Background()
 	start := time.Now()
-	backoff := s.qm.cfg.MinBackoff
+	backoff := t.cfg.MinBackoff
 
 	// maxWait is provided as a backstop for points that might
 	// never succeed, e.g., because they take so long as to
 	// repeatedly time out.
-	maxWait := s.qm.timeout * time.Duration(config.DefaultMaxExportAttempts)
+	maxWait := t.timeout * time.Duration(config.DefaultMaxExportAttempts)
 
 	req := &metricsService.ExportMetricsServiceRequest{
 		ResourceMetrics: []*metricspb.ResourceMetrics{
 			{
-				Resource: s.qm.resource,
+				Resource: t.resource,
 				InstrumentationLibraryMetrics: []*metricspb.InstrumentationLibraryMetrics{
 					{
 						InstrumentationLibrary: staticInstrumentationLibrary,
@@ -553,7 +541,7 @@ func (s *shardCollection) sendSamplesWithBackoff(client StorageClient, samples [
 		err := client.Store(req)
 
 		if err == nil {
-			s.qm.sendOutcomesCounter.Add(
+			t.sendOutcomesCounter.Add(
 				ctx,
 				int64(len(samples)),
 				config.OutcomeKey.String(config.OutcomeSuccessValue))
@@ -561,12 +549,12 @@ func (s *shardCollection) sendSamplesWithBackoff(client StorageClient, samples [
 		}
 
 		if !isRecoverable(err) {
-			s.qm.sendOutcomesCounter.Add(
+			t.sendOutcomesCounter.Add(
 				ctx,
 				int64(len(samples)),
 				config.OutcomeKey.String("failed"))
 
-			level.Error(s.qm.logger).Log(
+			level.Error(t.logger).Log(
 				"msg", "unrecoverable write error",
 				"points", len(samples),
 				"err", truncateErrorString(err),
@@ -574,13 +562,13 @@ func (s *shardCollection) sendSamplesWithBackoff(client StorageClient, samples [
 			return
 		}
 
-		s.qm.sendOutcomesCounter.Add(
+		t.sendOutcomesCounter.Add(
 			ctx,
 			int64(len(samples)),
 			config.OutcomeKey.String("retry"))
 
 		doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
-			level.Warn(s.qm.logger).Log(
+			level.Warn(t.logger).Log(
 				"msg", "recoverable write error",
 				"points", len(samples),
 				"err", truncateErrorString(err),
@@ -589,17 +577,17 @@ func (s *shardCollection) sendSamplesWithBackoff(client StorageClient, samples [
 
 		time.Sleep(time.Duration(backoff))
 		backoff = backoff * 2
-		if backoff > s.qm.cfg.MaxBackoff {
-			backoff = s.qm.cfg.MaxBackoff
+		if backoff > t.cfg.MaxBackoff {
+			backoff = t.cfg.MaxBackoff
 		}
 	}
 
-	s.qm.sendOutcomesCounter.Add(
+	t.sendOutcomesCounter.Add(
 		ctx,
 		int64(len(samples)),
 		config.OutcomeKey.String("aborted"))
 
-	level.Error(s.qm.logger).Log(
+	level.Error(t.logger).Log(
 		"msg", "aborted write",
 		"points", len(samples),
 	)

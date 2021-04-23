@@ -278,6 +278,7 @@ func TestSampleDeliveryMultiShard(t *testing.T) {
 	cfg := mainConfig.QueueConfig()
 	// flush after each sample, to avoid blocking the test
 	cfg.MaxSamplesPerSend = 1
+	cfg.MinShards = 1
 	cfg.MaxShards = numShards
 
 	prom := promtest.NewFakePrometheus(promtest.Config{})
@@ -293,6 +294,9 @@ func TestSampleDeliveryMultiShard(t *testing.T) {
 
 	m.Start()
 	defer m.Stop()
+
+	require.Equal(t, 1, m.numShardsRunning())
+
 	m.reshard(numShards) // blocks until resharded
 
 	c.expectSamples(samples)
@@ -302,6 +306,12 @@ func TestSampleDeliveryMultiShard(t *testing.T) {
 	}
 
 	c.waitForExpectedSamples(t)
+
+	require.Equal(t, numShards, m.numShardsRunning())
+
+	m.reshard(2) // blocks until resharded
+
+	require.Equal(t, 2, m.numShardsRunning())
 }
 
 func TestSampleDeliveryTimeout(t *testing.T) {
@@ -460,8 +470,8 @@ func (t *QueueManager) queueLen() int {
 	t.shardsMtx.Lock()
 	defer t.shardsMtx.Unlock()
 	queueLength := 0
-	for _, shard := range t.shards.shards {
-		queueLength += len(shard.queue)
+	for sh := range t.shards {
+		queueLength += len(sh.queue)
 	}
 	return queueLength
 }
