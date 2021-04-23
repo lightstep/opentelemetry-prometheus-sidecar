@@ -290,7 +290,6 @@ func (b *sampleBuilder) buildSummary(
 		resetTimestamp int64
 		lastTimestamp  int64
 		values	       = make([]*metric_pb.DoubleSummaryDataPoint_ValueAtQuantile, 0)
-		skip           = false
 	)
 	// We assume that all series belonging to the summary are sequential. Consume series
 	// until we hit a new metric.
@@ -358,9 +357,9 @@ Loop:
 		}
 		consumed++
 	}
-	// Don't emit a sample if we explicitly skip it or no reset timestamp was set because the
+	// Don't emit a sample if no reset timestamp was set because the
 	// count series was missing.
-	if skip || resetTimestamp == 0 {
+	if resetTimestamp == 0 {
 		// TODO add a counter for this event.
 		if consumed == 0 {
 			// This may be caused by a change of metadata or metadata conflict.
@@ -393,7 +392,6 @@ func (b *sampleBuilder) buildHistogram(
 		resetTimestamp int64
 		lastTimestamp  int64
 		dist           = distribution{bounds: make([]float64, 0, 20), values: make([]uint64, 0, 20)}
-		skip           = false
 	)
 	// We assume that all series belonging to the histogram are sequential. Consume series
 	// until we hit a new metric.
@@ -454,9 +452,9 @@ Loop:
 		}
 		consumed++
 	}
-	// Don't emit a sample if we explicitly skip it or no reset timestamp was set because the
+	// Don't emit a sample if no reset timestamp was set because the
 	// count series was missing.
-	if skip || resetTimestamp == 0 {
+	if resetTimestamp == 0 {
 		// TODO add a counter for this event. Note there is
 		// more validation we could do: the sum should agree
 		// with the buckets.
