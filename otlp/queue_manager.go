@@ -17,7 +17,6 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"math/rand"
 	"sync"
 	"time"
 	"unsafe"
@@ -61,6 +60,8 @@ var (
 		Name:    sidecar.ExportInstrumentationLibrary,
 		Version: version.Version,
 	}
+
+	here = struct{}{}
 )
 
 // StorageClient defines an interface for sending a batch of samples to an
@@ -95,12 +96,11 @@ type QueueManager struct {
 	resource      *resourcepb.Resource
 
 	shardsMtx   sync.RWMutex
-	shards      []shard // @@@ TODO MAKE ME A MAP TO RANDOMIZE STOP / SIMPLIFY DELETION?
+	shards      map[*shard]struct{}
 	numShards   int
 	reshardChan chan int
 	quit        chan struct{}
 	wg          sync.WaitGroup
-	rnd         *rand.Rand
 
 	samplesIn, samplesOut, samplesOutDuration *ewmaRate
 	walSize, walOffset                        *ewmaRate
@@ -134,7 +134,6 @@ func NewQueueManager(logger log.Logger, cfg promconfig.QueueConfig, timeout time
 		numShards:   cfg.MinShards,
 		reshardChan: make(chan int),
 		quit:        make(chan struct{}),
-		rnd:         rand.New(rand.NewSource(rand.Int63())),
 
 		samplesIn:          newEWMARate(ewmaWeight, shardUpdateDuration),
 		samplesOut:         newEWMARate(ewmaWeight, shardUpdateDuration),
@@ -150,10 +149,9 @@ func NewQueueManager(logger log.Logger, cfg promconfig.QueueConfig, timeout time
 	}
 	t.lastSize = lastSize
 	t.lastOffset = tailer.Offset()
-
-	t.shards = make([]shard, t.numShards)
+	t.shards = map[*shard]struct{}{}
 	for i := 0; i < t.numShards; i++ {
-		t.shards[i] = t.newShard()
+		t.shards[t.newShard()] = here
 	}
 
 	t.sendOutcomesCounter = sidecar.OTelMeterMust.NewInt64Counter(
@@ -225,10 +223,10 @@ func (t *QueueManager) Append(ctx context.Context, sample *metricspb.Metric) err
 	t.samplesIn.incr(1)
 
 	t.shardsMtx.RLock()
-
-	shardIndex := t.rnd.Intn(len(t.shards))
-	t.shards[shardIndex].queue <- queueEntry{sample: sample}
-
+	for shard := range t.shards {
+		shard.queue <- queueEntry{sample: sample}
+		break
+	}
 	t.shardsMtx.RUnlock()
 
 	return nil
@@ -244,8 +242,8 @@ func (t *QueueManager) Start() error {
 	go t.updateShardsLoop()
 	go t.reshardLoop()
 
-	for i := range t.shards {
-		go t.runShard(i)
+	for shard := range t.shards {
+		go t.runShard(shard)
 	}
 
 	return nil
@@ -262,8 +260,8 @@ func (t *QueueManager) Stop() error {
 
 	t.wg.Wait()
 
-	for _, shard := range t.shards {
-		close(shard.queue)
+	for sh := range t.shards {
+		close(sh.queue)
 	}
 
 	level.Info(t.logger).Log("msg", "remote storage stopped")
@@ -409,12 +407,15 @@ func (t *QueueManager) reshard(n int) {
 
 	for len(t.shards) < n {
 		shard := t.newShard()
-		go t.runShard(len(t.shards))
-		t.shards = append(t.shards, shard)
+		go t.runShard(shard)
+		t.shards[shard] = here
 	}
-	// @@@
-	// if > add shards
-	// else < stop shards
+	for len(t.shards) > n {
+		for sh := range t.shards {
+			close(sh.queue)
+			break
+		}
+	}
 }
 
 type queueEntry struct {
@@ -425,16 +426,15 @@ type shard struct {
 	queue chan queueEntry
 }
 
-func (t *QueueManager) newShard() shard {
-	return shard{
+func (t *QueueManager) newShard() *shard {
+	return &shard{
 		queue: make(chan queueEntry, t.cfg.Capacity),
 	}
 }
 
-func (t *QueueManager) runShard(i int) {
+func (t *QueueManager) runShard(sh *shard) {
 	client := t.clientFactory.New()
 	defer client.Close()
-	shard := t.shards[i]
 
 	// Send batches of at most MaxSamplesPerSend samples to the remote storage.
 	pendingSamples := make([]*metricspb.Metric, 0, t.cfg.MaxSamplesPerSend)
@@ -457,7 +457,7 @@ func (t *QueueManager) runShard(i int) {
 
 	for {
 		select {
-		case entry, ok := <-shard.queue:
+		case entry, ok := <-sh.queue:
 			sample := entry.sample
 
 			if !ok {

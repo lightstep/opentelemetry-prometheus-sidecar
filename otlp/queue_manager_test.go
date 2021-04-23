@@ -457,8 +457,8 @@ func (t *QueueManager) queueLen() int {
 	t.shardsMtx.Lock()
 	defer t.shardsMtx.Unlock()
 	queueLength := 0
-	for _, shard := range t.shards {
-		queueLength += len(shard.queue)
+	for sh := range t.shards {
+		queueLength += len(sh.queue)
 	}
 	return queueLength
 }
