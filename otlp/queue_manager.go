@@ -223,12 +223,11 @@ func (t *QueueManager) Append(ctx context.Context, sample *metricspb.Metric) err
 	t.samplesIn.incr(1)
 
 	t.shardsMtx.RLock()
+	defer t.shardsMtx.RUnlock()
 	for shard := range t.shards {
 		shard.queue <- queueEntry{sample: sample}
 		break
 	}
-	t.shardsMtx.RUnlock()
-
 	return nil
 }
 
