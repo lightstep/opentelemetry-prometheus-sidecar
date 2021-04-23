@@ -61,8 +61,6 @@ var (
 		Name:    sidecar.ExportInstrumentationLibrary,
 		Version: version.Version,
 	}
-
-	here = struct{}{}
 )
 
 // StorageClient defines an interface for sending a batch of samples to an
@@ -152,7 +150,7 @@ func NewQueueManager(logger log.Logger, cfg promconfig.QueueConfig, timeout time
 	t.lastOffset = tailer.Offset()
 	t.shards = map[*shard]struct{}{}
 	for i := 0; i < t.numShards; i++ {
-		t.shards[t.newShard()] = here
+		t.shards[t.newShard()] = struct{}{}
 	}
 
 	t.sendOutcomesCounter = sidecar.OTelMeterMust.NewInt64Counter(
@@ -247,6 +245,13 @@ func (t *QueueManager) Start() error {
 	}
 
 	return nil
+}
+
+// numShardsRunning is for testing
+func (t *QueueManager) numShardsRunning() int {
+	t.shardsMtx.Lock()
+	defer t.shardsMtx.Unlock()
+	return len(t.shards)
 }
 
 // Stop stops sending samples to the remote storage and waits for pending
@@ -401,17 +406,25 @@ func (t *QueueManager) reshardLoop() {
 	}
 }
 
+// reshard changes the number of shards in `t.shards`.  It does not
+// adjust `t.numShards`.  This blocks until the shard number change
+// is complete, but does not wait for stopped shards to exit.
 func (t *QueueManager) reshard(n int) {
+	if n < 1 {
+		// Do not remove
+		return
+	}
 	t.shardsMtx.Lock()
 	defer t.shardsMtx.Unlock()
 
 	for len(t.shards) < n {
 		shard := t.newShard()
 		go t.runShard(shard)
-		t.shards[shard] = here
+		t.shards[shard] = struct{}{}
 	}
 	for len(t.shards) > n {
 		for sh := range t.shards {
+			delete(t.shards, sh)
 			close(sh.queue)
 			break
 		}

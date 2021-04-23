@@ -15,7 +15,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Added a loop at the start of `Tail` to wait in the event that prometheus is writing a new checkpoint. The max period for this loop is 5m0s (#205)
 - Add proper support for Summary (#207)
 - Assemble multiple points per Metric, to improve compression and locality. (#220)
-- Re-use existing shards during resharding events. (#221)
+- Keep existing shards during re-sharding events. (#221)
 
 ## [0.22.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.22.0) - 2021-04-16
 
