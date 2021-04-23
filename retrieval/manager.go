@@ -34,6 +34,8 @@ import (
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wal"
 	"go.opentelemetry.io/otel/metric"
+	metric_pb "go.opentelemetry.io/proto/otlp/metrics/v1"
+	"google.golang.org/protobuf/proto"
 )
 
 var (
@@ -47,6 +49,8 @@ var (
 		metric.WithDescription("Number of Metric series defined"),
 	)
 )
+
+const batchLimit = config.DefaultSingleMetricBatchSizeLimit
 
 type MetadataGetter interface {
 	Get(ctx context.Context, job, instance, metric string) (*config.MetadataEntry, error)
@@ -237,6 +241,7 @@ Outer:
 				continue
 			}
 			produced, droppedPoints, skippedPoints := 0, 0, 0
+			var outputs []*metric_pb.Metric
 
 			for len(samples) > 0 {
 				select {
@@ -266,9 +271,11 @@ Outer:
 					skippedPoints++
 					continue
 				}
-				r.appender.Append(ctx, outputSample)
+				outputs = append(outputs, outputSample)
 				produced++
 			}
+
+			appendSamples(r.appender, outputs)
 
 			if droppedPoints != 0 {
 				common.DroppedPoints.Add(ctx, int64(droppedPoints),
@@ -343,4 +350,144 @@ func copyLabels(input labels.Labels) labels.Labels {
 	output := make(labels.Labels, len(input))
 	copy(output, input)
 	return output
+}
+
+// appendSamples mutates the input to keep this code simple.
+func appendSamples(appender Appender, samples []*metric_pb.Metric) {
+	smap := map[string][]*metric_pb.Metric{}
+
+	for _, s := range samples {
+		smap[s.Name] = append(smap[s.Name], s)
+	}
+
+	for _, pms := range smap {
+		if len(pms) == 1 {
+			// Special case, no batching.
+			appender.Append(SizedMetric{
+				Metric: pms[0],
+				Size:   proto.Size(pms[0]),
+			})
+			continue
+		}
+
+		// Batching multiple points into a single Metric.
+		// Note: there's an O(n^2) thing going on here, but
+		// the protobuf library caches size so it's really
+		// not.
+		for len(pms) > 0 {
+
+			newPt := pms[0]
+			total := proto.Size(newPt)
+
+			pms = pms[1:]
+
+			for len(pms) > 0 {
+				next := pms[0]
+
+				// approximate size added
+				sz := proto.Size(next) -
+					len(next.Name) -
+					len(next.Description) -
+					len(next.Unit)
+
+				if total+sz > batchLimit {
+					break
+				}
+
+				if !combine(newPt, next) {
+					break
+				}
+
+				total += sz
+				pms = pms[1:]
+			}
+
+			appender.Append(SizedMetric{
+				Metric: newPt,
+				Size:   total, // Note: approximate is OK.
+			})
+		}
+	}
+}
+
+// combine assumes that each Metric contains one data point and tries
+// to combine a same-name pair into one.  It assumes Prometheus-to-OTLP
+// conversion was done and there is no variation of temporality or
+// monotonicity settings between points of the same kind.
+func combine(pt0, pt1 *metric_pb.Metric) bool {
+	switch t0 := pt0.Data.(type) {
+	case *metric_pb.Metric_IntSum:
+		if t1, ok := pt1.Data.(*metric_pb.Metric_IntSum); !ok {
+			return false
+		} else {
+			t0.IntSum.DataPoints = append(
+				t0.IntSum.DataPoints,
+				t1.IntSum.DataPoints[0],
+			)
+		}
+
+	case *metric_pb.Metric_IntGauge:
+		if t1, ok := pt1.Data.(*metric_pb.Metric_IntGauge); !ok {
+			return false
+		} else {
+			t0.IntGauge.DataPoints = append(
+				t0.IntGauge.DataPoints,
+				t1.IntGauge.DataPoints[0],
+			)
+		}
+
+	case *metric_pb.Metric_DoubleSum:
+		if t1, ok := pt1.Data.(*metric_pb.Metric_DoubleSum); !ok {
+			return false
+		} else {
+			t0.DoubleSum.DataPoints = append(
+				t0.DoubleSum.DataPoints,
+				t1.DoubleSum.DataPoints[0],
+			)
+		}
+
+	case *metric_pb.Metric_DoubleGauge:
+		if t1, ok := pt1.Data.(*metric_pb.Metric_DoubleGauge); !ok {
+			return false
+		} else {
+			t0.DoubleGauge.DataPoints = append(
+				t0.DoubleGauge.DataPoints,
+				t1.DoubleGauge.DataPoints[0],
+			)
+		}
+
+	case *metric_pb.Metric_IntHistogram:
+		if t1, ok := pt1.Data.(*metric_pb.Metric_IntHistogram); !ok {
+			return false
+		} else {
+			t0.IntHistogram.DataPoints = append(
+				t0.IntHistogram.DataPoints,
+				t1.IntHistogram.DataPoints[0],
+			)
+		}
+
+	case *metric_pb.Metric_DoubleHistogram:
+		if t1, ok := pt1.Data.(*metric_pb.Metric_DoubleHistogram); !ok {
+			return false
+		} else {
+			t0.DoubleHistogram.DataPoints = append(
+				t0.DoubleHistogram.DataPoints,
+				t1.DoubleHistogram.DataPoints[0],
+			)
+		}
+
+	case *metric_pb.Metric_DoubleSummary:
+		if t1, ok := pt1.Data.(*metric_pb.Metric_DoubleSummary); !ok {
+			return false
+		} else {
+			t0.DoubleSummary.DataPoints = append(
+				t0.DoubleSummary.DataPoints,
+				t1.DoubleSummary.DataPoints[0],
+			)
+		}
+
+	default:
+		return false
+	}
+	return true
 }
