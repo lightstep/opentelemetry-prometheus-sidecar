@@ -1,0 +1,116 @@
+name: staging-approval-public
+on:
+  workflow_run:
+    # Triger this workflow if either the "Build and push Docker images"
+    # or the "Release and Tag" complete
+    workflows: ["Build and push Docker images", "Release and Tag"]
+    types: [completed]
+
+jobs:
+
+  #------------------------------------------------------------------
+  setup:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    steps:
+    - name: determine-image-tag
+      # Figure out whether this is a tag push or a merge to main 
+      # and set an IMAGE_TAG variable acordingly 
+      run: |
+
+        GITHUB_SHA=${{ github.event.workflow_run.head_sha }}
+        GITHUB_REF=${{ github.event.workflow_run.head_branch }}
+        echo GITHUB_SHA is $GITHUB_SHA
+        echo GITHUB_REF is $GITHUB_REF
+
+        if [[ $GITHUB_REF == v0* ]]; then
+          IMAGE_TAG=${GITHUB_REF}
+        elif [[ $GITHUB_REF == main ]]; then
+          IMAGE_TAG=sha-${GITHUB_SHA::8}
+        fi 
+        mkdir -p share
+        echo IMAGE_TAG is $IMAGE_TAG
+        echo $IMAGE_TAG > share/image_tag.txt
+        cat share/image_tag.txt
+    
+    - name: save-image-tag-to-file
+      # Upload the file containing the IMAGE_TAG info so that 
+      # the next job can read it
+      uses: actions/upload-artifact@master
+      with:
+        name: image-tag
+        path: share 
+
+#------------------------------------------------------------------
+
+  deploy-staging:
+    # Job to deploy to staging
+    needs: setup
+    environment:
+      name: staging    
+    runs-on: ubuntu-latest
+    steps:
+    - name: get-image-tag-from-file
+      # Read the image tag from file
+      uses: actions/download-artifact@master
+      with:
+        name: image-tag
+        path: share
+
+    - name: set-IMAGE_TAG-variable
+      run: |
+        ls -al share
+        echo reading image_tag as $(cat share/image_tag.txt)
+        echo "IMAGE_TAG=$(cat share/image_tag.txt)" >> $GITHUB_ENV
+        echo IMAGE_TAG is $IMAGE_TAG
+
+    - name: debug
+      run: |
+        echo IMAGE_TAG is $IMAGE_TAG
+
+    - name: codefresh-pipeline-runner
+      uses: codefresh-io/codefresh-pipeline-runner@v7
+      env:
+        PIPELINE_NAME: 'otel-sidecar-cicd/deploy-to-staging'
+        CF_API_KEY: ${{ secrets.CODEFRESH_API_TOKEN }}
+      id: run-pipeline
+      with:
+        args: -v IMAGE_TAG=${{ env.IMAGE_TAG }}
+
+#------------------------------------------------------------------
+
+  deploy-public:
+    # Job to deploy to staging
+    needs: deploy-staging
+    environment:
+      name: public    
+    runs-on: ubuntu-latest
+    steps:
+    - name: get-image-tag-from-file
+      # Read the image tag from file
+      uses: actions/download-artifact@master
+      with:
+        name: image-tag
+        path: share
+
+    - name: set-IMAGE_TAG-variable
+      run: |
+        ls -al share
+        echo reading image_tag as $(cat share/image_tag.txt)
+        echo "IMAGE_TAG=$(cat share/image_tag.txt)" >> $GITHUB_ENV
+        echo IMAGE_TAG is $IMAGE_TAG
+
+    - name: debug
+      run: |
+        echo IMAGE_TAG is $IMAGE_TAG
+
+    - name: codefresh-pipeline-runner
+      uses: codefresh-io/codefresh-pipeline-runner@v7
+      env:
+        PIPELINE_NAME: 'otel-sidecar-cicd/deploy-to-public'
+        CF_API_KEY: ${{ secrets.CODEFRESH_API_TOKEN }}
+      id: run-pipeline
+      with:
+        args: -v IMAGE_TAG=${{ env.IMAGE_TAG }}
+
+
