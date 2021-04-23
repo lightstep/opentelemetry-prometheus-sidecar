@@ -112,7 +112,7 @@ To configure the sidecar for a Prometheus server installed using the
 [Prometheus Community Helm Charts](https://github.com/prometheus-community/helm-charts).
 
 #### Sidecar with Prometheus Helm chart
-To configure the core compoents of the Prometheus sidecar, add the following definition to your custom `values.yaml`:
+To configure the core components of the Prometheus sidecar, add the following definition to your custom `values.yaml`:
 
 ```
 server:

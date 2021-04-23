@@ -89,6 +89,10 @@ const (
 
 	DefaultMaxRetrySkipSegments = 5
 
+	// DefaultCheckpointInProgressPeriod is the maximum amount of time
+	// to wait if it appears a checkpoint is in progress.
+	DefaultCheckpointInProgressPeriod = time.Minute * 5
+
 	briefDescription = `
 The OpenTelemetry Prometheus sidecar runs alongside the
 Prometheus (https://prometheus.io/) Server and sends metrics data to

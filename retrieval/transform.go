@@ -38,6 +38,7 @@ const (
 
 var (
 	errHistogramMetadataMissing = errors.New("histogram metadata missing")
+	errSummaryMetadataMissing = errors.New("summary metadata missing")
 )
 
 type SizedMetric struct {
@@ -115,25 +116,26 @@ func (b *sampleBuilder) next(ctx context.Context, samples []record.RefSample) (*
 		}
 
 	case textparse.MetricTypeSummary:
-		switch entry.suffix {
-		case metricSuffixSum:
-			var value float64
-			resetTimestamp, value = b.series.getResetAdjusted(entry, sample.T, sample.V)
-			point.Data = &metric_pb.Metric_DoubleSum{
-				DoubleSum: monotonicDoublePoint(labels, resetTimestamp, sample.T, value),
-			}
-		case metricSuffixCount:
-			var value float64
-			resetTimestamp, value = b.series.getResetAdjusted(entry, sample.T, sample.V)
-			point.Data = &metric_pb.Metric_IntSum{
-				IntSum: monotonicIntegerPoint(labels, resetTimestamp, sample.T, value),
-			}
-		case "": // Actual quantiles.
-			point.Data = &metric_pb.Metric_DoubleGauge{
-				DoubleGauge: doubleGauge(labels, sample.T, sample.V),
-			}
-		default:
-			return nil, tailSamples, errors.Errorf("unexpected metric name suffix %q", entry.suffix)
+		// We pass in the original lset for matching since Prometheus's target label must
+		// be the same as well.
+		var value *metric_pb.DoubleSummaryDataPoint
+		value, resetTimestamp, tailSamples, err = b.buildSummary(ctx, entry.metadata.Metric, entry.lset, samples)
+		if value == nil || err != nil {
+			return nil, tailSamples, err
+		}
+
+		value.Labels = labels
+		value.StartTimeUnixNano = getNanos(resetTimestamp)
+		value.TimeUnixNano = getNanos(sample.T)
+
+		doubleSummary := &metric_pb.DoubleSummary{
+			DataPoints: []*metric_pb.DoubleSummaryDataPoint{
+				value,
+			},
+		}
+
+		point.Data = &metric_pb.Metric_DoubleSummary{
+			DoubleSummary: doubleSummary,
 		}
 
 	case textparse.MetricTypeHistogram:
@@ -277,6 +279,109 @@ func (d *distribution) Swap(i, j int) {
 	d.values[i], d.values[j] = d.values[j], d.values[i]
 }
 
+// buildSummary consumes series from the beginning of the input slice that belong to a summary
+// with the given metric name and label set.
+// It returns the reset timestamp along with the summary.
+// NOTE: buildSummary() EXTENSIVELY mimics the logic of buildHistogram() - consider refactoring (properly).
+func (b *sampleBuilder) buildSummary(
+	ctx context.Context,
+	baseName string,
+	matchLset labels.Labels,
+	samples []record.RefSample,
+) (*metric_pb.DoubleSummaryDataPoint, int64, []record.RefSample, error) {
+	var (
+		consumed       int
+		count, sum     float64
+		resetTimestamp int64
+		lastTimestamp  int64
+		values	       = make([]*metric_pb.DoubleSummaryDataPoint_ValueAtQuantile, 0)
+	)
+	// We assume that all series belonging to the summary are sequential. Consume series
+	// until we hit a new metric.
+Loop:
+	for i, s := range samples {
+		e, err := b.series.get(ctx, s.Ref)
+		if err != nil {
+			// Note: This case may or may not trigger the
+			// len(samples) == len(newSamples) test in
+			// manager.go. The important part here is that
+			// we may skip or may not skip any points that
+			// belong to the histogram, but if we don't
+			// the manager safetly advances.
+			return nil, 0, samples, err
+		}
+		if e == nil {
+			// These points were filtered. This seems like
+			// an impossible situation.
+			break
+		}
+		name := e.lset.Get("__name__")
+		// The series matches if it has the same base name, the remainder is a valid summary suffix,
+		// and the labels aside from the `quantile` and __name__ label match up.
+		if !strings.HasPrefix(name, baseName) || !labelsEqual(e.lset, matchLset, "quantile") {
+			break
+		}
+		// This is an edge case of having an adjacent point with the same base name and labels,
+		// but different type.
+		if e.metadata.MetricType != textparse.MetricTypeSummary {
+			break
+		}
+		// In general, a scrape cannot contain the same (set of) series repeatedlty but for different timestamps.
+		// It could still happen with bad clients though and we are doing it in tests for simplicity.
+		// If we detect the same series as before but for a different timestamp, return the summary up to this
+		// series and leave the duplicate time series untouched on the input.
+		if i > 0 && s.T != lastTimestamp {
+			// TODO: counter
+			break
+		}
+		lastTimestamp = s.T
+
+		rt, v := b.series.getResetAdjusted(e, s.T, s.V)
+
+		switch e.suffix {
+		case metricSuffixSum:
+			sum = v
+		case metricSuffixCount:
+			count = v
+			// We take the count series as the authoritative source for the overall reset timestamp.
+			resetTimestamp = rt
+		case "": // Actual values at quantiles.
+			quantile, err := strconv.ParseFloat(e.lset.Get("quantile"), 64)
+
+			if err != nil {
+				consumed++
+				// TODO: increment metric.
+				continue
+			}
+			values = append(values, &metric_pb.DoubleSummaryDataPoint_ValueAtQuantile{
+				Quantile: quantile,
+				Value: v,
+			})
+		default:
+			break Loop
+		}
+		consumed++
+	}
+	// Don't emit a sample if no reset timestamp was set because the
+	// count series was missing.
+	if resetTimestamp == 0 {
+		// TODO add a counter for this event.
+		if consumed == 0 {
+			// This may be caused by a change of metadata or metadata conflict.
+			// There was no "quantile" label, or there was no _sum or _count suffix.
+			return nil, 0, samples[1:], errSummaryMetadataMissing
+		}
+		return nil, 0, samples[consumed:], nil
+	}
+
+	summary := &metric_pb.DoubleSummaryDataPoint{
+		Count:		uint64(count),
+		Sum:		sum,
+		QuantileValues: values,
+	}
+	return summary, resetTimestamp, samples[consumed:], nil
+}
+
 // buildHistogram consumes series from the beginning of the input slice that belong to a histogram
 // with the given metric name and label set.
 // It returns the reset timestamp along with the distrubution.
@@ -292,7 +397,6 @@ func (b *sampleBuilder) buildHistogram(
 		resetTimestamp int64
 		lastTimestamp  int64
 		dist           = distribution{bounds: make([]float64, 0, 20), values: make([]uint64, 0, 20)}
-		skip           = false
 	)
 	// We assume that all series belonging to the histogram are sequential. Consume series
 	// until we hit a new metric.
@@ -316,7 +420,7 @@ Loop:
 		name := e.lset.Get("__name__")
 		// The series matches if it has the same base name, the remainder is a valid histogram suffix,
 		// and the labels aside from the le and __name__ label match up.
-		if !strings.HasPrefix(name, baseName) || !histogramLabelsEqual(e.lset, matchLset) {
+		if !strings.HasPrefix(name, baseName) || !labelsEqual(e.lset, matchLset, "le") {
 			break
 		}
 		// In general, a scrape cannot contain the same (set of) series repeatedlty but for different timestamps.
@@ -353,9 +457,9 @@ Loop:
 		}
 		consumed++
 	}
-	// Don't emit a sample if we explicitly skip it or no reset timestamp was set because the
+	// Don't emit a sample if no reset timestamp was set because the
 	// count series was missing.
-	if skip || resetTimestamp == 0 {
+	if resetTimestamp == 0 {
 		// TODO add a counter for this event. Note there is
 		// more validation we could do: the sum should agree
 		// with the buckets.
@@ -394,16 +498,16 @@ Loop:
 	return histogram, resetTimestamp, samples[consumed:], nil
 }
 
-// histogramLabelsEqual checks whether two label sets for a histogram series are equal aside from their
-// le and __name__ labels.
-func histogramLabelsEqual(a, b labels.Labels) bool {
+// labelsEqual checks whether two label sets for a series are equal aside from a specified
+// common label and __name__.
+func labelsEqual(a, b labels.Labels, commonLabel string) bool {
 	i, j := 0, 0
 	for i < len(a) && j < len(b) {
-		if a[i].Name == "le" || a[i].Name == "__name__" {
+		if a[i].Name == commonLabel || a[i].Name == "__name__" {
 			i++
 			continue
 		}
-		if b[j].Name == "le" || b[j].Name == "__name__" {
+		if b[j].Name == commonLabel || b[j].Name == "__name__" {
 			j++
 			continue
 		}
@@ -413,16 +517,16 @@ func histogramLabelsEqual(a, b labels.Labels) bool {
 		i++
 		j++
 	}
-	// Consume trailing le and __name__ labels so the check below passes correctly.
+	// Consume trailing common and __name__ labels so the check below passes correctly.
 	for i < len(a) {
-		if a[i].Name == "le" || a[i].Name == "__name__" {
+		if a[i].Name == commonLabel || a[i].Name == "__name__" {
 			i++
 			continue
 		}
 		break
 	}
 	for j < len(b) {
-		if b[j].Name == "le" || b[j].Name == "__name__" {
+		if b[j].Name == commonLabel || b[j].Name == "__name__" {
 			j++
 			continue
 		}

@@ -22,6 +22,7 @@ import (
 	"math/rand"
 	"os"
 	"path"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -32,6 +33,7 @@ import (
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/prometheus"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/pkg/errors"
+	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -303,4 +305,77 @@ func TestSlowFsync(t *testing.T) {
 	// and the updated segment.
 	require.True(t, wr.Next())
 	require.Equal(t, recSize, len(wr.Record()))
+}
+
+func TestListCheckpoints(t *testing.T) {
+	dir, err := ioutil.TempDir("", "test_tail")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+
+	// no checkpoint directory exists
+	_, _, err = lastCheckpoint(dir)
+	require.Error(t, err)
+	require.ErrorIs(t, err, record.ErrNotFound)
+
+	// single exists
+	err = os.Mkdir(path.Join(dir, "checkpoint.0001"), os.ModeDir)
+	require.NoError(t, err)
+	cpdir, _, err := lastCheckpoint(dir)
+	require.NoError(t, err)
+	require.True(t, strings.HasSuffix(cpdir, "0001"), "%s did not end with %s", cpdir, "0001")
+
+	// two valid checkpoint exists
+	err = os.Mkdir(path.Join(dir, "checkpoint.0002"), os.ModeDir)
+	require.NoError(t, err)
+	cpdir, _, err = lastCheckpoint(dir)
+	require.NoError(t, err)
+	require.True(t, strings.HasSuffix(cpdir, "0002"), "%s did not end with %s", cpdir, "0002")
+
+	// two valid checkpoint exists and an old tmp file does as well
+	err = os.Mkdir(path.Join(dir, "checkpoint.0000.tmp"), os.ModeDir)
+	require.NoError(t, err)
+	cpdir, _, err = lastCheckpoint(dir)
+	require.NoError(t, err)
+	require.True(t, strings.HasSuffix(cpdir, "0002"), "%s did not end with %s", cpdir, "0002")
+
+	// two valid checkpoint, an old tmp checkpoint and a newer checkpoint in progress
+	err = os.Mkdir(path.Join(dir, "checkpoint.0004.tmp"), os.ModeDir)
+	require.NoError(t, err)
+	cpdir, _, err = lastCheckpoint(dir)
+	require.NoError(t, err)
+	require.True(t, strings.HasSuffix(cpdir, "0004.tmp"), "%s did not end with %s", cpdir, "0004")
+
+	// add another checkpoint testing creation time doesnt affect this
+	err = os.Mkdir(path.Join(dir, "checkpoint.0003.tmp"), os.ModeDir)
+	require.NoError(t, err)
+	cpdir, _, err = lastCheckpoint(dir)
+	require.NoError(t, err)
+	require.True(t, strings.HasSuffix(cpdir, "0004.tmp"), "%s did not end with %s", cpdir, "0004")
+}
+
+func TestCheckpointInProgress(t *testing.T) {
+	dir, err := ioutil.TempDir("", "test_tail")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	prom := promtest.NewFakePrometheus(promtest.Config{})
+
+	err = os.Mkdir(path.Join(dir, "checkpoint.0001.tmp"), 0777)
+	require.NoError(t, err)
+
+	for i := 0; i < 10; i++ {
+		require.NoError(t, ioutil.WriteFile(path.Join(dir, fmt.Sprint("checkpoint.0001.tmp/000000000000000000000", i)), []byte(fmt.Sprint(i)), 0777))
+	}
+
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		err := os.Rename(path.Join(dir, "checkpoint.0001.tmp"), path.Join(dir, "checkpoint.0001"))
+		require.NoError(t, err)
+	}()
+
+	_, err = Tail(context.Background(), telemetry.DefaultLogger(), dir, prometheus.NewMonitor(prom.ReadyConfig()))
+	require.NoError(t, err)
 }
