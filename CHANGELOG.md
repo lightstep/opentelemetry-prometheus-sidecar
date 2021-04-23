@@ -10,7 +10,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
-- Assemble multiple points per Metric, to improve compression and locality. (#220)
+- Assemble multiple points per Metric, improves compression and locality. (#220)
 - Performance: do not force in-order writes, use random load balancing. (#198)
 - Observability: new metrics `sidecar.refs.collected` and `sidecar.refs.notfound` count series references removed in garbage collection and not found during lookup. (#203)
 
