@@ -411,7 +411,7 @@ func (t *QueueManager) reshardLoop() {
 // is complete, but does not wait for stopped shards to exit.
 func (t *QueueManager) reshard(n int) {
 	if n < 1 {
-		// Do not remove
+		// Do not remove all running shards!
 		return
 	}
 	t.shardsMtx.Lock()
