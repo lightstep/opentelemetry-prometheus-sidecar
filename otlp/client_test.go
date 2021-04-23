@@ -14,8 +14,6 @@
 package otlp
 
 import (
-	"fmt"
-	"net"
 	"net/url"
 	"testing"
 	"time"
@@ -23,21 +21,13 @@ import (
 	"github.com/stretchr/testify/require"
 	metricsService "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
 	metric_pb "go.opentelemetry.io/proto/otlp/metrics/v1"
+	"golang.org/x/net/nettest"
 	"google.golang.org/grpc"
 )
 
-func newLocalListener() net.Listener {
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		if l, err = net.Listen("tcp6", "[::1]:0"); err != nil {
-			panic(fmt.Sprintf("httptest: failed to listen on a port: %v", err))
-		}
-	}
-	return l
-}
-
 func TestStoreErrorHandlingOnTimeout(t *testing.T) {
-	listener := newLocalListener()
+	listener, err := nettest.NewLocalListener("tcp")
+	require.NoError(t, err)
 	grpcServer := grpc.NewServer()
 	metricsService.RegisterMetricsServiceServer(grpcServer, &metricServiceServer{
 		status: nil,
@@ -56,7 +46,7 @@ func TestStoreErrorHandlingOnTimeout(t *testing.T) {
 	})
 	err = c.Store(&metricsService.ExportMetricsServiceRequest{
 		ResourceMetrics: []*metric_pb.ResourceMetrics{
-			&metric_pb.ResourceMetrics{},
+			{},
 		},
 	})
 	require.True(t, isRecoverable(err), "expected recoverableError in error %v", err)
