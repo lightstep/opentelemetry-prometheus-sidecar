@@ -95,7 +95,7 @@ type QueueManager struct {
 	resource      *resourcepb.Resource
 
 	shardsMtx   sync.RWMutex
-	shards      []shard
+	shards      []shard // @@@ TODO MAKE ME A MAP TO RANDOMIZE STOP / SIMPLIFY DELETION?
 	numShards   int
 	reshardChan chan int
 	quit        chan struct{}
@@ -407,6 +407,11 @@ func (t *QueueManager) reshard(n int) {
 	t.shardsMtx.Lock()
 	defer t.shardsMtx.Unlock()
 
+	for len(t.shards) < n {
+		shard := t.newShard()
+		go t.runShard(len(t.shards))
+		t.shards = append(t.shards, shard)
+	}
 	// @@@
 	// if > add shards
 	// else < stop shards
