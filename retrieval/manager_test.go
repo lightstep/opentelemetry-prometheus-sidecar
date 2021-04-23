@@ -15,7 +15,6 @@ package retrieval
 
 import (
 	"context"
-	"fmt"
 	"io/ioutil"
 	"os"
 	"strings"
@@ -299,7 +298,7 @@ func TestAppendSamples(t *testing.T) {
 
 	pointsPerBatch := (batchLimit - overhead) / lsize
 
-	// Expect reduction in point count, without being too precise.
+	// Expect reduction in metric count, ignore rounding.
 	require.GreaterOrEqual(t, len(recorder.samples), int(float64(count)/float64(pointsPerBatch)))
 	require.LessOrEqual(t, len(recorder.samples), 1+int(float64(count)/float64(pointsPerBatch)))
 
@@ -322,7 +321,6 @@ func TestAppendSamples(t *testing.T) {
 		) error {
 			ddp := point.(*metric_pb.DoubleDataPoint)
 			received = append(received, ddp.Value)
-			fmt.Println("ddpv", ddp.Value)
 			require.Equal(t, uint64(startTime.UnixNano()), ddp.StartTimeUnixNano)
 			require.Equal(t, uint64(startTime.Add(time.Second*time.Duration(int64(ddp.Value))).UnixNano()), ddp.TimeUnixNano)
 			return nil
