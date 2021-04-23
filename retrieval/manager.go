@@ -50,6 +50,8 @@ var (
 	)
 )
 
+const batchLimit = config.DefaultSingleMetricBatchSizeLimit
+
 type MetadataGetter interface {
 	Get(ctx context.Context, job, instance, metric string) (*config.MetadataEntry, error)
 }
@@ -273,7 +275,7 @@ Outer:
 				produced++
 			}
 
-			r.appendSamples(outputs)
+			appendSamples(r.appender, outputs)
 
 			if droppedPoints != 0 {
 				common.DroppedPoints.Add(ctx, int64(droppedPoints),
@@ -350,32 +352,49 @@ func copyLabels(input labels.Labels) labels.Labels {
 	return output
 }
 
-func (r *PrometheusReader) appendSamples(samples []*metric_pb.Metric) {
-	const batchLimit = 1 << 12 // TODO
-
+// appendSamples mutates the input to keep this code simple.
+func appendSamples(appender Appender, samples []*metric_pb.Metric) {
 	smap := map[string][]*metric_pb.Metric{}
 
 	for _, s := range samples {
 		smap[s.Name] = append(smap[s.Name], s)
 	}
 
-	for name, pms := range smap {
-		total := len(name)
+	for _, pms := range smap {
+		if len(pms) == 1 {
+			// Special case, no batching.
+			appender.Append(SizedMetric{
+				Metric: pms[0],
+				Size:   proto.Size(pms[0]),
+			})
+			continue
+		}
 
+		// Batching multiple points into a single Metric.
+		// Note: there's an O(n^2) thing going on here, but
+		// the protobuf library caches size so it's really
+		// not.
 		for len(pms) > 0 {
 
-			pm0 := pms[0]
+			newPt := pms[0]
+			total := proto.Size(newPt)
+
 			pms = pms[1:]
 
 			for len(pms) > 0 {
-				first := pms[0]
-				sz := proto.Size(first)
+				next := pms[0]
+
+				// approximate size added
+				sz := proto.Size(next) -
+					len(next.Name) -
+					len(next.Description) -
+					len(next.Unit)
 
 				if total+sz > batchLimit {
 					break
 				}
 
-				if !combine(pm0, first) {
+				if !combine(newPt, next) {
 					break
 				}
 
@@ -383,8 +402,8 @@ func (r *PrometheusReader) appendSamples(samples []*metric_pb.Metric) {
 				pms = pms[1:]
 			}
 
-			r.appender.Append(SizedMetric{
-				Metric: pm0,
+			appender.Append(SizedMetric{
+				Metric: newPt,
 				Size:   total, // Note: approximate is OK.
 			})
 		}

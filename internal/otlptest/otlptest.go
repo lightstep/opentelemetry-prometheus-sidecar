@@ -308,6 +308,7 @@ func (vs *VisitorState) Visit(
 						kind := config.GAUGE
 						for _, p := range t.IntGauge.DataPoints {
 							vs.pointCount++
+
 							noticeError(m, visitor(res, m.Name, kind, false, p))
 						}
 						continue
