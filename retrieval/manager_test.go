@@ -17,7 +17,6 @@ import (
 	"context"
 	"io/ioutil"
 	"os"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -41,17 +40,18 @@ import (
 
 type nopAppender struct {
 	lock    sync.Mutex
-	samples []SizedMetric
+	samples []*metric_pb.Metric
 }
 
-func (a *nopAppender) Append(s SizedMetric) {
+func (a *nopAppender) Append(_ context.Context, s *metric_pb.Metric) error {
 	a.lock.Lock()
 	defer a.lock.Unlock()
 
 	a.samples = append(a.samples, s)
+	return nil
 }
 
-func (a *nopAppender) getSamples() []SizedMetric {
+func (a *nopAppender) getSamples() []*metric_pb.Metric {
 	a.lock.Lock()
 	defer a.lock.Unlock()
 
@@ -199,7 +199,7 @@ func TestReader_Progress(t *testing.T) {
 				t.Fatalf("unexpected record %d for offset %d", i, tseconds)
 			}
 			return nil
-		}, resourceMetric(s.Metric))
+		}, resourceMetric(s))
 	}
 
 	require.EqualValues(t, map[string]bool{}, failingSet)
@@ -239,101 +239,4 @@ func TestReader_ProgressFile(t *testing.T) {
 	if offset != 12345 {
 		t.Fatalf("expected progress offset %d but got %d", 12345, offset)
 	}
-}
-
-func TestCombinePair(t *testing.T) {
-	t1 := time.Now()
-	t2 := t1.Add(time.Second)
-	t3 := t2.Add(time.Second)
-	t4 := t3.Add(time.Second)
-
-	dp1 := otlptest.DoubleDataPoint(
-		otlptest.Labels(
-			otlptest.Label("A", "B"),
-			otlptest.Label("C", "D"),
-		),
-		t1, t2, 10,
-	)
-	dp2 := otlptest.DoubleDataPoint(
-		otlptest.Labels(
-			otlptest.Label("A", "C"),
-			otlptest.Label("B", "D"),
-		),
-		t3, t4, 20,
-	)
-
-	p1 := otlptest.DoubleGauge("test", "", "", dp1)
-	p2 := otlptest.DoubleGauge("test", "", "", dp2)
-
-	require.True(t, combine(p1, p2))
-	require.Equal(t, p1, otlptest.DoubleGauge("test", "", "", dp1, dp2))
-}
-
-func TestAppendSamples(t *testing.T) {
-	const (
-		count    = 100
-		lsize    = 1024
-		overhead = 100
-	)
-	hugeLabels := otlptest.Labels(otlptest.Label("1kb", strings.Repeat("x", lsize)))
-	recorder := &nopAppender{}
-
-	startTime := time.Now()
-
-	var original []float64
-	var points []*metric_pb.Metric
-
-	newPoint := func(i int) *metric_pb.Metric {
-		return otlptest.DoubleGauge("test", "", "",
-			otlptest.DoubleDataPoint(
-				hugeLabels, startTime, startTime.Add(time.Duration(i)*time.Second), float64(i)))
-	}
-
-	for i := 0; i < count; i++ {
-		original = append(original, float64(i))
-		points = append(points, newPoint(i))
-	}
-
-	appendSamples(recorder, points)
-
-	pointsPerBatch := (batchLimit - overhead) / lsize
-
-	// Expect reduction in metric count, ignore rounding.
-	require.GreaterOrEqual(t, len(recorder.samples), int(float64(count)/float64(pointsPerBatch)))
-	require.LessOrEqual(t, len(recorder.samples), 1+int(float64(count)/float64(pointsPerBatch)))
-
-	var output []*metric_pb.Metric
-
-	for _, sm := range recorder.samples {
-		output = append(output, sm.Metric)
-	}
-
-	var received []float64
-
-	vs := otlptest.VisitorState{}
-	vs.Visit(context.Background(),
-		func(
-			resource *resource_pb.Resource,
-			metricName string,
-			kind config.Kind,
-			monotonic bool,
-			point interface{},
-		) error {
-			ddp := point.(*metric_pb.DoubleDataPoint)
-			received = append(received, ddp.Value)
-			require.Equal(t, uint64(startTime.UnixNano()), ddp.StartTimeUnixNano)
-			require.Equal(t, uint64(startTime.Add(time.Second*time.Duration(int64(ddp.Value))).UnixNano()), ddp.TimeUnixNano)
-			return nil
-		},
-		otlptest.ResourceMetrics(
-			otlptest.Resource(),
-			otlptest.InstrumentationLibraryMetrics(
-				otlptest.InstrumentationLibrary("test", "v0"),
-				output...,
-			),
-		),
-	)
-
-	// Expect the same values, same order.
-	require.Equal(t, original, received)
 }

@@ -53,8 +53,6 @@ const (
 	DefaultNoisyLogPeriod            = time.Second * 60
 	DefaultPrometheusTimeout         = time.Second * 60
 
-	DefaultSingleMetricBatchSizeLimit = 4096
-
 	DefaultSupervisorBufferSize  = 16384
 	DefaultSupervisorLogsHistory = 16
 
