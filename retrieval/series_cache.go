@@ -264,7 +264,7 @@ func (c *seriesCache) garbageCollect() (int, error) {
 		}
 		series, err = dec.Series(rec, series[:0])
 		if err != nil {
-			0, return errors.Wrap(err, "decode series")
+			return 0, errors.Wrap(err, "decode series")
 		}
 		for _, s := range series {
 			exists[s.Ref] = struct{}{}
