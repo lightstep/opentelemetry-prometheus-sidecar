@@ -230,7 +230,7 @@ func (c *seriesCache) run(ctx context.Context) {
 
 // garbageCollect drops obsolete cache entries based on the contents of the most
 // recent checkpoint.
-func (c *seriesCache) garbageCollect() (int, error) {
+func (c *seriesCache) garbageCollect() (int64, error) {
 	var collected int64
 
 	cpDir, cpNum, err := wal.LastCheckpoint(c.dir)
