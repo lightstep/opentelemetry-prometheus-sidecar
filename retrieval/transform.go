@@ -41,14 +41,9 @@ var (
 	errSummaryMetadataMissing = errors.New("summary metadata missing")
 )
 
-type SizedMetric struct {
-	*metric_pb.Metric
-	Size int
-}
-
 // Appender appends a time series with exactly one data point.
 type Appender interface {
-	Append(s SizedMetric)
+	Append(ctx context.Context, s *metric_pb.Metric) error
 }
 
 type sampleBuilder struct {

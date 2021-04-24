@@ -25,7 +25,6 @@ import (
 	"github.com/go-kit/kit/log/level"
 	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
-	"github.com/lightstep/opentelemetry-prometheus-sidecar/retrieval"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry/doevery"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/version"
@@ -216,8 +215,9 @@ func NewQueueManager(logger log.Logger, cfg promconfig.QueueConfig, timeout time
 }
 
 // Append queues a sample to be sent to the OpenTelemetry API.
-func (t *QueueManager) Append(sample retrieval.SizedMetric) {
-	t.queueLengthCounter.Add(context.Background(), 1)
+// Always returns nil.
+func (t *QueueManager) Append(ctx context.Context, sample *metricspb.Metric) error {
+	t.queueLengthCounter.Add(ctx, 1)
 	t.samplesIn.incr(1)
 
 	t.shardsMtx.RLock()
@@ -226,8 +226,9 @@ func (t *QueueManager) Append(sample retrieval.SizedMetric) {
 	for shard := range t.shards {
 		// Choose the first in Go's randomized map iteration, return.
 		shard.queue <- sample
-		return
+		break
 	}
+	return nil
 }
 
 // Start the queue manager sending samples to the remote storage.
@@ -432,12 +433,12 @@ func (t *QueueManager) reshard(n int) {
 }
 
 type shard struct {
-	queue chan retrieval.SizedMetric
+	queue chan *metricspb.Metric
 }
 
 func (t *QueueManager) newShard() *shard {
 	return &shard{
-		queue: make(chan retrieval.SizedMetric, t.cfg.Capacity),
+		queue: make(chan *metricspb.Metric, t.cfg.Capacity),
 	}
 }
 
@@ -466,11 +467,7 @@ func (t *QueueManager) runShard(sh *shard) {
 
 	for {
 		select {
-		case entry, ok := <-sh.queue:
-			sample := entry.Metric
-
-			// TODO: use entry Size
-			_ = entry.Size
+		case sample, ok := <-sh.queue:
 
 			if !ok {
 				// The queue was closed.  Flush and return.
