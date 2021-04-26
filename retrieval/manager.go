@@ -28,6 +28,7 @@ import (
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry/doevery"
+	"github.com/pkg/errors"
 	promconfig "github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
@@ -46,6 +47,8 @@ var (
 		config.SeriesDefinedMetric,
 		metric.WithDescription("Number of Metric series defined"),
 	)
+
+	errBuildFailed = errors.New("unknown build failure")
 )
 
 type MetadataGetter interface {
@@ -252,8 +255,18 @@ Outer:
 					// where it's easier to fall through to this than to be
 					// sure the samples list becomes shorter by at least 1.
 					samples = samples[1:]
+
+					// Ensure this is considered a drop.
+					if err == nil {
+						err = errBuildFailed
+					}
 				} else {
 					samples = newSamples
+				}
+				if err == errStalenessMarkerSkipped {
+					// TODO: This is not specified behavior in PRW-to-OTLP.
+					// These should force a gap into the OTLP stream.
+					continue
 				}
 				if err != nil {
 					droppedPoints++
