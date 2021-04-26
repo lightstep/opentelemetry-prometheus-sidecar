@@ -38,17 +38,13 @@ const (
 
 var (
 	errHistogramMetadataMissing = errors.New("histogram metadata missing")
-	errSummaryMetadataMissing = errors.New("summary metadata missing")
+	errSummaryMetadataMissing   = errors.New("summary metadata missing")
+	errStalenessMarkerSkipped   = errors.New("staleness marker skipped")
 )
-
-type SizedMetric struct {
-	*metric_pb.Metric
-	Size int
-}
 
 // Appender appends a time series with exactly one data point.
 type Appender interface {
-	Append(s SizedMetric)
+	Append(ctx context.Context, s *metric_pb.Metric) error
 }
 
 type sampleBuilder struct {
@@ -70,7 +66,7 @@ func (b *sampleBuilder) next(ctx context.Context, samples []record.RefSample) (*
 	if math.IsNaN(sample.V) {
 		// Note: This includes stale markers, which are
 		// specific NaN values defined in prometheus/tsdb.
-		return nil, tailSamples, nil
+		return nil, tailSamples, errStalenessMarkerSkipped
 	}
 
 	entry, err := b.series.get(ctx, sample.Ref)
@@ -121,6 +117,9 @@ func (b *sampleBuilder) next(ctx context.Context, samples []record.RefSample) (*
 		var value *metric_pb.DoubleSummaryDataPoint
 		value, resetTimestamp, tailSamples, err = b.buildSummary(ctx, entry.metadata.Metric, entry.lset, samples)
 		if value == nil || err != nil {
+			if err == nil {
+				err = errSummaryMetadataMissing
+			}
 			return nil, tailSamples, err
 		}
 
@@ -145,6 +144,9 @@ func (b *sampleBuilder) next(ctx context.Context, samples []record.RefSample) (*
 		var value *metric_pb.DoubleHistogramDataPoint
 		value, resetTimestamp, tailSamples, err = b.buildHistogram(ctx, entry.metadata.Metric, entry.lset, samples)
 		if value == nil || err != nil {
+			if err == nil {
+				err = errHistogramMetadataMissing
+			}
 			return nil, tailSamples, err
 		}
 
@@ -294,7 +296,7 @@ func (b *sampleBuilder) buildSummary(
 		count, sum     float64
 		resetTimestamp int64
 		lastTimestamp  int64
-		values	       = make([]*metric_pb.DoubleSummaryDataPoint_ValueAtQuantile, 0)
+		values         = make([]*metric_pb.DoubleSummaryDataPoint_ValueAtQuantile, 0)
 	)
 	// We assume that all series belonging to the summary are sequential. Consume series
 	// until we hit a new metric.
@@ -355,7 +357,7 @@ Loop:
 			}
 			values = append(values, &metric_pb.DoubleSummaryDataPoint_ValueAtQuantile{
 				Quantile: quantile,
-				Value: v,
+				Value:    v,
 			})
 		default:
 			break Loop
@@ -375,8 +377,8 @@ Loop:
 	}
 
 	summary := &metric_pb.DoubleSummaryDataPoint{
-		Count:		uint64(count),
-		Sum:		sum,
+		Count:          uint64(count),
+		Sum:            sum,
 		QuantileValues: values,
 	}
 	return summary, resetTimestamp, samples[consumed:], nil

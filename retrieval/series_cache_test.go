@@ -115,7 +115,7 @@ func TestScrapeCache_GarbageCollect(t *testing.T) {
 	// Run garbage collection. Afterwards the first two series should be gone.
 	// Put in a loop to verify that garbage collection is idempotent.
 	for i := 0; i < 10; i++ {
-		if err := c.garbageCollect(); err != nil {
+		if _, err := c.garbageCollect(); err != nil {
 			t.Fatal(err)
 		}
 		for i := 1; i < 2; i++ {
@@ -156,10 +156,10 @@ func TestScrapeCache_GarbageCollect(t *testing.T) {
 	if err := os.RemoveAll(cp10dir); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.garbageCollect(); err != nil {
+	if _, err := c.garbageCollect(); err != nil {
 		t.Fatal(err)
 	}
-	//  Only series 4 and 7 should be left.
+	// Only series 4 and 7 should be left.
 	for i := 1; i <= 7; i++ {
 		if i != 4 && i != 7 {
 			if _, err := c.get(ctx, uint64(i)); err != errSeriesNotFound {

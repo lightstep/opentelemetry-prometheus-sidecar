@@ -29,7 +29,6 @@ import (
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/internal/otlptest"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/internal/promtest"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/prometheus"
-	"github.com/lightstep/opentelemetry-prometheus-sidecar/retrieval"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/prometheus/common/model"
@@ -40,7 +39,6 @@ import (
 	resource_pb "go.opentelemetry.io/proto/otlp/resource/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/proto"
 )
 
 // TestStorageClient simulates a storage that can store samples and compares it
@@ -197,14 +195,8 @@ func (c *TestStorageClient) Close() error {
 	return nil
 }
 
-func sizeMetric(s *metric_pb.Metric) retrieval.SizedMetric {
-	return retrieval.SizedMetric{
-		Metric: s,
-		Size:   proto.Size(s),
-	}
-}
-
 func TestSampleDeliverySimple(t *testing.T) {
+	ctx := context.Background()
 	dir, err := ioutil.TempDir("", "test")
 	if err != nil {
 		t.Fatal(err)
@@ -245,7 +237,7 @@ func TestSampleDeliverySimple(t *testing.T) {
 
 	// These should be received by the client.
 	for _, s := range samples {
-		m.Append(sizeMetric(s))
+		m.Append(ctx, s)
 	}
 	m.Start()
 	defer m.Stop()
@@ -254,6 +246,7 @@ func TestSampleDeliverySimple(t *testing.T) {
 }
 
 func TestSampleDeliveryMultiShard(t *testing.T) {
+	ctx := context.Background()
 	dir, err := ioutil.TempDir("", "test")
 	if err != nil {
 		t.Fatal(err)
@@ -302,7 +295,7 @@ func TestSampleDeliveryMultiShard(t *testing.T) {
 	c.expectSamples(samples)
 	// These should be received by the client.
 	for _, s := range samples {
-		m.Append(sizeMetric(s))
+		m.Append(ctx, s)
 	}
 
 	c.waitForExpectedSamples(t)
@@ -360,10 +353,12 @@ func TestSampleDeliveryTimeout(t *testing.T) {
 	m.Start()
 	defer m.Stop()
 
+	ctx := context.Background()
+
 	// Send the samples twice, waiting for the samples in the meantime.
 	c.expectSamples(samples1)
 	for _, s := range samples1 {
-		m.Append(sizeMetric(s))
+		m.Append(ctx, s)
 	}
 	c.waitForExpectedSamples(t)
 
@@ -371,7 +366,7 @@ func TestSampleDeliveryTimeout(t *testing.T) {
 	c.expectSamples(samples2)
 
 	for _, s := range samples2 {
-		m.Append(sizeMetric(s))
+		m.Append(ctx, s)
 	}
 	c.waitForExpectedSamples(t)
 }
@@ -410,11 +405,13 @@ func TestSampleDeliveryOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	ctx := context.Background()
+
 	m.Start()
 	defer m.Stop()
 	// These should be received by the client.
 	for _, s := range samples {
-		m.Append(sizeMetric(s))
+		m.Append(ctx, s)
 	}
 
 	c.waitForExpectedSamples(t)
@@ -530,8 +527,10 @@ func TestSpawnNotMoreThanMaxConcurrentSendsGoroutines(t *testing.T) {
 		m.Stop()
 	}()
 
+	ctx := context.Background()
+
 	for _, s := range samples {
-		m.Append(sizeMetric(s))
+		m.Append(ctx, s)
 	}
 
 	// Wait until the runShard() loops drain the queue.  If things went right, it
