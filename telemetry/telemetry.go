@@ -252,13 +252,16 @@ func (c *Config) setupTracing(_ *Telemetry) (start, stop func(ctx context.Contex
 	}
 	spanExporter := newExporter(c.SpanExporterEndpoint, c.SpanExporterEndpointInsecure, c.Headers, c.Compressor)
 
-	// TODO: Make a way to set the export timeout, there is
-	// apparently not such a thing for OTel-Go:
-	// https://github.com/open-telemetry/opentelemetry-go/issues/1386
+	// Note: Resources given to tracing are relatively small, it's
+	// just the supervisor tracing a periodic status report.
 	tp := trace.NewTracerProvider(
-		trace.WithConfig(trace.Config{DefaultSampler: trace.AlwaysSample()}),
-		trace.WithSyncer(spanExporter),
+		trace.WithSampler(trace.AlwaysSample()),
 		trace.WithResource(c.resource),
+		trace.WithBatcher(spanExporter,
+			trace.WithBatchTimeout(1*time.Millisecond),
+			trace.WithMaxQueueSize(2),
+			trace.WithExportTimeout(c.ExportTimeout),
+		),
 	)
 
 	if err := configurePropagators(c); err != nil {
@@ -294,7 +297,7 @@ func (c *Config) setupMetrics(telem *Telemetry) (start, stop func(ctx context.Co
 				processor.WithMemory(true),
 			),
 		),
-		controller.WithPusher(metricExporter),
+		controller.WithExporter(metricExporter),
 		controller.WithResource(c.resource),
 		controller.WithCollectPeriod(c.MetricReportingPeriod),
 		controller.WithPushTimeout(c.ExportTimeout),
