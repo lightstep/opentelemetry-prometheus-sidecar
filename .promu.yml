@@ -10,7 +10,7 @@ build:
           path: ./cmd/opentelemetry-prometheus-sidecar
     flags: -mod=vendor -a -tags netgo
     ldflags: |
-        -X github.com/prometheus/common/version.Version={{.Version}}
+        -X github.com/prometheus/common/version.Version={{ printf "%s-%s" "sha" (slice .Revision 0 8 )}}
         -X github.com/prometheus/common/version.Revision={{.Revision}}
         -X github.com/prometheus/common/version.Branch={{.Branch}}
         -X github.com/prometheus/common/version.BuildUser={{user}}@{{host}}
