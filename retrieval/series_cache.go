@@ -219,7 +219,9 @@ func (c *seriesCache) run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-tick.C:
-			if err := c.garbageCollect(); err != nil {
+			collected, err := c.garbageCollect()
+			seriesCacheRefsCollected.Add(context.Background(), collected, &err)
+			if err != nil {
 				level.Error(c.logger).Log("msg", "garbage collection failed", "err", err)
 			}
 		}
@@ -228,23 +230,22 @@ func (c *seriesCache) run(ctx context.Context) {
 
 // garbageCollect drops obsolete cache entries based on the contents of the most
 // recent checkpoint.
-func (c *seriesCache) garbageCollect() (retErr error) {
+func (c *seriesCache) garbageCollect() (int64, error) {
 	var collected int64
-	defer seriesCacheRefsCollected.Add(context.Background(), collected, &retErr)
 
 	cpDir, cpNum, err := wal.LastCheckpoint(c.dir)
 	if errors.Cause(err) == record.ErrNotFound {
-		return nil // Nothing to do.
+		return 0, nil // Nothing to do.
 	}
 	if err != nil {
-		return errors.Wrap(err, "find last checkpoint")
+		return 0, errors.Wrap(err, "find last checkpoint")
 	}
 	if cpNum <= c.lastCheckpoint {
-		return nil
+		return 0, nil
 	}
 	sr, err := wal.NewSegmentsReader(cpDir)
 	if err != nil {
-		return errors.Wrap(err, "open segments")
+		return 0, errors.Wrap(err, "open segments")
 	}
 	defer sr.Close()
 
@@ -263,14 +264,14 @@ func (c *seriesCache) garbageCollect() (retErr error) {
 		}
 		series, err = dec.Series(rec, series[:0])
 		if err != nil {
-			return errors.Wrap(err, "decode series")
+			return 0, errors.Wrap(err, "decode series")
 		}
 		for _, s := range series {
 			exists[s.Ref] = struct{}{}
 		}
 	}
 	if r.Err() != nil {
-		return errors.Wrap(err, "read checkpoint records")
+		return 0, errors.Wrap(err, "read checkpoint records")
 	}
 
 	// We can cleanup series in our cache that were neither in the current checkpoint nor
@@ -287,7 +288,7 @@ func (c *seriesCache) garbageCollect() (retErr error) {
 		}
 	}
 	c.lastCheckpoint = cpNum
-	return nil
+	return collected, nil
 }
 
 func (c *seriesCache) get(ctx context.Context, ref uint64) (*seriesCacheEntry, error) {

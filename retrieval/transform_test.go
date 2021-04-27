@@ -174,6 +174,9 @@ func TestSampleBuilder(t *testing.T) {
 	isMissingHistogramMetadata := func(err error) bool {
 		return errors.Is(err, errHistogramMetadataMissing)
 	}
+	isStalenessMarker := func(err error) bool {
+		return errors.Is(err, errStalenessMarkerSkipped)
+	}
 
 	// Note: Be aware that the *resulting* points' labels will be arranged
 	// *alphabetically*.
@@ -431,7 +434,7 @@ func TestSampleBuilder(t *testing.T) {
 		{
 			name: "summary",
 			metadata: promtest.MetadataMap{
-				"job1/instance1/metric1": &metadataEntry{Metric: "metric1", MetricType: textparse.MetricTypeSummary, ValueType: config.DOUBLE},
+				"job1/instance1/metric1":         &metadataEntry{Metric: "metric1", MetricType: textparse.MetricTypeSummary, ValueType: config.DOUBLE},
 				"job1/instance1/metric1_a_count": &metadataEntry{Metric: "metric1_a_count", MetricType: textparse.MetricTypeGauge, ValueType: config.DOUBLE},
 			},
 			series: seriesMap{
@@ -488,8 +491,8 @@ func TestSampleBuilder(t *testing.T) {
 					time.Unix(2, 0),
 					float64(123.4)-float64(55.1),
 					21-10,
-					DoubleSummaryQuantileValue(0.5, float64(0.7) - float64(0.3)),
-					DoubleSummaryQuantileValue(0.9, float64(0.8) - float64(0.6)),
+					DoubleSummaryQuantileValue(0.5, float64(0.7)-float64(0.3)),
+					DoubleSummaryQuantileValue(0.9, float64(0.8)-float64(0.6)),
 				),
 				DoubleSummaryPoint( // 2: summary w/ no quantile values
 					Labels(
@@ -653,7 +656,6 @@ func TestSampleBuilder(t *testing.T) {
 				2: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric2_sum"),
 				3: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric2", "quantile", "0.5"),
 				4: labels.FromStrings("job", "job1", "instance", "instance1", "__name__", "metric2_count"),
-
 			},
 			metadata: promtest.MetadataMap{
 				"job1/instance1/metric1": &metadataEntry{Metric: "metric1", MetricType: textparse.MetricTypeGauge, ValueType: config.DOUBLE},
@@ -813,6 +815,9 @@ func TestSampleBuilder(t *testing.T) {
 			result: []*metric_pb.Metric{
 				nil, // due to NaN
 			},
+			errors: []func(err error) bool{
+				isStalenessMarker,
+			},
 		},
 		// Samples with a NaN value and a cumulative
 		{
@@ -852,6 +857,11 @@ func TestSampleBuilder(t *testing.T) {
 					time.Unix(5, 0),
 					4,
 				),
+			},
+			errors: []func(err error) bool{
+				nil,
+				isStalenessMarker,
+				nil,
 			},
 		},
 		// Gauge/Histogram metadata conflict
@@ -912,7 +922,7 @@ func TestSampleBuilder(t *testing.T) {
 
 					result = append(result, s)
 
-					if c.errors == nil {
+					if c.errors == nil || c.errors[k] == nil {
 						require.NoError(t, err)
 						continue
 					}

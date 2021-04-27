@@ -102,11 +102,11 @@ endif
 
 build: promu vendor
 	@echo ">> building binaries"
-	GO111MODULE=$(GO111MODULE) $(PROMU) build --prefix $(PREFIX)
+	GO111MODULE=$(GO111MODULE) $(PROMU) build --prefix $(PREFIX) -v
 
 build-linux-amd64: promu vendor
 	@echo ">> building linux amd64 binaries"
-	@GO111MODULE=$(GO111MODULE) GOOS=linux GOARCH=amd64 $(PROMU) build --prefix $(PREFIX)
+	@GO111MODULE=$(GO111MODULE) GOOS=linux GOARCH=amd64 $(PROMU) build --prefix $(PREFIX) -v
 
 tarball: promu
 	@echo ">> building release tarball"

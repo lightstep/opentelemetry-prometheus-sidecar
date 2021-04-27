@@ -8,6 +8,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+## [0.23.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.23.0) - 2021-04-23
+
 ### Changed
 
 - Do not require in-order writes, use random load balancing. (#198)
@@ -15,7 +17,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Added a loop at the start of `Tail` to wait in the event that prometheus is writing a new checkpoint. The max period for this loop is 5m0s (#205)
 - Add proper support for Summary (#207)
 - Keep existing shards during re-sharding events. (#221)
-- Instead of skipping segments, restart the prometheus reader to ensure we don't miss series references. (#227)
+- Instead of skipping segments, restart the Prometheus reader to ensure we don't miss series references. (#227)
+- Do not count Prometheus staleness markers as skipped points. (#231)
 
 ## [0.22.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.22.0) - 2021-04-16
 
