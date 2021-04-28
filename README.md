@@ -461,7 +461,7 @@ troubleshooting.
 | --- | --- | --- | ---|
 | sidecar.points.produced | counter | number of points read from the prometheus WAL | |
 | sidecar.points.dropped | counter | number of points dropped due to errors | `key_reason`: metadata, validation |
-| sidecar.points.skipped | counter | number of points skipped due to filters, max-point-age, etc. | |
+| sidecar.points.skipped | counter | number of points skipped due to filters and max-point-age | |
 | sidecar.queue.outcome | counter | outcome of the sample in the queue | `outcome`: success, failed, retry, aborted |
 | sidecar.series.dropped | counter | number of series or metrics dropped | `key_reason`: metadata, validation |
 | sidecar.series.current | gauge | number of series refs in the series cache | `status`: live, filtered, invalid |
