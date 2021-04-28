@@ -457,19 +457,19 @@ These metrics are key to understanding the health of the sidecar.
 They are periodically printed to the console log to assist in
 troubleshooting.
 
-| Metric Name | Metric Type | Description | Additional Attributes |
+| Metric Name | Type | Description | Additional Attributes |
 | --- | --- | --- | ---|
 | sidecar.points.produced | counter | number of points read from the prometheus WAL | |
 | sidecar.points.dropped | counter | number of points dropped due to errors | `key_reason`: metadata, validation |
-| sidecar.points.skipped | counter | number of points skipped due to filters and max-point-age | |
+| sidecar.points.skipped | counter | number of points skipped by filters | |
 | sidecar.queue.outcome | counter | outcome of the sample in the queue | `outcome`: success, failed, retry, aborted |
 | sidecar.series.dropped | counter | number of series or metrics dropped | `key_reason`: metadata, validation |
-| sidecar.series.current | gauge | number of series refs in the series cache | `status`: live, filtered, invalid |
+| sidecar.series.current | gauge | number of series in the cache | `status`: live, filtered, invalid |
 | sidecar.metrics.failing | gauge | failing metric names and explanations | `key_reason`, `metric_name` |
 
 **Host and Runtime Metrics**
 
-| Metric Name | Metric Type | Description | Additional Attributes |
+| Metric Name | Type | Description | Additional Attributes |
 | --- | --- | --- | ---|
 | process.cpu.time | counter | cpu seconds used | `state`: user, sys |
 | system.network.io | counter | bytes sent and received | `direction`: read, write |
@@ -482,7 +482,7 @@ performance of the code and individual Prometheus installations.
 Operators can safely ignore these metrics except to better understand
 sidecar performance.
 
-| Metric Name | Metric Type | Description | Additional Attributes |
+| Metric Name | Type | Description | Additional Attributes |
 | --- | --- | --- | ---|
 | sidecar.connect.duration | histogram | how many attempts to connect (and how long) | `error`: true, false |
 | sidecar.export.duration | histogram | how many attempts to export (and how long) | `error`: true, false |
