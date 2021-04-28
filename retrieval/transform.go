@@ -42,9 +42,14 @@ var (
 	errStalenessMarkerSkipped   = errors.New("staleness marker skipped")
 )
 
+type SizedMetric struct {
+	*metric_pb.Metric
+	Size int
+}
+
 // Appender appends a time series with exactly one data point.
 type Appender interface {
-	Append(ctx context.Context, s *metric_pb.Metric) error
+	Append(s SizedMetric)
 }
 
 type sampleBuilder struct {
