@@ -451,31 +451,49 @@ The sidecar will output spans from its supervisor process with service.name=`ope
 
 Metrics from the subordinate process can help identify issues once the first metrics are successfully written.  There are three standard host and runtime metrics to monitor:
 
+**Key Success Metrics**
+
+These metrics are key to understanding the health of the sidecar.
+They are periodically printed to the console log to assist in
+troubleshooting.
+
+| Metric Name | Type | Description | Additional Attributes |
+| --- | --- | --- | ---|
+| sidecar.points.produced | counter | number of points read from the prometheus WAL | |
+| sidecar.points.dropped | counter | number of points dropped due to errors | `key_reason`: metadata, validation |
+| sidecar.points.skipped | counter | number of points skipped by filters | |
+| sidecar.queue.outcome | counter | outcome of the sample in the queue | `outcome`: success, failed, retry, aborted |
+| sidecar.series.dropped | counter | number of series or metrics dropped | `key_reason`: metadata, validation |
+| sidecar.series.current | gauge | number of series in the cache | `status`: live, filtered, invalid |
+| sidecar.metrics.failing | gauge | failing metric names and explanations | `key_reason`, `metric_name` |
+
 **Host and Runtime Metrics**
-1. process.cpu.time, with tag (state:user,sys)
-2. system.network.io, with tag (direction:read,write)
-3. runtime.go.mem.heap_alloc
+
+| Metric Name | Type | Description | Additional Attributes |
+| --- | --- | --- | ---|
+| process.cpu.time | counter | cpu seconds used | `state`: user, sys |
+| system.network.io | counter | bytes sent and received | `direction`: read, write |
+| runtime.go.mem.heap_alloc | gauge | memory in use | |
 
 **Internal Metrics**
 
-| Metric Name | Metric Type | Description | Additional Attributes |
+These metrics are diagnostic in nature, meant for characterizing
+performance of the code and individual Prometheus installations.
+Operators can safely ignore these metrics except to better understand
+sidecar performance.
+
+| Metric Name | Type | Description | Additional Attributes |
 | --- | --- | --- | ---|
 | sidecar.connect.duration | histogram | how many attempts to connect (and how long) | `error`: true, false |
 | sidecar.export.duration | histogram | how many attempts to export (and how long) | `error`: true, false |
 | sidecar.monitor.duration | histogram | how many attempts to scrape Prometheus /metrics (and how long) | `error`: true, false |
 | sidecar.metadata.fetch.duration | histogram | how many attempts to fetch metadata from Prometheus (and how long) | `mode`: single, batch; `error`: true, false |
-| sidecar.queue.outcome | counter | outcome of the sample in the queue | `outcome`: success, failed, retry, aborted |
 | sidecar.queue.capacity | gauge | number of available slots for samples (i.e., points) in the queue, counts buffer size times current number of shards | |
 | sidecar.queue.running | gauge | number of running shards, those which have not exited | |
 | sidecar.queue.shards | gauge | number of current shards, as set by the queue manager | |
 | sidecar.queue.size | gauge | number of samples (i.e., points) standing in a queue waiting to export | |
 | sidecar.series.defined | counter | number of series defined in the WAL | |
-| sidecar.series.dropped | counter | number of series or metrics dropped | `key_reason`: metadata, validation |
-| sidecar.points.produced | counter | number of points read from the prometheus WAL | |
-| sidecar.points.dropped | counter | number of points dropped due to errors | `key_reason`: metadata, validation |
-| sidecar.points.skipped | counter | number of points skipped due to filters, max-point-age, etc. | |
 | sidecar.metadata.lookups | counter | number of calls to lookup metadata | `error`: true, false |
-| sidecar.series.current | gauge | number of series refs in the series cache | `status`: live, filtered, invalid |
 | sidecar.wal.size | gauge | size of the prometheus WAL | |
 | sidecar.wal.offset | gauge | current offset in the prometheus WAL | |
 | sidecar.refs.collected | counter | number of WAL series refs removed from memory by garbage collection | `error`: true, false |
@@ -484,7 +502,6 @@ Metrics from the subordinate process can help identify issues once the first met
 | sidecar.segment.reads | counter | number of WAL segment read() calls | |
 | sidecar.segment.bytes | counter | number of WAL segment bytes read | |
 | sidecar.segment.skipped | counter | number of skipped WAL segments | |
-| sidecar.metrics.failing | gauge | failing metric names and explanations | `key_reason`, `metric_name` |
 
 ## Upstream
 
