@@ -451,12 +451,7 @@ The sidecar will output spans from its supervisor process with service.name=`ope
 
 Metrics from the subordinate process can help identify issues once the first metrics are successfully written.  There are three standard host and runtime metrics to monitor:
 
-**Host and Runtime Metrics**
-1. process.cpu.time, with tag (state:user,sys)
-2. system.network.io, with tag (direction:read,write)
-3. runtime.go.mem.heap_alloc
-
-** Key Success Metrics**
+**Key Success Metrics**
 
 These metrics are key to understanding the health of the sidecar.
 They are periodically printed to the console log to assist in
@@ -472,7 +467,15 @@ troubleshooting.
 | sidecar.series.current | gauge | number of series refs in the series cache | `status`: live, filtered, invalid |
 | sidecar.metrics.failing | gauge | failing metric names and explanations | `key_reason`, `metric_name` |
 
-** Internal Metrics **
+**Host and Runtime Metrics**
+
+| Metric Name | Metric Type | Description | Additional Attributes |
+| --- | --- | --- | ---|
+| process.cpu.time | counter | cpu seconds used | `state`: user, sys |
+| system.network.io | counter | bytes sent and received | `direction`: read, write |
+| runtime.go.mem.heap_alloc | gauge | memory in use | |
+
+**Internal Metrics**
 
 These metrics are diagnostic in nature, meant for characterizing
 performance of the code and individual Prometheus installations.
