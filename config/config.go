@@ -58,8 +58,9 @@ const (
 	DefaultSupervisorBufferSize  = 16384
 	DefaultSupervisorLogsHistory = 16
 
-	// How many points per request
-	DefaultMaxBytesPerRequest = 500
+	// How many bytes per request
+	DefaultMaxBytesPerRequest = 65536
+
 	// Min number of shards, i.e. amount of concurrency
 	DefaultMinShards = 1
 	// Max number of shards, i.e. amount of concurrency
@@ -184,12 +185,12 @@ type PromConfig struct {
 	Endpoint           string         `json:"endpoint"`
 	WAL                string         `json:"wal"`
 	MaxPointAge        DurationConfig `json:"max_point_age"`
-	MaxBytesPerRequest int            `json:"max_bytes_per_request"`
 	MinShards          int            `json:"min_shards"`
 	MaxShards          int            `json:"max_shards"`
 }
 
 type OTelConfig struct {
+	MaxBytesPerRequest int            `json:"max_bytes_per_request"`
 	MetricsPrefix string `json:"metrics_prefix"`
 }
 
@@ -230,7 +231,7 @@ func (c MainConfig) QueueConfig() promconfig.QueueConfig {
 
 	cfg.MaxBackoff = model.Duration(2 * time.Second)
 	// Note: we are passing bytes in a MaxSamplesPerSend field.
-	cfg.MaxSamplesPerSend = c.Prometheus.MaxBytesPerRequest
+	cfg.MaxSamplesPerSend = c.OpenTelemetry.MaxBytesPerRequest
 	cfg.MinShards = c.Prometheus.MinShards
 	cfg.MaxShards = c.Prometheus.MaxShards
 
@@ -252,9 +253,11 @@ func DefaultMainConfig() MainConfig {
 			WAL:                DefaultWALDirectory,
 			Endpoint:           DefaultPrometheusEndpoint,
 			MaxPointAge:        DurationConfig{DefaultMaxPointAge},
-			MaxBytesPerRequest: DefaultMaxBytesPerRequest,
 			MinShards:          DefaultMinShards,
 			MaxShards:          DefaultMaxShards,
+		},
+		OpenTelemetry: OTelConfig{
+			MaxBytesPerRequest: DefaultMaxBytesPerRequest,
 		},
 		Admin: AdminConfig{
 			Port:                      DefaultAdminPort,
@@ -332,9 +335,6 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 	a.Flag("prometheus.max-point-age", "Skip points older than this, to assist recovery. Default: "+DefaultMaxPointAge.String()).
 		DurationVar(&cfg.Prometheus.MaxPointAge.Duration)
 
-	a.Flag("prometheus.max-bytes-per-request", fmt.Sprintf("Send at most this many bytes per request. Default: %d", DefaultMaxBytesPerRequest)).
-		IntVar(&cfg.Prometheus.MaxBytesPerRequest)
-
 	a.Flag("prometheus.min-shards", fmt.Sprintf("Min number of shards, i.e. amount of concurrency. Default: %d", DefaultMinShards)).
 		IntVar(&cfg.Prometheus.MinShards)
 
@@ -352,6 +352,9 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 
 	a.Flag("security.root-certificate", "Root CA certificate to use for TLS connections, in PEM format (e.g., root.crt). May be repeated.").
 		StringsVar(&cfg.Security.RootCertificates)
+
+	a.Flag("opentelemetry.max-bytes-per-request", fmt.Sprintf("Send at most this many bytes per request. Default: %d", DefaultMaxBytesPerRequest)).
+		IntVar(&cfg.OpenTelemetry.MaxBytesPerRequest)
 
 	a.Flag("opentelemetry.metrics-prefix", "Customized prefix for exporter metrics. If not set, none will be used").
 		StringVar(&cfg.OpenTelemetry.MetricsPrefix)
