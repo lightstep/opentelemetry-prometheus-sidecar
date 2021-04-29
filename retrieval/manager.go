@@ -379,10 +379,7 @@ func appendSamples(appender Appender, samples []*metric_pb.Metric) {
 	for _, pms := range smap {
 		if len(pms) == 1 {
 			// Special case, no batching.
-			appender.Append(SizedMetric{
-				Metric: pms[0],
-				Size:   proto.Size(pms[0]),
-			})
+			appender.Append(NewSizedMetric(pms[0], 1, proto.Size(pms[0])))
 			continue
 		}
 
@@ -394,6 +391,7 @@ func appendSamples(appender Appender, samples []*metric_pb.Metric) {
 
 			newPt := pms[0]
 			total := proto.Size(newPt)
+			cnt := 0
 
 			pms = pms[1:]
 
@@ -414,14 +412,13 @@ func appendSamples(appender Appender, samples []*metric_pb.Metric) {
 					break
 				}
 
+				cnt++
 				total += sz
 				pms = pms[1:]
 			}
 
-			appender.Append(SizedMetric{
-				Metric: newPt,
-				Size:   total, // Note: approximate is OK.
-			})
+			// Note: approximate is OK.
+			appender.Append(NewSizedMetric(newPt, cnt, total))
 		}
 	}
 }

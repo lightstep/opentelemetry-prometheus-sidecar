@@ -467,7 +467,7 @@ func (t *QueueManager) runShard(sh *shard) {
 	for {
 		select {
 		case entry, ok := <-sh.queue:
-			sample := entry.Metric
+			sample := entry.Metric()
 
 			// TODO: use entry Size
 			_ = entry.Size

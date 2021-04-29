@@ -199,7 +199,7 @@ func TestReader_Progress(t *testing.T) {
 				t.Fatalf("unexpected record %d for offset %d", i, tseconds)
 			}
 			return nil
-		}, resourceMetric(s.Metric))
+		}, resourceMetric(s.Metric()))
 	}
 
 	require.EqualValues(t, map[string]bool{}, failingSet)
@@ -305,7 +305,7 @@ func TestAppendSamples(t *testing.T) {
 	var output []*metric_pb.Metric
 
 	for _, sm := range recorder.samples {
-		output = append(output, sm.Metric)
+		output = append(output, sm.Metric())
 	}
 
 	var received []float64

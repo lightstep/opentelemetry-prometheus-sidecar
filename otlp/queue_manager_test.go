@@ -198,10 +198,7 @@ func (c *TestStorageClient) Close() error {
 }
 
 func sizeMetric(s *metric_pb.Metric) retrieval.SizedMetric {
-	return retrieval.SizedMetric{
-		Metric: s,
-		Size:   proto.Size(s),
-	}
+	return retrieval.NewSizedMetric(s, 1, proto.Size(s))
 }
 
 func TestSampleDeliverySimple(t *testing.T) {
