@@ -224,12 +224,12 @@ type MainConfig struct {
 	ConfigFilename string `json:"-" yaml:"-"`
 }
 
-// TODO Move this config object into MainConfig (or at least the
-// fields we use, which is most) and add command-line flags.
+// TODO Remove this code. Stop using promconfig.QueueConfig.
 func (c MainConfig) QueueConfig() promconfig.QueueConfig {
 	cfg := promconfig.DefaultQueueConfig
 
 	cfg.MaxBackoff = model.Duration(2 * time.Second)
+	// Note: we are passing bytes in a MaxSamplesPerSend field.
 	cfg.MaxSamplesPerSend = c.Prometheus.MaxBytesPerRequest
 	cfg.MinShards = c.Prometheus.MinShards
 	cfg.MaxShards = c.Prometheus.MaxShards
@@ -238,7 +238,8 @@ func (c MainConfig) QueueConfig() promconfig.QueueConfig {
 	// being available for every new request.
 	// Testing with different latencies and shard numbers have shown that 3x of the batch size
 	// works well.
-	cfg.Capacity = 3 * cfg.MaxSamplesPerSend
+	// TODO: Use a single queue (in a future PR).
+	cfg.Capacity = 1500
 
 	return cfg
 }

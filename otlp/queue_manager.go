@@ -217,8 +217,8 @@ func NewQueueManager(logger log.Logger, cfg promconfig.QueueConfig, timeout time
 
 // Append queues a sample to be sent to the OpenTelemetry API.
 func (t *QueueManager) Append(sample retrieval.SizedMetric) {
-	t.queueLengthCounter.Add(context.Background(), 1)
-	t.samplesIn.incr(1)
+	t.queueLengthCounter.Add(context.Background(), int64(sample.Count()))
+	t.samplesIn.incr(int64(sample.Count()))
 
 	t.shardsMtx.RLock()
 	defer t.shardsMtx.RUnlock()
@@ -445,8 +445,9 @@ func (t *QueueManager) runShard(sh *shard) {
 	client := t.clientFactory.New()
 	defer client.Close()
 
-	// Send batches of at most MaxSamplesPerSend samples to the remote storage.
-	pendingSamples := make([]*metricspb.Metric, 0, t.cfg.MaxSamplesPerSend)
+	var pendingSamples []*metricspb.Metric
+	var pendingCount int
+	var pendingSize int
 
 	ctx := context.Background()
 
@@ -467,62 +468,48 @@ func (t *QueueManager) runShard(sh *shard) {
 	for {
 		select {
 		case entry, ok := <-sh.queue:
-			sample := entry.Metric()
-
-			// TODO: use entry Size
-			_ = entry.Size
-
 			if !ok {
 				// The queue was closed.  Flush and return.
 				if len(pendingSamples) > 0 {
-					t.sendSamples(client, pendingSamples)
+					t.sendSamples(client, pendingSamples, pendingCount)
 				}
 				return
 			}
 
-			// Remove one count from the queue size metric.
-			t.queueLengthCounter.Add(ctx, -1)
+			// Remove count from the queue size metric.
+			t.queueLengthCounter.Add(ctx, int64(-entry.Count()))
 
-			pendingSamples = append(pendingSamples, sample)
-			if len(pendingSamples) >= t.cfg.MaxSamplesPerSend {
+			pendingSamples = append(pendingSamples, entry.Metric())
+			pendingSize += entry.Size()
+			pendingCount += entry.Count()
+
+			// Note: t.cfg.MaxSamplesPerSend is a byte
+			// size being passed in a field we no longer
+			// care for, see the TODO in config.go about
+			// removing the use of promconfig.QueueConfig.
+			if pendingSize >= t.cfg.MaxSamplesPerSend {
 				// Send a batch.
-				t.sendSamples(client, pendingSamples)
+				t.sendSamples(client, pendingSamples, pendingCount)
 				pendingSamples = pendingSamples[:0]
+				pendingSize = 0
+				pendingCount = 0
 
 				stopTimer()
 				timer.Reset(time.Duration(t.cfg.BatchSendDeadline))
 			}
 		case <-timer.C:
 			if len(pendingSamples) > 0 {
-				t.sendSamples(client, pendingSamples)
+				t.sendSamples(client, pendingSamples, pendingCount)
 				pendingSamples = pendingSamples[:0]
+				pendingSize = 0
+				pendingCount = 0
 			}
 			timer.Reset(time.Duration(t.cfg.BatchSendDeadline))
 		}
 	}
 }
 
-func (t *QueueManager) sendSamples(client StorageClient, samples []*metricspb.Metric) {
-	begin := time.Now()
-	t.sendSamplesWithBackoff(client, samples)
-
-	// These counters are used to calculate the dynamic sharding, and as such
-	// should be maintained irrespective of success or failure.
-	t.samplesOut.incr(int64(len(samples)))
-	t.samplesOutDuration.incr(int64(time.Since(begin)))
-}
-
-// sendSamples to the remote storage with backoff for recoverable errors.
-func (t *QueueManager) sendSamplesWithBackoff(client StorageClient, samples []*metricspb.Metric) {
-	ctx := context.Background()
-	start := time.Now()
-	backoff := t.cfg.MinBackoff
-
-	// maxWait is provided as a backstop for points that might
-	// never succeed, e.g., because they take so long as to
-	// repeatedly time out.
-	maxWait := t.timeout * time.Duration(config.DefaultMaxExportAttempts)
-
+func (t *QueueManager) sendSamples(client StorageClient, samples []*metricspb.Metric, count int) {
 	req := &metricsService.ExportMetricsServiceRequest{
 		ResourceMetrics: []*metricspb.ResourceMetrics{
 			{
@@ -537,13 +524,33 @@ func (t *QueueManager) sendSamplesWithBackoff(client StorageClient, samples []*m
 		},
 	}
 
+	begin := time.Now()
+	t.sendSamplesWithBackoff(client, req, count)
+
+	// These counters are used to calculate the dynamic sharding, and as such
+	// should be maintained irrespective of success or failure.
+	t.samplesOut.incr(int64(count))
+	t.samplesOutDuration.incr(int64(time.Since(begin)))
+}
+
+// sendSamples to the remote storage with backoff for recoverable errors.
+func (t *QueueManager) sendSamplesWithBackoff(client StorageClient, req *metricsService.ExportMetricsServiceRequest, count int) {
+	ctx := context.Background()
+	start := time.Now()
+	backoff := t.cfg.MinBackoff
+
+	// maxWait is provided as a backstop for points that might
+	// never succeed, e.g., because they take so long as to
+	// repeatedly time out.
+	maxWait := t.timeout * time.Duration(config.DefaultMaxExportAttempts)
+
 	for time.Since(start) < maxWait {
 		err := client.Store(req)
 
 		if err == nil {
 			t.sendOutcomesCounter.Add(
 				ctx,
-				int64(len(samples)),
+				int64(count),
 				config.OutcomeKey.String(config.OutcomeSuccessValue))
 			return
 		}
@@ -551,12 +558,12 @@ func (t *QueueManager) sendSamplesWithBackoff(client StorageClient, samples []*m
 		if !isRecoverable(err) {
 			t.sendOutcomesCounter.Add(
 				ctx,
-				int64(len(samples)),
+				int64(count),
 				config.OutcomeKey.String("failed"))
 
 			level.Error(t.logger).Log(
 				"msg", "unrecoverable write error",
-				"points", len(samples),
+				"points", count,
 				"err", truncateErrorString(err),
 			)
 			return
@@ -564,13 +571,13 @@ func (t *QueueManager) sendSamplesWithBackoff(client StorageClient, samples []*m
 
 		t.sendOutcomesCounter.Add(
 			ctx,
-			int64(len(samples)),
+			int64(count),
 			config.OutcomeKey.String("retry"))
 
 		doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
 			level.Warn(t.logger).Log(
 				"msg", "recoverable write error",
-				"points", len(samples),
+				"points", count,
 				"err", truncateErrorString(err),
 			)
 		})
@@ -584,12 +591,12 @@ func (t *QueueManager) sendSamplesWithBackoff(client StorageClient, samples []*m
 
 	t.sendOutcomesCounter.Add(
 		ctx,
-		int64(len(samples)),
+		int64(count),
 		config.OutcomeKey.String("aborted"))
 
 	level.Error(t.logger).Log(
 		"msg", "aborted write",
-		"points", len(samples),
+		"points", count,
 	)
 	return
 }
