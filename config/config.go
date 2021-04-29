@@ -59,7 +59,7 @@ const (
 	DefaultSupervisorLogsHistory = 16
 
 	// How many points per request
-	DefaultMaxTimeseriesPerRequest = 500
+	DefaultMaxBytesPerRequest = 500
 	// Min number of shards, i.e. amount of concurrency
 	DefaultMinShards = 1
 	// Max number of shards, i.e. amount of concurrency
@@ -181,12 +181,12 @@ type LogConfig struct {
 }
 
 type PromConfig struct {
-	Endpoint                string         `json:"endpoint"`
-	WAL                     string         `json:"wal"`
-	MaxPointAge             DurationConfig `json:"max_point_age"`
-	MaxTimeseriesPerRequest int            `json:"max_timeseries_per_request"`
-	MinShards               int            `json:"min_shards"`
-	MaxShards               int            `json:"max_shards"`
+	Endpoint           string         `json:"endpoint"`
+	WAL                string         `json:"wal"`
+	MaxPointAge        DurationConfig `json:"max_point_age"`
+	MaxBytesPerRequest int            `json:"max_bytes_per_request"`
+	MinShards          int            `json:"min_shards"`
+	MaxShards          int            `json:"max_shards"`
 }
 
 type OTelConfig struct {
@@ -230,7 +230,7 @@ func (c MainConfig) QueueConfig() promconfig.QueueConfig {
 	cfg := promconfig.DefaultQueueConfig
 
 	cfg.MaxBackoff = model.Duration(2 * time.Second)
-	cfg.MaxSamplesPerSend = c.Prometheus.MaxTimeseriesPerRequest
+	cfg.MaxSamplesPerSend = c.Prometheus.MaxBytesPerRequest
 	cfg.MinShards = c.Prometheus.MinShards
 	cfg.MaxShards = c.Prometheus.MaxShards
 
@@ -248,12 +248,12 @@ type FileReadFunc func(filename string) ([]byte, error)
 func DefaultMainConfig() MainConfig {
 	return MainConfig{
 		Prometheus: PromConfig{
-			WAL:                     DefaultWALDirectory,
-			Endpoint:                DefaultPrometheusEndpoint,
-			MaxPointAge:             DurationConfig{DefaultMaxPointAge},
-			MaxTimeseriesPerRequest: DefaultMaxTimeseriesPerRequest,
-			MinShards:               DefaultMinShards,
-			MaxShards:               DefaultMaxShards,
+			WAL:                DefaultWALDirectory,
+			Endpoint:           DefaultPrometheusEndpoint,
+			MaxPointAge:        DurationConfig{DefaultMaxPointAge},
+			MaxBytesPerRequest: DefaultMaxBytesPerRequest,
+			MinShards:          DefaultMinShards,
+			MaxShards:          DefaultMaxShards,
 		},
 		Admin: AdminConfig{
 			Port:                      DefaultAdminPort,
@@ -331,8 +331,8 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 	a.Flag("prometheus.max-point-age", "Skip points older than this, to assist recovery. Default: "+DefaultMaxPointAge.String()).
 		DurationVar(&cfg.Prometheus.MaxPointAge.Duration)
 
-	a.Flag("prometheus.max-timeseries-per-request", fmt.Sprintf("Send at most this number of timeseries per request. Default: %d", DefaultMaxTimeseriesPerRequest)).
-		IntVar(&cfg.Prometheus.MaxTimeseriesPerRequest)
+	a.Flag("prometheus.max-bytes-per-request", fmt.Sprintf("Send at most this many bytes per request. Default: %d", DefaultMaxBytesPerRequest)).
+		IntVar(&cfg.Prometheus.MaxBytesPerRequest)
 
 	a.Flag("prometheus.min-shards", fmt.Sprintf("Min number of shards, i.e. amount of concurrency. Default: %d", DefaultMinShards)).
 		IntVar(&cfg.Prometheus.MinShards)

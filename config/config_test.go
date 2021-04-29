@@ -172,9 +172,9 @@ startup_timeout: 1777s
 					MaxPointAge: DurationConfig{
 						25 * time.Hour,
 					},
-					MaxTimeseriesPerRequest: 500,
-					MinShards:		 1,
-					MaxShards:               200,
+					MaxBytesPerRequest: 500,
+					MinShards:          1,
+					MaxShards:          200,
 				},
 				Admin: AdminConfig{
 					ListenIP:                  config.DefaultAdminListenIP,
@@ -265,7 +265,7 @@ log:
 				"--destination.compression", "compression_fmt",
 				"--prometheus.wal", "wal-eeee",
 				"--prometheus.max-point-age", "10h",
-				"--prometheus.max-timeseries-per-request", "5",
+				"--prometheus.max-bytes-per-request", "5",
 				"--prometheus.min-shards", "5",
 				"--prometheus.max-shards", "10",
 				"--log.level=warning",
@@ -283,9 +283,9 @@ log:
 					MaxPointAge: DurationConfig{
 						10 * time.Hour,
 					},
-					MaxTimeseriesPerRequest: 5,
-					MinShards:               5,
-					MaxShards:               10,
+					MaxBytesPerRequest: 5,
+					MinShards:          5,
+					MaxShards:          10,
 				},
 				Admin: AdminConfig{
 					ListenIP:                  config.DefaultAdminListenIP,
@@ -360,7 +360,7 @@ prometheus:
   wal: /volume/wal
   endpoint: http://127.0.0.1:19090/
   max_point_age: 72h
-  max_timeseries_per_request: 10
+  max_bytes_per_request: 10
   min_shards: 10
   max_shards: 20
   scrape_intervals: [30s]
@@ -425,9 +425,9 @@ static_metadata:
 					MaxPointAge: DurationConfig{
 						72 * time.Hour,
 					},
-					MaxTimeseriesPerRequest: 10,
-					MinShards:               10,
-					MaxShards:               20,
+					MaxBytesPerRequest: 10,
+					MinShards:          10,
+					MaxShards:          20,
 				},
 				OpenTelemetry: OTelConfig{
 					MetricsPrefix: "prefix.",
