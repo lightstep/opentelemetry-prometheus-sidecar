@@ -62,6 +62,7 @@ func StartComponents(ctx context.Context, scfg SidecarConfig, tailer tail.WalTai
 			//
 			// NOTE: this case *should* never happen
 			if currentSegment > tailer.CurrentSegment() {
+				_ = level.Warn(scfg.Logger).Log("msg", "unexpected segment truncation", "currentSegment", err, "tailer.CurrentSegment", tailer.CurrentSegment())
 				tailer.SetNextSegment(currentSegment + 1)
 				startOffset = currentSegment * wal.DefaultSegmentSize
 			}
