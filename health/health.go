@@ -28,6 +28,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/pkg/errors"
+	promconfig "github.com/prometheus/prometheus/config"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric/number"
 	export "go.opentelemetry.io/otel/sdk/export/metric"
@@ -53,6 +54,7 @@ type (
 		period            time.Duration
 		startTime         time.Time
 		metricsController *controller.Controller
+		promConfigGetter  PromGlobalConfigGetter
 
 		lock         sync.Mutex
 		isRunning    bool
@@ -81,27 +83,33 @@ type (
 	}
 
 	Response struct {
-		Code      int                       `json:"code"`
-		Status    string                    `json:"status"`
-		Metrics   map[string][]exportRecord `json:"metrics"`
-		Running   bool                      `json:"running"`
-		Stackdump string                    `json:"stackdump"`
+		Code            int                       `json:"code"`
+		Status          string                    `json:"status"`
+		Metrics         map[string][]exportRecord `json:"metrics"`
+		ExternalLabels	map[string]string         `json:"external_labels"`
+		Running         bool                      `json:"running"`
+		Stackdump       string                    `json:"stackdump"`
 	}
 
 	exportRecord struct {
 		Labels string  `json:"labels"`
 		Value  float64 `json:"value"`
 	}
+
+        PromGlobalConfigGetter interface {
+                GetGlobalConfig() promconfig.GlobalConfig
+        }
 )
 
 // NewChecker returns a new ready and liveness checkers based on
 // state from the metrics controller.
-func NewChecker(cont *controller.Controller, period time.Duration, logger log.Logger, thresholdRatio float64) *Checker {
+func NewChecker(cont *controller.Controller, promConfigGetter PromGlobalConfigGetter, period time.Duration, logger log.Logger, thresholdRatio float64) *Checker {
 	c := &Checker{
 		logger:            logger,
 		period:            period,
 		startTime:         time.Now(),
 		metricsController: cont,
+		promConfigGetter:  promConfigGetter,
 		tracker:           map[string]*metricTracker{},
 		lastResponse: Response{
 			Code: http.StatusOK,
@@ -175,6 +183,10 @@ func (a *alive) getMetrics() (map[string][]exportRecord, error) {
 	return ret, nil
 }
 
+func (a *alive) getExternalLabels() map[string]string {
+        return a.promConfigGetter.GetGlobalConfig().ExternalLabels.Map()
+}
+
 // ServeHTTP implements a healthcheck handler that returns healthy as
 // long as comparing the youngest and oldest of `numSamples`:
 //
@@ -203,6 +215,7 @@ func (a *alive) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		if shouldUpdate {
 			metrics, err := a.getMetrics()
+			externalLabels := a.getExternalLabels()
 
 			resp.Running = a.isRunning
 
@@ -217,6 +230,7 @@ func (a *alive) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				resp.Code = http.StatusOK
 				resp.Status = "healthy"
 				resp.Metrics = metrics
+				resp.ExternalLabels = externalLabels
 			}
 
 			level.Debug(a.logger).Log(

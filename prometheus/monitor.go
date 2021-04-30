@@ -26,6 +26,7 @@ const acceptHeader = `application/vnd.google.protobuf;proto=io.prometheus.client
 type (
 	Monitor struct {
 		cfg          config.PromReady
+		globalConfig promconfig.GlobalConfig
 		scrapeConfig []*promconfig.ScrapeConfig
 	}
 

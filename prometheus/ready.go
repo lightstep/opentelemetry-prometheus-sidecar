@@ -156,6 +156,10 @@ func (m *Monitor) GetConfig(ctx context.Context) (promconfig.Config, error) {
 
 }
 
+func (m *Monitor) GetGlobalConfig() promconfig.GlobalConfig {
+	return m.globalConfig
+}
+
 func (m *Monitor) GetScrapeConfig() []*promconfig.ScrapeConfig {
 	return m.scrapeConfig
 }
@@ -210,6 +214,7 @@ func (m *Monitor) WaitForReady(inCtx context.Context, inCtxCancel context.Cancel
 					inCtxCancel()
 					return false
 				}
+				m.globalConfig = promCfg.GlobalConfig
 				m.scrapeConfig = promCfg.ScrapeConfigs
 
 				// Great! We also need it to have completed
