@@ -15,6 +15,7 @@ import (
 type fakeTailer struct {
 	readError error
 	sizeError error
+	next      int
 }
 
 func (t *fakeTailer) Size() (int, error) {
@@ -33,14 +34,15 @@ func (t *fakeTailer) Close() error {
 }
 
 func (t *fakeTailer) CurrentSegment() int {
-	return 0
+	return t.next
 }
 
 func (t *fakeTailer) Read(b []byte) (int, error) {
 	return 0, t.readError
 }
 
-func (t *fakeTailer) SetCurrentSegment(int) {
+func (t *fakeTailer) SetNextSegment(next int) {
+	t.next = next
 }
 
 var _ tail.WalTailer = &fakeTailer{}
