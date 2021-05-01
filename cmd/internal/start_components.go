@@ -52,12 +52,21 @@ func StartComponents(ctx context.Context, scfg SidecarConfig, tailer tail.WalTai
 				break
 			}
 			attempts += 1
-			// SetCurrentSegment is being called here to ensure that the tailer
-			// is able to continue past truncated logs after initialization
-			// this addresses the case where a segment is detected as truncated
-			// and its reason for being truncated is *not* a checkpoint happening
-			tailer.SetCurrentSegment(currentSegment)
-			startOffset = currentSegment * wal.DefaultSegmentSize
+			// The following check is to ensure that if a sidecar error'd on
+			// a truncated segment and the truncation was *not* due to a checkpoint,
+			// that truncated segment is skipped when the reader is restart. Otherwise
+			// the reader will reset nextSegment to the next segment after the
+			// checkpoint and hit the same truncated file. NOTE: if the truncation
+			// was caused by a checkpoint, we shouldn't do anything and let the
+			// reader continue on.
+			//
+			// NOTE: this case *should* never happen
+			if currentSegment > tailer.CurrentSegment() {
+				_ = level.Warn(scfg.Logger).Log("msg", "unexpected segment truncation", "currentSegment", err, "tailer.CurrentSegment", tailer.CurrentSegment())
+				tailer.SetNextSegment(currentSegment + 1)
+				startOffset = currentSegment * wal.DefaultSegmentSize
+			}
+
 			continue
 		}
 		break

@@ -11,6 +11,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Changed
 
 - Add `sidecar.series.current` to the periodic supervisor log. (#236)
+- Fix issue w/ nextSegment being set incorrectly. (#242)
 
 ## [0.23.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.23.0) - 2021-04-23
 
