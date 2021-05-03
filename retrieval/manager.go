@@ -271,7 +271,10 @@ Outer:
 				if err != nil {
 					droppedPoints++
 					doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
-						level.Warn(r.logger).Log("msg", "failed to build sample", "err", err)
+						level.Warn(r.logger).Log(
+							"msg", "failed to build sample",
+							"err", err,
+						)
 					})
 					continue
 				}

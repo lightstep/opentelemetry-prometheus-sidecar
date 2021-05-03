@@ -180,7 +180,7 @@ func newSeriesCache(
 	}
 
 	sc.currentSeriesObs = sidecar.OTelMeterMust.NewInt64UpDownSumObserver(
-		"sidecar.series.current",
+		config.CurrentSeriesMetric,
 		func(ctx context.Context, result metric.Int64ObserverResult) {
 			sc.mtx.Lock()
 			defer sc.mtx.Unlock()
