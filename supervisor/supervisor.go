@@ -239,10 +239,6 @@ func (s *Supervisor) healthcheckErr(ctx context.Context) (err error) {
 		}
 		defer resp.Body.Close()
 
-		// Store the latest external labels so they can be used to decorate Spans everywhere.
-		s.externalLabels = mapToStringAttributes(hr.ExternalLabels)
-		fmt.Printf("EXTERNAL LABELS: %v\n", s.externalLabels)
-
 		// Note: The Go SDK 0.16 appears to lose track of the codes.Error status
 		// being set here. It does not appear in the output span.  TODO: investigate.
 		span.SetAttributes(semconv.HTTPAttributesFromHTTPStatusCode(resp.StatusCode)...)
@@ -251,6 +247,9 @@ func (s *Supervisor) healthcheckErr(ctx context.Context) (err error) {
 		if err := json.NewDecoder(resp.Body).Decode(&hr); err != nil {
 			return errors.Wrap(err, "decode response")
 		}
+		// Store the latest external labels so they can be used to decorate Spans everywhere.
+		s.externalLabels = mapToStringAttributes(hr.ExternalLabels)
+
 		span.SetAttributes(attribute.String("sidecar.status", hr.Status))
 
 		if hr.Stackdump != "" {
