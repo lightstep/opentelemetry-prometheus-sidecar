@@ -23,11 +23,8 @@ const externalLabelPrefix = "__external_"
 // createPrimaryDestinationResourceLabels returns the OTLP resources
 // to use for the primary destination.
 func createPrimaryDestinationResourceLabels(svcInstanceId string, externalLabels labels.Labels, extraLabels map[string]string) labels.Labels {
-	// Note: there is minor benefit in including an external label
-	// to indicate the process ID here.  See
-	// https://github.com/lightstep/opentelemetry-prometheus-sidecar/issues/44
-	// Until resources are serialized once per request, leave this
-	// commented out (and a test in e2e_test.go):
+	// TODO: Enable and test the following line, as https://github.com/lightstep/opentelemetry-prometheus-sidecar/issues/44
+	// has been merged.
 	// extraLabels[externalLabelPrefix+string(semconv.ServiceInstanceIDKey)]
 	// = svcInstanceId
 
