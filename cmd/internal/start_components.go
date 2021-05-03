@@ -15,17 +15,28 @@ import (
 	"github.com/prometheus/prometheus/tsdb/wal"
 )
 
+// externalLabelPrefix is a non-standard convention for indicating
+// external labels in the Prometheus data model, which are not
+// semantically defined in OTel, as recognized by Lightstep.
+const externalLabelPrefix = "__external_"
+
 // createPrimaryDestinationResourceLabels returns the OTLP resources
 // to use for the primary destination.
-func createPrimaryDestinationResourceLabels(svcInstanceId string, extraLabels map[string]string) labels.Labels {
-	// Note: there is minor benefit in including an external label
-	// to indicate the process ID here.  See
-	// https://github.com/lightstep/opentelemetry-prometheus-sidecar/issues/44
-	// Until resources are serialized once per request, leave this
-	// commented out (and a test in e2e_test.go):
+func createPrimaryDestinationResourceLabels(svcInstanceId string, externalLabels labels.Labels, extraLabels map[string]string) labels.Labels {
+	// TODO: Enable and test the following line, as https://github.com/lightstep/opentelemetry-prometheus-sidecar/issues/44
+	// has been merged.
 	// extraLabels[externalLabelPrefix+string(semconv.ServiceInstanceIDKey)]
 	// = svcInstanceId
-	return labels.FromMap(extraLabels)
+
+	allLabels := make(map[string]string)
+	for _, label := range externalLabels {
+		allLabels[externalLabelPrefix + label.Name] = label.Value
+	}
+	for name, value := range extraLabels {
+		allLabels[name] = value
+	}
+
+	return labels.FromMap(allLabels)
 }
 
 func NewTailer(ctx context.Context, scfg SidecarConfig) (*tail.Tailer, error) {
@@ -86,7 +97,10 @@ func runComponents(ctx context.Context, scfg SidecarConfig, tailer tail.WalTaile
 		scfg.Destination.Timeout.Duration,
 		scfg.ClientFactory,
 		tailer,
-		retrieval.LabelsToResource(createPrimaryDestinationResourceLabels(scfg.InstanceId, scfg.Destination.Attributes)),
+		retrieval.LabelsToResource(createPrimaryDestinationResourceLabels(
+			scfg.InstanceId,
+			scfg.Monitor.GetGlobalConfig().ExternalLabels,
+			scfg.Destination.Attributes)),
 	)
 	if err != nil {
 		_ = level.Error(scfg.Logger).Log("msg", "creating queue manager failed", "err", err)
