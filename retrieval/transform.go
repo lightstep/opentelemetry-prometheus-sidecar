@@ -42,9 +42,40 @@ var (
 	errStalenessMarkerSkipped   = errors.New("staleness marker skipped")
 )
 
+// SizedMetric encapsulates a small number of points w/ precomputed
+// approximate size.
+type SizedMetric struct {
+	metric *metric_pb.Metric
+	size   int
+	count  int
+}
+
+func NewSizedMetric(metric *metric_pb.Metric, count, size int) SizedMetric {
+	if count > size {
+		panic("Invalid count>size")
+	}
+	return SizedMetric{
+		metric: metric,
+		count:  count,
+		size:   size,
+	}
+}
+
+func (s SizedMetric) Size() int {
+	return s.size
+}
+
+func (s SizedMetric) Count() int {
+	return s.count
+}
+
+func (s SizedMetric) Metric() *metric_pb.Metric {
+	return s.metric
+}
+
 // Appender appends a time series with exactly one data point.
 type Appender interface {
-	Append(ctx context.Context, s *metric_pb.Metric) error
+	Append(s SizedMetric)
 }
 
 type sampleBuilder struct {

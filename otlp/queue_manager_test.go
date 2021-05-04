@@ -20,7 +20,6 @@ import (
 	"os"
 	"reflect"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -29,6 +28,7 @@ import (
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/internal/otlptest"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/internal/promtest"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/prometheus"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/retrieval"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/tail"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/prometheus/common/model"
@@ -39,6 +39,7 @@ import (
 	resource_pb "go.opentelemetry.io/proto/otlp/resource/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
 // TestStorageClient simulates a storage that can store samples and compares it
@@ -195,8 +196,11 @@ func (c *TestStorageClient) Close() error {
 	return nil
 }
 
+func sizeMetric(s *metric_pb.Metric) retrieval.SizedMetric {
+	return retrieval.NewSizedMetric(s, 1, proto.Size(s))
+}
+
 func TestSampleDeliverySimple(t *testing.T) {
-	ctx := context.Background()
 	dir, err := ioutil.TempDir("", "test")
 	if err != nil {
 		t.Fatal(err)
@@ -237,7 +241,7 @@ func TestSampleDeliverySimple(t *testing.T) {
 
 	// These should be received by the client.
 	for _, s := range samples {
-		m.Append(ctx, s)
+		m.Append(sizeMetric(s))
 	}
 	m.Start()
 	defer m.Stop()
@@ -246,7 +250,6 @@ func TestSampleDeliverySimple(t *testing.T) {
 }
 
 func TestSampleDeliveryMultiShard(t *testing.T) {
-	ctx := context.Background()
 	dir, err := ioutil.TempDir("", "test")
 	if err != nil {
 		t.Fatal(err)
@@ -295,7 +298,7 @@ func TestSampleDeliveryMultiShard(t *testing.T) {
 	c.expectSamples(samples)
 	// These should be received by the client.
 	for _, s := range samples {
-		m.Append(ctx, s)
+		m.Append(sizeMetric(s))
 	}
 
 	c.waitForExpectedSamples(t)
@@ -353,12 +356,10 @@ func TestSampleDeliveryTimeout(t *testing.T) {
 	m.Start()
 	defer m.Stop()
 
-	ctx := context.Background()
-
 	// Send the samples twice, waiting for the samples in the meantime.
 	c.expectSamples(samples1)
 	for _, s := range samples1 {
-		m.Append(ctx, s)
+		m.Append(sizeMetric(s))
 	}
 	c.waitForExpectedSamples(t)
 
@@ -366,7 +367,7 @@ func TestSampleDeliveryTimeout(t *testing.T) {
 	c.expectSamples(samples2)
 
 	for _, s := range samples2 {
-		m.Append(ctx, s)
+		m.Append(sizeMetric(s))
 	}
 	c.waitForExpectedSamples(t)
 }
@@ -405,72 +406,14 @@ func TestSampleDeliveryOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ctx := context.Background()
-
 	m.Start()
 	defer m.Stop()
 	// These should be received by the client.
 	for _, s := range samples {
-		m.Append(ctx, s)
+		m.Append(sizeMetric(s))
 	}
 
 	c.waitForExpectedSamples(t)
-}
-
-// TestBlockingStorageClient is a queue_manager StorageClient which will block
-// on any calls to Store(), until the `block` channel is closed, at which point
-// the `numCalls` property will contain a count of how many times Store() was
-// called.
-type TestBlockingStorageClient struct {
-	numCalls uint64
-	block    chan bool
-}
-
-func NewTestBlockedStorageClient() *TestBlockingStorageClient {
-	return &TestBlockingStorageClient{
-		block:    make(chan bool),
-		numCalls: 0,
-	}
-}
-
-func (c *TestBlockingStorageClient) Store(_ *metricsService.ExportMetricsServiceRequest) error {
-	atomic.AddUint64(&c.numCalls, 1)
-	<-c.block
-	return nil
-}
-
-func (c *TestBlockingStorageClient) NumCalls() uint64 {
-	return atomic.LoadUint64(&c.numCalls)
-}
-
-func (c *TestBlockingStorageClient) unlock() {
-	close(c.block)
-}
-
-func (t *TestBlockingStorageClient) New() StorageClient {
-	return t
-}
-
-func (t *TestBlockingStorageClient) Selftest(context.Context) error {
-	return nil
-}
-
-func (c *TestBlockingStorageClient) Name() string {
-	return "testblockingstorageclient"
-}
-
-func (c *TestBlockingStorageClient) Close() error {
-	return nil
-}
-
-func (t *QueueManager) queueLen() int {
-	t.shardsMtx.Lock()
-	defer t.shardsMtx.Unlock()
-	queueLength := 0
-	for sh := range t.shards {
-		queueLength += len(sh.queue)
-	}
-	return queueLength
 }
 
 func TestRecoverable(t *testing.T) {
@@ -479,84 +422,4 @@ func TestRecoverable(t *testing.T) {
 	require.True(t, isRecoverable(status.Error(codes.Unavailable, "try again later")))
 	require.False(t, isRecoverable(status.Error(codes.PermissionDenied, "sorry")))
 	require.False(t, isRecoverable(fmt.Errorf("no idea what this is")))
-}
-
-func TestSpawnNotMoreThanMaxConcurrentSendsGoroutines(t *testing.T) {
-	dir, err := ioutil.TempDir("", "test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(dir)
-
-	// Our goal is to fully empty the queue:
-	// `MaxSamplesPerSend*Shards` samples should be consumed by the
-	// per-shard goroutines, and then another `MaxSamplesPerSend`
-	// should be left on the queue.
-	mainConfig := config.DefaultMainConfig()
-	n := mainConfig.QueueConfig().MaxSamplesPerSend * 2
-
-	var samples []*metric_pb.Metric
-	for i := 0; i < n; i++ {
-		samples = append(samples, newTestSample(
-			fmt.Sprintf("test_metric_%d", i),
-			2234567890001,
-			float64(i),
-		))
-	}
-
-	c := NewTestBlockedStorageClient()
-	cfg := mainConfig.QueueConfig()
-	cfg.MaxShards = 1
-	cfg.Capacity = n
-
-	prom := promtest.NewFakePrometheus(promtest.Config{})
-
-	tailer, err := tail.Tail(context.Background(), telemetry.DefaultLogger(), dir, prometheus.NewMonitor(prom.ReadyConfig()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	m, err := NewQueueManager(nil, cfg, 0, c, tailer, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	m.Start()
-
-	defer func() {
-		c.unlock()
-		m.Stop()
-	}()
-
-	ctx := context.Background()
-
-	for _, s := range samples {
-		m.Append(ctx, s)
-	}
-
-	// Wait until the runShard() loops drain the queue.  If things went right, it
-	// should then immediately block in sendSamples(), but, in case of error,
-	// it would spawn too many goroutines, and thus we'd see more calls to
-	// client.Store()
-	//
-	// The timed wait is maybe non-ideal, but, in order to verify that we're
-	// not spawning too many concurrent goroutines, we have to wait on the
-	// Run() loop to consume a specific number of elements from the
-	// queue... and it doesn't signal that in any obvious way, except by
-	// draining the queue.  We cap the waiting at 1 second -- that should give
-	// plenty of time, and keeps the failure fairly quick if we're not draining
-	// the queue properly.
-	for i := 0; i < 100 && m.queueLen() > 0; i++ {
-		time.Sleep(10 * time.Millisecond)
-	}
-
-	if m.queueLen() != mainConfig.QueueConfig().MaxSamplesPerSend {
-		t.Errorf("Failed to drain QueueManager queue, %d elements left",
-			m.queueLen(),
-		)
-	}
-
-	numCalls := c.NumCalls()
-	if numCalls != uint64(1) {
-		t.Errorf("Saw %d concurrent sends, expected 1", numCalls)
-	}
 }

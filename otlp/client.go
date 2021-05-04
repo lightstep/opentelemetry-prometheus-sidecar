@@ -23,7 +23,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -261,58 +260,33 @@ func (c *Client) Store(req *metricsService.ExportMetricsServiceRequest) error {
 
 	service := metricsService.NewMetricsServiceClient(conn)
 
-	errors := make(chan error, len(tss)/c.prometheus.MaxTimeseriesPerRequest+1)
-	var wg sync.WaitGroup
-	for i := 0; i < len(tss); i += c.prometheus.MaxTimeseriesPerRequest {
-		end := i + c.prometheus.MaxTimeseriesPerRequest
-		if end > len(tss) {
-			end = len(tss)
-		}
-		wg.Add(1)
-		go func(begin int, end int) {
-			defer wg.Done()
-			reqCopy := &metricsService.ExportMetricsServiceRequest{
-				ResourceMetrics: req.ResourceMetrics[begin:end],
-			}
+	var md grpcMetadata.MD
+	defer exportDuration.Start(ctx).Stop(&err)
 
-			var md grpcMetadata.MD
-			var err error
-			defer exportDuration.Start(ctx).Stop(&err)
-
-			if _, err = service.Export(c.grpcMetadata(ctx), reqCopy, grpc.Trailer(&md)); err != nil {
-				doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
-					level.Error(c.logger).Log(
-						"msg", "export failure",
-						"err", truncateErrorString(err),
-						"size", proto.Size(reqCopy),
-						"trailers", fmt.Sprint(md),
-						"recoverable", isRecoverable(err),
-					)
-				})
-				errors <- err
-				return
-			}
-			// Note: Lightstep uses gRPC response Trailers
-			// to return information about validation errors
-			// following a successful Export when any points or
-			// metrics were dropped.
-			c.parseResponseMetadata(ctx, md)
-
-			doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
-				level.Debug(c.logger).Log(
-					"msg", "successful write",
-					"records", end-begin,
-					"size", proto.Size(reqCopy),
-					"trailers", fmt.Sprint(md),
-				)
-			})
-		}(i, end)
-	}
-	wg.Wait()
-	close(errors)
-	if err, ok := <-errors; ok {
+	if _, err = service.Export(c.grpcMetadata(ctx), req, grpc.Trailer(&md)); err != nil {
+		doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
+			level.Error(c.logger).Log(
+				"msg", "export failure",
+				"err", truncateErrorString(err),
+				"size", proto.Size(req),
+				"trailers", fmt.Sprint(md),
+				"recoverable", isRecoverable(err),
+			)
+		})
 		return err
 	}
+	// Note: Lightstep uses gRPC response Trailers to return
+	// information about validation errors following a successful
+	// Export when any points or metrics were dropped.
+	c.parseResponseMetadata(ctx, md)
+
+	doevery.TimePeriod(config.DefaultNoisyLogPeriod, func() {
+		level.Debug(c.logger).Log(
+			"msg", "successful write",
+			"size", proto.Size(req),
+			"trailers", fmt.Sprint(md),
+		)
+	})
 	return nil
 }
 
