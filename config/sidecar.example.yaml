@@ -37,7 +37,7 @@ prometheus:
 
 # OpenTelemetry settings:
 opentelemetry:
-  # Send at most this number of timeseries per request
+  # Send at most this number of bytes per request
   max_bytes_per_request: 1500
 
   # Min number of shards, i.e. amount of concurrency
