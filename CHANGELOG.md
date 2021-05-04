@@ -8,19 +8,17 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+- Assemble multiple points per Metric, limit requests by size instead of points. (#237)
+- Replace `--prometheus.max-timeseries-per-request` flag with `--opentelemetry.max-bytes-per-request`, default 64kB
+- Rename `--prometheus.max-shards` to `--opentelemetry.max-shards` (#245)
+- Rename `--prometheus.min-shards` to `--opentelemetry.min-shards` (#245)
+
 ## [0.23.1](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.23.1) - 2021-05-03
 
 ### Changed
 
 - Add `sidecar.series.current` to the periodic supervisor log. (#236)
-- Assemble multiple points per Metric, limit requests by size instead of points. (#237)
-- Rename `--prometheus.max-timeseries-per-request` flag to `--opentelemetry.max-bytes-per-request`, default 64kB (#237)
-- Rename `prometheus: max_timeseries_per_request:` yaml to `opentelemetry: max_bytes_per_request:` (#237)
 - Fix issue w/ nextSegment being set incorrectly. (#242)
-- Rename `--prometheus.max-shards` to `--opentelemetry.max-shards` ()
-- Rename `prometheus: max_shards:` yaml to `opentelemetry: max_shards:` ()
-- Rename `--prometheus.min-shards` to `--opentelemetry.min-shards` ()
-- Rename `prometheus: min-shards:` yaml to `opentelemetry: min_shards:` ()
 
 ## [0.23.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.23.0) - 2021-04-23
 
