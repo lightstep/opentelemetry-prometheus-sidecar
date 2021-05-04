@@ -248,6 +248,9 @@ func (t *QueueManager) Stop() error {
 	level.Info(t.logger).Log("msg", "stopping remote storage")
 	close(t.quit)
 
+	// Note: Do not close t.queue, as it means handling more cases
+	// in runShard().
+
 	// wait for resharding loops to stop
 	t.wg.Wait()
 
@@ -482,17 +485,8 @@ func (t *QueueManager) runShard(sh *shard) {
 			}
 			return
 
-		case entry, ok := <-t.queue:
-			// Note: see how in ../cmd/internal/start_components.go
-			// there is an effort to stop the Prometheues reader before
-			// stopping the queue manager.  This shouldn't happen.
-			if !ok {
-				level.Warn(t.logger).Log(
-					"msg", "manager is shutting down, dropping data",
-					"dropped", pendingCount,
-				)
-				return
-			}
+		case entry, _ := <-t.queue:
+			// Note: t.queue is never closed.
 
 			// Remove count from the queue size metric.
 			t.queueLengthCounter.Add(ctx, int64(-entry.Count()))
