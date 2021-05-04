@@ -43,11 +43,15 @@ prometheus:
 
 # OpenTelemetry settings:
 opentelemetry:
-  # Send at most this number of timeseries per request
+
+# Send at most this number of timeseries per request
   max_bytes_per_request: 1500
 
   # Metrics prefix is prepended to all exported metric names:
   metrics_prefix: prefix.
+
+  # Outbound queue size limit
+  queue_size: 100001
 
 # Administrative settings:
 admin:

@@ -16,6 +16,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Assemble multiple points per Metric, limit requests by size instead of points. (#237)
 - Replace `--prometheus.max-timeseries-per-request` with `--opentelemetry.max-bytes-per-request`, default 64kB (yaml: `prometheus:\nmax_timeseries_per_request:` with `opentelemetry:\nmax_bytes_per_request:`)  (#237)
 - Fix issue w/ nextSegment being set incorrectly. (#242)
+- Adds new `--opentelemetry.queue-size` setting. (#247)
 
 ## [0.23.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.23.0) - 2021-04-23
 

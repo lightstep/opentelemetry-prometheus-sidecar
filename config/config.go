@@ -61,6 +61,13 @@ const (
 	// How many bytes per request
 	DefaultMaxBytesPerRequest = 65536
 
+	// How many items can be queued before the reader blocks
+	//
+	// Note: queue entries are 16 bytes, this is a large block of memory.
+	// TODO: Consider adjusting this down after understanding performance
+	// of the single-queue approach to sharding taken in #247.
+	DefaultQueueSize = 100000
+
 	// Min number of shards, i.e. amount of concurrency
 	DefaultMinShards = 1
 	// Max number of shards, i.e. amount of concurrency
@@ -182,16 +189,17 @@ type LogConfig struct {
 }
 
 type PromConfig struct {
-	Endpoint           string         `json:"endpoint"`
-	WAL                string         `json:"wal"`
-	MaxPointAge        DurationConfig `json:"max_point_age"`
-	MinShards          int            `json:"min_shards"`
-	MaxShards          int            `json:"max_shards"`
+	Endpoint    string         `json:"endpoint"`
+	WAL         string         `json:"wal"`
+	MaxPointAge DurationConfig `json:"max_point_age"`
+	MinShards   int            `json:"min_shards"`
+	MaxShards   int            `json:"max_shards"`
 }
 
 type OTelConfig struct {
-	MaxBytesPerRequest int            `json:"max_bytes_per_request"`
-	MetricsPrefix string `json:"metrics_prefix"`
+	MaxBytesPerRequest int    `json:"max_bytes_per_request"`
+	MetricsPrefix      string `json:"metrics_prefix"`
+	QueueSize          int    `json:"queue_size"`
 }
 
 type AdminConfig struct {
@@ -235,12 +243,8 @@ func (c MainConfig) QueueConfig() promconfig.QueueConfig {
 	cfg.MinShards = c.Prometheus.MinShards
 	cfg.MaxShards = c.Prometheus.MaxShards
 
-	// We want the queues to have enough buffer to ensure consistent flow with full batches
-	// being available for every new request.
-	// Testing with different latencies and shard numbers have shown that 3x of the batch size
-	// works well.
-	// TODO: Use a single queue (in a future PR).
-	cfg.Capacity = 1500
+	// Note: This is size of a single queue owned by the queue manager.
+	cfg.Capacity = c.OpenTelemetry.QueueSize
 
 	return cfg
 }
@@ -250,14 +254,15 @@ type FileReadFunc func(filename string) ([]byte, error)
 func DefaultMainConfig() MainConfig {
 	return MainConfig{
 		Prometheus: PromConfig{
-			WAL:                DefaultWALDirectory,
-			Endpoint:           DefaultPrometheusEndpoint,
-			MaxPointAge:        DurationConfig{DefaultMaxPointAge},
-			MinShards:          DefaultMinShards,
-			MaxShards:          DefaultMaxShards,
+			WAL:         DefaultWALDirectory,
+			Endpoint:    DefaultPrometheusEndpoint,
+			MaxPointAge: DurationConfig{DefaultMaxPointAge},
+			MinShards:   DefaultMinShards,
+			MaxShards:   DefaultMaxShards,
 		},
 		OpenTelemetry: OTelConfig{
 			MaxBytesPerRequest: DefaultMaxBytesPerRequest,
+			QueueSize:          DefaultQueueSize,
 		},
 		Admin: AdminConfig{
 			Port:                      DefaultAdminPort,
@@ -358,6 +363,9 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 
 	a.Flag("opentelemetry.metrics-prefix", "Customized prefix for exporter metrics. If not set, none will be used").
 		StringVar(&cfg.OpenTelemetry.MetricsPrefix)
+
+	a.Flag("opentelemetry.queue-size", fmt.Sprintf("Number of points that can accumulate before blocking the reader. Default: %d", DefaultQueueSize)).
+		IntVar(&cfg.OpenTelemetry.QueueSize)
 
 	a.Flag("filter", "PromQL metric and attribute matcher which must pass for a series to be forwarded to OpenTelemetry. If repeated, the series must pass any of the filter sets to be forwarded.").
 		StringsVar(&cfg.Filters)

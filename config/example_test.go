@@ -46,7 +46,8 @@ func Example() {
 	//   },
 	//   "opentelemetry": {
 	//     "max_bytes_per_request": 1500,
-	//     "metrics_prefix": "prefix."
+	//     "metrics_prefix": "prefix.",
+	//     "queue_size": 100001
 	//   },
 	//   "admin": {
 	//     "listen_ip": "0.0.0.0",

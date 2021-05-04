@@ -96,6 +96,7 @@ type QueueManager struct {
 
 	shardsMtx   sync.RWMutex
 	shards      map[*shard]struct{}
+	queue       chan retrieval.SizedMetric
 	numShards   int
 	reshardChan chan int
 	quit        chan struct{}
@@ -131,6 +132,7 @@ func NewQueueManager(logger log.Logger, cfg promconfig.QueueConfig, timeout time
 		clientFactory: clientFactory,
 
 		numShards:   cfg.MinShards,
+		queue:       make(chan retrieval.SizedMetric, cfg.Capacity),
 		reshardChan: make(chan int),
 		quit:        make(chan struct{}),
 
@@ -223,11 +225,7 @@ func (t *QueueManager) Append(sample retrieval.SizedMetric) {
 	t.shardsMtx.RLock()
 	defer t.shardsMtx.RUnlock()
 
-	for shard := range t.shards {
-		// Choose the first in Go's randomized map iteration, return.
-		shard.queue <- sample
-		return
-	}
+	t.queue <- sample
 }
 
 // Start the queue manager sending samples to the remote storage.
@@ -266,7 +264,7 @@ func (t *QueueManager) Stop() error {
 	t.wg.Wait()
 
 	for sh := range t.shards {
-		close(sh.queue)
+		close(sh.stop)
 	}
 
 	level.Info(t.logger).Log("msg", "remote storage stopped")
@@ -425,19 +423,19 @@ func (t *QueueManager) reshard(n int) {
 	for len(t.shards) > n {
 		for sh := range t.shards {
 			delete(t.shards, sh)
-			close(sh.queue)
+			close(sh.stop)
 			break
 		}
 	}
 }
 
 type shard struct {
-	queue chan retrieval.SizedMetric
+	stop chan struct{}
 }
 
 func (t *QueueManager) newShard() *shard {
 	return &shard{
-		queue: make(chan retrieval.SizedMetric, t.cfg.Capacity),
+		stop: make(chan struct{}),
 	}
 }
 
@@ -467,7 +465,7 @@ func (t *QueueManager) runShard(sh *shard) {
 
 	for {
 		select {
-		case entry, ok := <-sh.queue:
+		case entry, ok := <-t.queue:
 			if !ok {
 				// The queue was closed.  Flush and return.
 				if len(pendingSamples) > 0 {
