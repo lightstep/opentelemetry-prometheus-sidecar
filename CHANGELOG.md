@@ -12,6 +12,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Replace `--prometheus.max-timeseries-per-request` flag with `--opentelemetry.max-bytes-per-request` with 64kB default size (#237)
 - Rename `--prometheus.max-shards` to `--opentelemetry.max-shards` (#245)
 - Rename `--prometheus.min-shards` to `--opentelemetry.min-shards` (#245)
+- Adds new `--opentelemetry.queue-size` setting. (#247)
 
 ## [0.23.1](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.23.1) - 2021-05-03
 

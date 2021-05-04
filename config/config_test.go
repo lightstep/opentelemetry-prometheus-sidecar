@@ -146,7 +146,7 @@ func TestConfiguration(t *testing.T) {
 			"endpoint must be set: destination.endpoint",
 		},
 		{
-			"only_file", `
+			"only file", `
 destination:
   endpoint: http://womp.womp
   attributes:
@@ -160,7 +160,6 @@ destination:
 
 prometheus:
   wal: wal-eeee
-  scrape_intervals: [22m13s]
 
 startup_timeout: 1777s
 `,
@@ -177,6 +176,7 @@ startup_timeout: 1777s
 					MaxBytesPerRequest: 65536,
 					MinShards:          1,
 					MaxShards:          200,
+					QueueSize:          config.DefaultQueueSize,
 				},
 				Admin: AdminConfig{
 					ListenIP:                  config.DefaultAdminListenIP,
@@ -241,7 +241,7 @@ startup_timeout: 1777s
 		{
 			// Note that attributes and headers are merged, while
 			// for other fields flags overwrite file-config.
-			"file_and_flag", `
+			"file and flag", `
 destination:
   endpoint: http://womp.womp
   attributes:
@@ -270,6 +270,7 @@ log:
 				"--opentelemetry.max-bytes-per-request", "5",
 				"--opentelemetry.min-shards", "5",
 				"--opentelemetry.max-shards", "10",
+				"--opentelemetry.queue-size", "107",
 				"--log.level=warning",
 				"--healthcheck.period=17s",
 				"--healthcheck.threshold-ratio=0.2",
@@ -290,6 +291,7 @@ log:
 					MaxBytesPerRequest: 5,
 					MinShards:          5,
 					MaxShards:          10,
+					QueueSize:          107,
 				},
 				Admin: AdminConfig{
 					ListenIP:                  config.DefaultAdminListenIP,
@@ -339,7 +341,7 @@ log:
 			"",
 		},
 		{
-			"all_settings", `
+			"all settings", `
 # Comments work!
 destination:
   endpoint: https://ingest.staging.lightstep.com:443
@@ -364,7 +366,6 @@ prometheus:
   wal: /volume/wal
   endpoint: http://127.0.0.1:19090/
   max_point_age: 72h
-  scrape_intervals: [30s]
 
 startup_timeout: 33s
 
@@ -388,6 +389,7 @@ opentelemetry:
   min_shards: 10
   max_shards: 20
   metrics_prefix: prefix.
+  queue_size: 701
 
 filters:
 - metric{label=value}
@@ -435,6 +437,7 @@ static_metadata:
 					MetricsPrefix:      "prefix.",
 					MinShards:          10,
 					MaxShards:          20,
+					QueueSize:          701,
 				},
 				Destination: OTLPConfig{
 					Endpoint: "https://ingest.staging.lightstep.com:443",

@@ -49,6 +49,9 @@ opentelemetry:
   # Metrics prefix is prepended to all exported metric names:
   metrics_prefix: prefix.
 
+  # Outbound queue size limit
+  queue_size: 100001
+
 # Administrative settings:
 admin:
   # Listen address of the sidecar's http server (e.g., for healtchecks)

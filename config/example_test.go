@@ -46,7 +46,8 @@ func Example() {
 	//     "max_bytes_per_request": 1500,
 	//     "metrics_prefix": "prefix.",
 	//     "min_shards": 100,
-	//     "max_shards": 200
+	//     "max_shards": 200,
+	//     "queue_size": 100001
 	//   },
 	//   "admin": {
 	//     "listen_ip": "0.0.0.0",
