@@ -304,9 +304,13 @@ func TestAppendSamples(t *testing.T) {
 
 	var output []*metric_pb.Metric
 
+	totalCount := 0
 	for _, sm := range recorder.samples {
 		output = append(output, sm.Metric())
+		totalCount += sm.Count()
 	}
+
+	require.Equal(t, count, totalCount)
 
 	var received []float64
 
