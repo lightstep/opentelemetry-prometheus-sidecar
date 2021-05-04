@@ -9,7 +9,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## Unreleased
 
 - Assemble multiple points per Metric, limit requests by size instead of points. (#237)
-- Replace `--prometheus.max-timeseries-per-request` flag with `--opentelemetry.max-bytes-per-request`, default 64kB
+- Replace `--prometheus.max-timeseries-per-request` flag with `--opentelemetry.max-bytes-per-request` with 64kB default size (#237)
 - Rename `--prometheus.max-shards` to `--opentelemetry.max-shards` (#245)
 - Rename `--prometheus.min-shards` to `--opentelemetry.min-shards` (#245)
 
