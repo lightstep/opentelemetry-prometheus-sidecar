@@ -391,7 +391,7 @@ func appendSamples(appender Appender, samples []*metric_pb.Metric) {
 
 			newPt := pms[0]
 			total := proto.Size(newPt)
-			cnt := 0
+			cnt := 1
 
 			pms = pms[1:]
 
