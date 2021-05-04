@@ -151,9 +151,6 @@ func NewQueueManager(logger log.Logger, cfg promconfig.QueueConfig, timeout time
 	t.lastSize = lastSize
 	t.lastOffset = tailer.Offset()
 	t.shards = map[*shard]struct{}{}
-	for i := 0; i < t.numShards; i++ {
-		t.shards[t.newShard()] = struct{}{}
-	}
 
 	t.sendOutcomesCounter = sidecar.OTelMeterMust.NewInt64Counter(
 		config.OutcomeMetric,
@@ -178,9 +175,7 @@ func NewQueueManager(logger log.Logger, cfg promconfig.QueueConfig, timeout time
 	t.queueCapacityObs = sidecar.OTelMeterMust.NewInt64UpDownSumObserver(
 		"sidecar.queue.capacity",
 		func(ctx context.Context, result metric.Int64ObserverResult) {
-			t.shardsMtx.Lock()
-			defer t.shardsMtx.Unlock()
-			result.Observe(int64(t.numShards * t.cfg.Capacity))
+			result.Observe(int64(t.cfg.Capacity))
 		},
 		metric.WithDescription(
 			"The capacity of the queue of samples to be sent to the remote storage.",
@@ -222,9 +217,6 @@ func (t *QueueManager) Append(sample retrieval.SizedMetric) {
 	t.queueLengthCounter.Add(context.Background(), int64(sample.Count()))
 	t.samplesIn.incr(int64(sample.Count()))
 
-	t.shardsMtx.RLock()
-	defer t.shardsMtx.RUnlock()
-
 	t.queue <- sample
 }
 
@@ -238,8 +230,8 @@ func (t *QueueManager) Start() error {
 	go t.updateShardsLoop()
 	go t.reshardLoop()
 
-	for shard := range t.shards {
-		go t.runShard(shard)
+	for i := 0; i < t.numShards; i++ {
+		t.startShard()
 	}
 
 	return nil
@@ -258,13 +250,16 @@ func (t *QueueManager) Stop() error {
 	level.Info(t.logger).Log("msg", "stopping remote storage")
 	close(t.quit)
 
-	t.shardsMtx.Lock()
-	defer t.shardsMtx.Unlock()
-
+	// wait for resharding loops to stop
 	t.wg.Wait()
 
-	for sh := range t.shards {
-		close(sh.stop)
+	t.shardsMtx.Lock()
+	toStop := t.shards
+	t.shards = nil
+	t.shardsMtx.Unlock()
+
+	for sh := range toStop {
+		t.stopShard(sh)
 	}
 
 	level.Info(t.logger).Log("msg", "remote storage stopped")
@@ -412,34 +407,51 @@ func (t *QueueManager) reshard(n int) {
 		// Do not remove all running shards!
 		return
 	}
-	t.shardsMtx.Lock()
-	defer t.shardsMtx.Unlock()
 
-	for len(t.shards) < n {
-		shard := t.newShard()
-		go t.runShard(shard)
-		t.shards[shard] = struct{}{}
-	}
-	for len(t.shards) > n {
-		for sh := range t.shards {
-			delete(t.shards, sh)
-			close(sh.stop)
-			break
+	toStop := func() (toStop []*shard) {
+		t.shardsMtx.Lock()
+		defer t.shardsMtx.Unlock()
+
+		for len(t.shards) < n {
+			t.startShard()
 		}
+		for len(t.shards) > n {
+			for sh := range t.shards {
+				delete(t.shards, sh)
+				toStop = append(toStop, sh)
+				break
+			}
+		}
+		return toStop
+	}()
+
+	for _, sh := range toStop {
+		t.stopShard(sh)
 	}
+}
+
+func (t *QueueManager) stopShard(sh *shard) {
+	close(sh.stop)
+	sh.wait.Wait()
 }
 
 type shard struct {
 	stop chan struct{}
+	wait sync.WaitGroup
 }
 
-func (t *QueueManager) newShard() *shard {
-	return &shard{
+func (t *QueueManager) startShard() {
+	sh := &shard{
 		stop: make(chan struct{}),
 	}
+	t.shards[sh] = struct{}{}
+	sh.wait.Add(1)
+	go t.runShard(sh)
 }
 
 func (t *QueueManager) runShard(sh *shard) {
+	defer sh.wait.Done()
+
 	client := t.clientFactory.New()
 	defer client.Close()
 
@@ -465,12 +477,22 @@ func (t *QueueManager) runShard(sh *shard) {
 
 	for {
 		select {
+		case <-sh.stop:
+			// This shard is stopping.  Flush and return.
+			if len(pendingSamples) > 0 {
+				t.sendSamples(client, pendingSamples, pendingCount)
+			}
+			return
+
 		case entry, ok := <-t.queue:
+			// Note: see how in ../cmd/internal/start_components.go
+			// there is an effort to stop the Prometheues reader before
+			// stopping the queue manager.  This shouldn't happen.
 			if !ok {
-				// The queue was closed.  Flush and return.
-				if len(pendingSamples) > 0 {
-					t.sendSamples(client, pendingSamples, pendingCount)
-				}
+				level.Warn(t.logger).Log(
+					"msg", "manager is shutting down, dropping data",
+					"dropped", pendingCount,
+				)
 				return
 			}
 
