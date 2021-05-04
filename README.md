@@ -250,12 +250,6 @@ Flags:
       --prometheus.max-point-age=PROMETHEUS.MAX-POINT-AGE
                                  Skip points older than this, to assist
                                  recovery. Default: 25h0m0s
-      --prometheus.max-timeseries-per-request=PROMETHEUS.MAX-TIMESERIES-PER-REQUEST
-                                 Send at most this number of timeseries per
-                                 request. Default: 500
-      --prometheus.max-shards=PROMETHEUS.MAX-SHARDS
-                                 Max number of shards, i.e. amount of
-                                 concurrency. Default: 200
       --prometheus.scrape-interval=PROMETHEUS.SCRAPE-INTERVAL ...
                                  Ignored. This is inferred from the Prometheus
                                  via api/v1/status/config
@@ -268,6 +262,15 @@ Flags:
                                  Root CA certificate to use for TLS connections,
                                  in PEM format (e.g., root.crt). May be
                                  repeated.
+      --opentelemetry.max-bytes-per-request=OPENTELEMETRY.MAX-BYTES-PER-REQUEST
+                                 Send at most this many bytes per request.
+                                 Default: 65536
+      --opentelemetry.min-shards=OPENTELEMETRY.MIN-SHARDS
+                                 Min number of shards, i.e. amount of
+                                 concurrency. Default: 1
+      --opentelemetry.max-shards=OPENTELEMETRY.MAX-SHARDS
+                                 Max number of shards, i.e. amount of
+                                 concurrency. Default: 200
       --opentelemetry.metrics-prefix=OPENTELEMETRY.METRICS-PREFIX
                                  Customized prefix for exporter metrics. If not
                                  set, none will be used
@@ -277,7 +280,7 @@ Flags:
                                  pass any of the filter sets to be forwarded.
       --startup.timeout=STARTUP.TIMEOUT
                                  Timeout at startup to allow the endpoint to
-                                 become available. Default: 5m0s
+                                 become available. Default: 10m0s
       --healthcheck.period=HEALTHCHECK.PERIOD
                                  Period for internal health checking; set at a
                                  minimum to the shortest Promethues scrape
@@ -297,6 +300,7 @@ Flags:
       --disable-diagnostics      Disable diagnostics by default; if unset,
                                  diagnostics will be auto-configured to the
                                  primary destination
+
 ```
 
 Two kinds of sidecar customization are available only through the
@@ -327,7 +331,7 @@ The sidecar reports validation errors using conventions established by
 Lightstep for conveying information about _partial success_ when
 writing to the OTLP destination.  These errors are returned using gRPC
 "trailers" (a.k.a. http2 response headers) and are output as metrics
-and logs.  See the `sidecar.metrics.failing` metric to diagnose validation 
+and logs.  See the `sidecar.metrics.failing` metric to diagnose validation
 errors.
 
 #### Metadata errors
@@ -451,31 +455,49 @@ The sidecar will output spans from its supervisor process with service.name=`ope
 
 Metrics from the subordinate process can help identify issues once the first metrics are successfully written.  There are three standard host and runtime metrics to monitor:
 
+**Key Success Metrics**
+
+These metrics are key to understanding the health of the sidecar.
+They are periodically printed to the console log to assist in
+troubleshooting.
+
+| Metric Name | Type | Description | Additional Attributes |
+| --- | --- | --- | ---|
+| sidecar.points.produced | counter | number of points read from the prometheus WAL | |
+| sidecar.points.dropped | counter | number of points dropped due to errors | `key_reason`: metadata, validation |
+| sidecar.points.skipped | counter | number of points skipped by filters | |
+| sidecar.queue.outcome | counter | outcome of the sample in the queue | `outcome`: success, failed, retry, aborted |
+| sidecar.series.dropped | counter | number of series or metrics dropped | `key_reason`: metadata, validation |
+| sidecar.series.current | gauge | number of series in the cache | `status`: live, filtered, invalid |
+| sidecar.metrics.failing | gauge | failing metric names and explanations | `key_reason`, `metric_name` |
+
 **Host and Runtime Metrics**
-1. process.cpu.time, with tag (state:user,sys)
-2. system.network.io, with tag (direction:read,write)
-3. runtime.go.mem.heap_alloc
+
+| Metric Name | Type | Description | Additional Attributes |
+| --- | --- | --- | ---|
+| process.cpu.time | counter | cpu seconds used | `state`: user, sys |
+| system.network.io | counter | bytes sent and received | `direction`: read, write |
+| runtime.go.mem.heap_alloc | gauge | memory in use | |
 
 **Internal Metrics**
 
-| Metric Name | Metric Type | Description | Additional Attributes |
+These metrics are diagnostic in nature, meant for characterizing
+performance of the code and individual Prometheus installations.
+Operators can safely ignore these metrics except to better understand
+sidecar performance.
+
+| Metric Name | Type | Description | Additional Attributes |
 | --- | --- | --- | ---|
 | sidecar.connect.duration | histogram | how many attempts to connect (and how long) | `error`: true, false |
 | sidecar.export.duration | histogram | how many attempts to export (and how long) | `error`: true, false |
 | sidecar.monitor.duration | histogram | how many attempts to scrape Prometheus /metrics (and how long) | `error`: true, false |
 | sidecar.metadata.fetch.duration | histogram | how many attempts to fetch metadata from Prometheus (and how long) | `mode`: single, batch; `error`: true, false |
-| sidecar.queue.outcome | counter | outcome of the sample in the queue | `outcome`: success, failed, retry, aborted |
 | sidecar.queue.capacity | gauge | number of available slots for samples (i.e., points) in the queue, counts buffer size times current number of shards | |
 | sidecar.queue.running | gauge | number of running shards, those which have not exited | |
 | sidecar.queue.shards | gauge | number of current shards, as set by the queue manager | |
 | sidecar.queue.size | gauge | number of samples (i.e., points) standing in a queue waiting to export | |
 | sidecar.series.defined | counter | number of series defined in the WAL | |
-| sidecar.series.dropped | counter | number of series or metrics dropped | `key_reason`: metadata, validation |
-| sidecar.points.produced | counter | number of points read from the prometheus WAL | |
-| sidecar.points.dropped | counter | number of points dropped due to errors | `key_reason`: metadata, validation |
-| sidecar.points.skipped | counter | number of points skipped due to filters, max-point-age, etc. | |
 | sidecar.metadata.lookups | counter | number of calls to lookup metadata | `error`: true, false |
-| sidecar.series.current | gauge | number of series refs in the series cache | `status`: live, filtered, invalid |
 | sidecar.wal.size | gauge | size of the prometheus WAL | |
 | sidecar.wal.offset | gauge | current offset in the prometheus WAL | |
 | sidecar.refs.collected | counter | number of WAL series refs removed from memory by garbage collection | `error`: true, false |
@@ -484,7 +506,6 @@ Metrics from the subordinate process can help identify issues once the first met
 | sidecar.segment.reads | counter | number of WAL segment read() calls | |
 | sidecar.segment.bytes | counter | number of WAL segment bytes read | |
 | sidecar.segment.skipped | counter | number of skipped WAL segments | |
-| sidecar.metrics.failing | gauge | failing metric names and explanations | `key_reason`, `metric_name` |
 
 ## Upstream
 
@@ -497,3 +518,20 @@ The matrix below lists the versions of Prometheus Server and other dependencies 
 | Sidecar Version | Compatible Prometheus Server Version(s)   | Incompatible Prometheus Server Version(s) |
 | -- | -- | -- |
 | **0.1.x** | 2.10, 2.11, 2.13, 2.15, 2.16, 2.18, 2.19, 2.21, 2.22, 2.23, 2.24 | 2.5 |
+
+## Troubleshooting
+
+The following describes known scenarios that can be problematic for the sidecar.
+
+### Sidecar is falling behind
+
+It's possible for the sidecar to not have enough resources by default to keep up with the WAL in high throughput scenarios. When this case occurs, the following message will be displayed in the sidecar's logs:
+
+```
+past WAL segment not found, sidecar may have dragged behind. Consider increasing min-shards, max-shards and max-bytes-per-request value
+```
+
+This message means that the sidecar is looking for a WAL segment file that has been removed, usually due to Prometheus triggering a checkpoint. It's possible to look at the delta between `sidecar.wal.size` (total wal entries) and `sidecar.wal.offset` (where the sidecar currently is) to determine if the sidecar has enough resources to keep up. If the offset is increasingly further behind the size, it's recommended to increase the timeseries emitted per request using the following configuration options:
+
+- `--opentelemetry.max-bytes-per-request` configures the maximum number of timeseries sent with each request from the sidecar to the OTLP backend.
+- `--opentelemetry.max-shards` configures the number of parallel go routines and grpc connections used to transmit the data.

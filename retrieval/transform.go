@@ -15,6 +15,7 @@ package retrieval
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"sort"
 	"strconv"
@@ -42,9 +43,45 @@ var (
 	errStalenessMarkerSkipped   = errors.New("staleness marker skipped")
 )
 
+// SizedMetric encapsulates a small number of points w/ precomputed
+// approximate size.
+type SizedMetric struct {
+	metric *metric_pb.Metric
+
+	// Note: uint32 is safe because Prometheus uses 128MB WAL segments.
+	size  uint32
+	count uint32
+}
+
+func NewSizedMetric(metric *metric_pb.Metric, count, size int) SizedMetric {
+	if count <= 0 || count > size {
+		panic(fmt.Sprintf("Invalid count(%d)>size(%d)>=0", count, size))
+	}
+	if count > math.MaxUint32 || size > math.MaxUint32 {
+		panic("Invalid overflow")
+	}
+	return SizedMetric{
+		metric: metric,
+		count:  uint32(count),
+		size:   uint32(size),
+	}
+}
+
+func (s SizedMetric) Size() int {
+	return int(s.size)
+}
+
+func (s SizedMetric) Count() int {
+	return int(s.count)
+}
+
+func (s SizedMetric) Metric() *metric_pb.Metric {
+	return s.metric
+}
+
 // Appender appends a time series with exactly one data point.
 type Appender interface {
-	Append(ctx context.Context, s *metric_pb.Metric) error
+	Append(s SizedMetric)
 }
 
 type sampleBuilder struct {

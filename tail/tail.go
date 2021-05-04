@@ -91,7 +91,7 @@ type WalTailer interface {
 	Close() error
 	CurrentSegment() int
 	Read(b []byte) (int, error)
-	SetCurrentSegment(int)
+	SetNextSegment(int)
 }
 
 // Tailer tails a write ahead log in a given directory.
@@ -334,10 +334,10 @@ func (t *Tailer) getCurrentSegment() int {
 // Offset is reset as in incNextSegment()
 // as we *just* started pointing to the *current*
 // segment.
-func (t *Tailer) SetCurrentSegment(segment int) {
+func (t *Tailer) SetNextSegment(segment int) {
 	t.mtx.Lock()
 	defer t.mtx.Unlock()
-	t.nextSegment = segment + 1
+	t.nextSegment = segment
 	t.offset = 0
 }
 

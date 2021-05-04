@@ -117,6 +117,7 @@ global:
 
   external_labels:
     monitor: 'e2e-test'
+    fruit:   'watermelon'
 
 scrape_configs:
   - job_name: 'test-target'
@@ -337,6 +338,9 @@ func TestE2E(t *testing.T) {
 			// passed to the Resource.
 			assert.Equal(t, rvals[string(semconv.ServiceNameKey)], "Service")
 			assert.Equal(t, rvals[string(semconv.ServiceInstanceIDKey)], "")
+                        // External labels include an __external_ prefix.
+                        assert.Equal(t, rvals["__external_monitor"], "e2e-test")
+                        assert.Equal(t, rvals["__external_fruit"], "watermelon")
 
 			output[metricName] = append(output[metricName], val)
 			return nil
