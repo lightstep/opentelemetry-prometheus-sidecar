@@ -529,5 +529,5 @@ past WAL segment not found, sidecar may have dragged behind. Consider increasing
 
 This message means that the sidecar is looking for a WAL segment file that has been removed, usually due to Prometheus triggering a checkpoint. It's possible to look at the delta between `sidecar.wal.size` (total wal entries) and `sidecar.wal.offset` (where the sidecar currently is) to determine if the sidecar has enough resources to keep up. If the offset is increasingly further behind the size, it's recommended to increase the timeseries emitted per request using the following configuration options:
 
-- `--prometheus.max-bytes-per-request` configures the maximum number of timeseries sent with each request from the sidecar to the OTLP backend.
+- `--opentelemetry.max-bytes-per-request` configures the maximum number of timeseries sent with each request from the sidecar to the OTLP backend.
 - `--prometheus.max-shards` configures the number of parallel go routines and grpc connections used to transmit the data.
