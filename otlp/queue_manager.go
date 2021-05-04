@@ -170,8 +170,6 @@ func NewQueueManager(logger log.Logger, cfg promconfig.QueueConfig, timeout time
 			"The number of shards that have started and not stopped.",
 		),
 	)
-
-	// Note: the following two could be a batch observer.
 	t.queueCapacityObs = sidecar.OTelMeterMust.NewInt64UpDownSumObserver(
 		"sidecar.queue.capacity",
 		func(ctx context.Context, result metric.Int64ObserverResult) {
