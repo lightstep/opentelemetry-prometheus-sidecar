@@ -15,6 +15,7 @@ package retrieval
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"sort"
 	"strconv"
@@ -46,27 +47,32 @@ var (
 // approximate size.
 type SizedMetric struct {
 	metric *metric_pb.Metric
-	size   int
-	count  int
+
+	// Note: uint32 is safe because Prometheus uses 128MB WAL segments.
+	size  uint32
+	count uint32
 }
 
 func NewSizedMetric(metric *metric_pb.Metric, count, size int) SizedMetric {
-	if count > size {
-		panic("Invalid count>size")
+	if count <= 0 || count > size {
+		panic(fmt.Sprintf("Invalid count(%d)>size(%d)>=0", count, size))
+	}
+	if count > math.MaxUint32 || size > math.MaxUint32 {
+		panic("Invalid overflow")
 	}
 	return SizedMetric{
 		metric: metric,
-		count:  count,
-		size:   size,
+		count:  uint32(count),
+		size:   uint32(size),
 	}
 }
 
 func (s SizedMetric) Size() int {
-	return s.size
+	return int(s.size)
 }
 
 func (s SizedMetric) Count() int {
-	return s.count
+	return int(s.count)
 }
 
 func (s SizedMetric) Metric() *metric_pb.Metric {
