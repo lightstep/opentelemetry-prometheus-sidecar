@@ -250,9 +250,6 @@ Flags:
       --prometheus.max-point-age=PROMETHEUS.MAX-POINT-AGE
                                  Skip points older than this, to assist
                                  recovery. Default: 25h0m0s
-      --prometheus.max-timeseries-per-request=PROMETHEUS.MAX-TIMESERIES-PER-REQUEST
-                                 Send at most this number of timeseries per
-                                 request. Default: 500
       --prometheus.max-shards=PROMETHEUS.MAX-SHARDS
                                  Max number of shards, i.e. amount of
                                  concurrency. Default: 200
@@ -268,6 +265,9 @@ Flags:
                                  Root CA certificate to use for TLS connections,
                                  in PEM format (e.g., root.crt). May be
                                  repeated.
+      --opentelemetry.max-bytes-per-request=OPENTELEMETRY.MAX-BYTES-PER-REQUEST
+                                 Send at most this number of bytes per
+                                 request. Default: 65536
       --opentelemetry.metrics-prefix=OPENTELEMETRY.METRICS-PREFIX
                                  Customized prefix for exporter metrics. If not
                                  set, none will be used
@@ -514,3 +514,20 @@ The matrix below lists the versions of Prometheus Server and other dependencies 
 | Sidecar Version | Compatible Prometheus Server Version(s)   | Incompatible Prometheus Server Version(s) |
 | -- | -- | -- |
 | **0.1.x** | 2.10, 2.11, 2.13, 2.15, 2.16, 2.18, 2.19, 2.21, 2.22, 2.23, 2.24 | 2.5 |
+
+## Troubleshooting
+
+The following describes known scenarios that can be problematic for the sidecar.
+
+### Sidecar is falling behind
+
+It's possible for the sidecar to not have enough resources by default to keep up with the WAL in high throughput scenarios. When this case occurs, the following message will be displayed in the sidecar's logs:
+
+```
+past WAL segment not found, sidecar may have dragged behind. Consider increasing min-shards, max-shards and max-bytes-per-request value
+```
+
+This message means that the sidecar is looking for a WAL segment file that has been removed, usually due to Prometheus triggering a checkpoint. It's possible to look at the delta between `sidecar.wal.size` (total wal entries) and `sidecar.wal.offset` (where the sidecar currently is) to determine if the sidecar has enough resources to keep up. If the offset is increasingly further behind the size, it's recommended to increase the timeseries emitted per request using the following configuration options:
+
+- `--opentelemetry.max-bytes-per-request` configures the maximum number of timeseries sent with each request from the sidecar to the OTLP backend.
+- `--prometheus.max-shards` configures the number of parallel go routines and grpc connections used to transmit the data.
