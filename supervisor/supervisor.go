@@ -72,6 +72,9 @@ type (
 		// veryUnhealthy means the sidecar returned a stackdump.
 		veryUnhealthy bool
 
+		// external labels, used to decorate our Spans.
+		externalLabels []attribute.KeyValue
+
 		lock      sync.Mutex
 		logBuffer []string
 	}
@@ -208,6 +211,7 @@ func (s *Supervisor) healthcheckErr(ctx context.Context) (err error) {
 	defer cancel()
 
 	ctx, span := tracer.Start(ctx, "health-client")
+	span.SetAttributes(s.externalLabels...)
 
 	defer func() {
 		if err != nil {
@@ -243,6 +247,9 @@ func (s *Supervisor) healthcheckErr(ctx context.Context) (err error) {
 		if err := json.NewDecoder(resp.Body).Decode(&hr); err != nil {
 			return errors.Wrap(err, "decode response")
 		}
+		// Store the latest external labels so they can be used to decorate Spans everywhere.
+		s.externalLabels = mapToStringAttributes(hr.ExternalLabels)
+
 		span.SetAttributes(attribute.String("sidecar.status", hr.Status))
 
 		if hr.Stackdump != "" {
@@ -269,6 +276,7 @@ func (s *Supervisor) healthcheckErr(ctx context.Context) (err error) {
 
 func (s *Supervisor) finalSpan(err error) {
 	_, span := tracer.Start(context.Background(), "shutdown-report")
+	span.SetAttributes(s.externalLabels...)
 	defer span.End()
 
 	span.AddEvent("recent-logs", trace.WithAttributes(
@@ -408,4 +416,12 @@ func (s *Supervisor) noteUnhealthy(hr health.Response) string {
 
 func (s *Supervisor) isStackdump(text []byte) bool {
 	return stackdumpRE.Find(text) != nil
+}
+
+func mapToStringAttributes(mapValues map[string]string) []attribute.KeyValue {
+        attrs := make([]attribute.KeyValue, 0, len(mapValues))
+        for name, value := range mapValues {
+                attrs = append(attrs, attribute.String(name, value))
+        }
+        return attrs
 }

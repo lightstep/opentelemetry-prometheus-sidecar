@@ -64,11 +64,6 @@ import (
 
 const supervisorEnv = "MAIN_SUPERVISOR"
 
-// externalLabelPrefix is a non-standard convention for indicating
-// external labels in the Prometheus data model, which are not
-// semantically defined in OTel, as recognized by Lightstep.
-const externalLabelPrefix = "__external_"
-
 func main() {
 	if !Main() {
 		os.Exit(1)
@@ -126,10 +121,6 @@ func Main() bool {
 	ctx, cancelMain := telemetry.ContextWithSIGTERM(scfg.Logger)
 	defer cancelMain()
 
-	healthChecker := health.NewChecker(
-		telem.Controller, scfg.Admin.HealthCheckPeriod.Duration, scfg.Logger, scfg.Admin.HealthCheckThresholdRatio,
-	)
-
 	httpClient := &http.Client{
 		// Note: The Sidecar->Prometheus HTTP connection is not traced.
 		// Transport: otelhttp.NewTransport(http.DefaultTransport),
@@ -155,6 +146,10 @@ func Main() bool {
 		panic(err)
 	}
 	scfg.MetadataCache = metadata.NewCache(httpClient, metadataURL, staticMetadata)
+
+	healthChecker := health.NewChecker(
+		telem.Controller, scfg.Monitor, scfg.Admin.HealthCheckPeriod.Duration, scfg.Logger, scfg.Admin.HealthCheckThresholdRatio,
+	)
 
 	// Check the progress file, ensure we can write this file.
 	startOffset, err := readWriteStartOffset(scfg)
