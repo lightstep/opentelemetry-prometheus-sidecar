@@ -146,7 +146,7 @@ func TestConfiguration(t *testing.T) {
 			"endpoint must be set: destination.endpoint",
 		},
 		{
-			"only_file", `
+			"only file", `
 destination:
   endpoint: http://womp.womp
   attributes:
@@ -171,11 +171,11 @@ startup_timeout: 1777s
 					MaxPointAge: DurationConfig{
 						25 * time.Hour,
 					},
-					MinShards: 1,
-					MaxShards: 200,
 				},
 				OpenTelemetry: OTelConfig{
 					MaxBytesPerRequest: 65536,
+					MinShards:          1,
+					MaxShards:          200,
 					QueueSize:          config.DefaultQueueSize,
 				},
 				Admin: AdminConfig{
@@ -268,9 +268,9 @@ log:
 				"--prometheus.wal", "wal-eeee",
 				"--prometheus.max-point-age", "10h",
 				"--opentelemetry.max-bytes-per-request", "5",
+				"--opentelemetry.min-shards", "5",
+				"--opentelemetry.max-shards", "10",
 				"--opentelemetry.queue-size", "107",
-				"--prometheus.min-shards", "5",
-				"--prometheus.max-shards", "10",
 				"--log.level=warning",
 				"--healthcheck.period=17s",
 				"--healthcheck.threshold-ratio=0.2",
@@ -286,11 +286,11 @@ log:
 					MaxPointAge: DurationConfig{
 						10 * time.Hour,
 					},
-					MinShards: 5,
-					MaxShards: 10,
 				},
 				OpenTelemetry: OTelConfig{
 					MaxBytesPerRequest: 5,
+					MinShards:          5,
+					MaxShards:          10,
 					QueueSize:          107,
 				},
 				Admin: AdminConfig{
@@ -366,8 +366,6 @@ prometheus:
   wal: /volume/wal
   endpoint: http://127.0.0.1:19090/
   max_point_age: 72h
-  min_shards: 10
-  max_shards: 20
 
 startup_timeout: 33s
 
@@ -388,6 +386,8 @@ security:
 
 opentelemetry:
   max_bytes_per_request: 10
+  min_shards: 10
+  max_shards: 20
   metrics_prefix: prefix.
   queue_size: 701
 
@@ -431,12 +431,12 @@ static_metadata:
 					MaxPointAge: DurationConfig{
 						72 * time.Hour,
 					},
-					MinShards: 10,
-					MaxShards: 20,
 				},
 				OpenTelemetry: OTelConfig{
 					MaxBytesPerRequest: 10,
 					MetricsPrefix:      "prefix.",
+					MinShards:          10,
+					MaxShards:          20,
 					QueueSize:          701,
 				},
 				Destination: OTLPConfig{
@@ -590,8 +590,8 @@ static_metadata:
 		{
 			"min-shards greater than max-shards", ``,
 			[]string{
-				"--prometheus.min-shards=101",
-				"--prometheus.max-shards=100",
+				"--opentelemetry.min-shards=101",
+				"--opentelemetry.max-shards=100",
 			},
 			config.MainConfig{},
 			"min-shards cannot be greater than max-shards",

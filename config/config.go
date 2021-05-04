@@ -192,13 +192,13 @@ type PromConfig struct {
 	Endpoint    string         `json:"endpoint"`
 	WAL         string         `json:"wal"`
 	MaxPointAge DurationConfig `json:"max_point_age"`
-	MinShards   int            `json:"min_shards"`
-	MaxShards   int            `json:"max_shards"`
 }
 
 type OTelConfig struct {
 	MaxBytesPerRequest int    `json:"max_bytes_per_request"`
 	MetricsPrefix      string `json:"metrics_prefix"`
+	MinShards          int    `json:"min_shards"`
+	MaxShards          int    `json:"max_shards"`
 	QueueSize          int    `json:"queue_size"`
 }
 
@@ -240,8 +240,8 @@ func (c MainConfig) QueueConfig() promconfig.QueueConfig {
 	cfg.MaxBackoff = model.Duration(2 * time.Second)
 	// Note: we are passing bytes in a MaxSamplesPerSend field.
 	cfg.MaxSamplesPerSend = c.OpenTelemetry.MaxBytesPerRequest
-	cfg.MinShards = c.Prometheus.MinShards
-	cfg.MaxShards = c.Prometheus.MaxShards
+	cfg.MinShards = c.OpenTelemetry.MinShards
+	cfg.MaxShards = c.OpenTelemetry.MaxShards
 
 	// Note: This is size of a single queue owned by the queue manager.
 	cfg.Capacity = c.OpenTelemetry.QueueSize
@@ -257,11 +257,11 @@ func DefaultMainConfig() MainConfig {
 			WAL:         DefaultWALDirectory,
 			Endpoint:    DefaultPrometheusEndpoint,
 			MaxPointAge: DurationConfig{DefaultMaxPointAge},
-			MinShards:   DefaultMinShards,
-			MaxShards:   DefaultMaxShards,
 		},
 		OpenTelemetry: OTelConfig{
 			MaxBytesPerRequest: DefaultMaxBytesPerRequest,
+			MinShards:          DefaultMinShards,
+			MaxShards:          DefaultMaxShards,
 			QueueSize:          DefaultQueueSize,
 		},
 		Admin: AdminConfig{
@@ -340,12 +340,6 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 	a.Flag("prometheus.max-point-age", "Skip points older than this, to assist recovery. Default: "+DefaultMaxPointAge.String()).
 		DurationVar(&cfg.Prometheus.MaxPointAge.Duration)
 
-	a.Flag("prometheus.min-shards", fmt.Sprintf("Min number of shards, i.e. amount of concurrency. Default: %d", DefaultMinShards)).
-		IntVar(&cfg.Prometheus.MinShards)
-
-	a.Flag("prometheus.max-shards", fmt.Sprintf("Max number of shards, i.e. amount of concurrency. Default: %d", DefaultMaxShards)).
-		IntVar(&cfg.Prometheus.MaxShards)
-
 	var ignoredScrapeIntervals []string
 	a.Flag("prometheus.scrape-interval", "Ignored. This is inferred from the Prometheus via api/v1/status/config").
 		StringsVar(&ignoredScrapeIntervals)
@@ -360,6 +354,12 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 
 	a.Flag("opentelemetry.max-bytes-per-request", fmt.Sprintf("Send at most this many bytes per request. Default: %d", DefaultMaxBytesPerRequest)).
 		IntVar(&cfg.OpenTelemetry.MaxBytesPerRequest)
+
+	a.Flag("opentelemetry.min-shards", fmt.Sprintf("Min number of shards, i.e. amount of concurrency. Default: %d", DefaultMinShards)).
+		IntVar(&cfg.OpenTelemetry.MinShards)
+
+	a.Flag("opentelemetry.max-shards", fmt.Sprintf("Max number of shards, i.e. amount of concurrency. Default: %d", DefaultMaxShards)).
+		IntVar(&cfg.OpenTelemetry.MaxShards)
 
 	a.Flag("opentelemetry.metrics-prefix", "Customized prefix for exporter metrics. If not set, none will be used").
 		StringVar(&cfg.OpenTelemetry.MetricsPrefix)
@@ -438,7 +438,7 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 		}
 	}
 
-	if cfg.Prometheus.MinShards > cfg.Prometheus.MaxShards {
+	if cfg.OpenTelemetry.MinShards > cfg.OpenTelemetry.MaxShards {
 		return MainConfig{}, nil, nil, errors.New("min-shards cannot be greater than max-shards")
 	}
 

@@ -35,17 +35,16 @@ prometheus:
   # Skip points older than this
   max_point_age: 72h
 
+# OpenTelemetry settings:
+opentelemetry:
+  # Send at most this number of bytes per request
+  max_bytes_per_request: 1500
+
   # Min number of shards, i.e. amount of concurrency
   min_shards: 100
 
   # Max number of shards, i.e. amount of concurrency
   max_shards: 200
-
-# OpenTelemetry settings:
-opentelemetry:
-
-# Send at most this number of timeseries per request
-  max_bytes_per_request: 1500
 
   # Metrics prefix is prepended to all exported metric names:
   metrics_prefix: prefix.
