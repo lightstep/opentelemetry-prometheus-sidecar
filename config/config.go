@@ -62,6 +62,10 @@ const (
 	DefaultMaxBytesPerRequest = 65536
 
 	// How many items can be queued before the reader blocks
+	//
+	// Note: queue entries are 16 bytes, this is a large block of memory.
+	// TODO: Consider adjusting this down after understanding performance
+	// of the single-queue approach to sharding taken in #247.
 	DefaultQueueSize = 100000
 
 	// Min number of shards, i.e. amount of concurrency
