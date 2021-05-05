@@ -175,6 +175,24 @@ type OTLPConfig struct {
 	Compression string            `json:"compression"`
 }
 
+func (config OTLPConfig) Copy() OTLPConfig {
+	rv := config
+
+	headers := make(map[string]string)
+	for key, value := range config.Headers {
+		headers[key] = value
+	}
+	rv.Headers = headers
+
+	attrs := make(map[string]string)
+	for key, value := range config.Attributes {
+		attrs[key] = value
+	}
+	rv.Attributes = attrs
+
+	return rv
+}
+
 type LogConfig struct {
 	Level   string `json:"level"`
 	Format  string `json:"format"`
