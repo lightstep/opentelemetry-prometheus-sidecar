@@ -19,13 +19,11 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/internal/promtest"
 	"github.com/stretchr/testify/require"
-	traces "go.opentelemetry.io/proto/otlp/trace/v1"
 )
 
 // Note: the tests would be cleaner in this package if
@@ -233,141 +231,4 @@ func TestStartupUnhealthyEndpoint(t *testing.T) {
 
 	require.Contains(t, berr.String(), "selftest failed, not starting")
 	require.Contains(t, berr.String(), "selftest recoverable error, still trying")
-}
-
-func TestSuperStackDump(t *testing.T) {
-	// Tests that the selftest detects an unhealthy endpoint during the selftest.
-	if testing.Short() {
-		t.Skip("skipping test in short mode.")
-	}
-
-	cmd := exec.Command(
-		os.Args[0],
-		append(e2eTestMainSupervisorFlags,
-			"--destination.endpoint=http://127.0.0.1:19000",
-			"--diagnostics.endpoint=http://127.0.0.1:19000",
-			"--prometheus.wal=testdata/wal",
-			"--healthcheck.period=1s",
-		)...)
-
-	ms := newTestServer(t, nil)
-	ms.runMetricsService()
-
-	// Note: there's no metadata api here, we'll see a "metadata
-	// not found" failure in the log. We could fix this by configuring
-	// matching metadata to what's in testdata/wal here.
-	ms.runPrometheusService(promtest.Config{})
-
-	ts := newTraceServer(t)
-	ms.runDiagnosticsService(ts)
-
-	cmd.Env = append(os.Environ(), "RUN_MAIN=1")
-	var bout, berr bytes.Buffer
-	cmd.Stdout = &bout
-	cmd.Stderr = &berr
-
-	defer func() {
-		if t.Failed() {
-			t.Logf("stdout: %v\n", bout.String())
-			t.Logf("stderr: %v\n", berr.String())
-		}
-	}()
-
-	err := cmd.Start()
-	if err != nil {
-		t.Errorf("execution error: %v", err)
-		return
-	}
-
-	var lock sync.Mutex
-	var diagSpans []*traces.ResourceSpans
-
-	ctx, cancel := context.WithCancel(context.Background())
-	var wg sync.WaitGroup
-	wg.Add(2)
-
-	go func() {
-		defer wg.Done()
-		timer := time.NewTimer(time.Second * 10)
-		defer timer.Stop()
-		for {
-			select {
-			case <-timer.C:
-				t.Log("timeout waiting for spans")
-				t.FailNow()
-				cmd.Process.Kill()
-				return
-			case rs := <-ts.spans:
-				// Note: below searching for a stack dump and
-				// a few key strings, as a simple test.  TODO:
-				// improve by testing support, factoring the
-				// special-purpose logic here into another
-				// package.
-				lock.Lock()
-				diagSpans = append(diagSpans, rs)
-				lock.Unlock()
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
-
-	go func() {
-		defer wg.Done()
-		for {
-			// Dumping the metrics diagnostics here.
-			// TODO: add testing support to validate
-			// metrics from tests and then build more
-			// tests based on metrics.
-			select {
-			case <-ms.metrics:
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
-
-	// The process is expected to kill itself.
-	err = cmd.Wait()
-	require.Error(t, err)
-
-	cancel()
-	wg.Wait()
-	defer ms.Stop()
-	defer ts.Stop()
-
-	lock.Lock()
-	defer lock.Unlock()
-
-	foundCrash := false
-	for _, rs := range diagSpans {
-		for _, span := range rs.InstrumentationLibrarySpans[0].Spans {
-			require.Contains(t, []string{"health-client", "shutdown-report"}, span.Name)
-
-			if span.Name == "shutdown-report" {
-				continue
-			}
-			sa := map[string]string{}
-			for _, a := range span.Attributes {
-				sa[a.Key] = a.Value.String()
-			}
-			statusCode := sa["http.status_code"]
-			require.Contains(t, []string{
-				"int_value:200",
-				"int_value:503",
-			}, statusCode)
-
-			if statusCode == "int_value:200" {
-				continue
-			}
-
-			foundCrash = true
-			require.Contains(t, sa["sidecar.status"], "unhealthy")
-			require.Contains(t, sa["sidecar.stackdump"], "goroutine")
-			require.Contains(t, sa["sidecar.stackdump"], "net/http.(*ServeMux).ServeHTTP")
-		}
-	}
-
-	require.True(t, foundCrash, "expected to find a crash report")
-	require.Contains(t, berr.String(), "metadata not found")
 }
