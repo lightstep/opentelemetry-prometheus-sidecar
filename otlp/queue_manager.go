@@ -94,13 +94,38 @@ type QueueManager struct {
 	clientFactory StorageClientFactory
 	resource      *resourcepb.Resource
 
-	shardsMtx   sync.RWMutex
-	shards      map[*shard]struct{}
-	queue       chan retrieval.SizedMetric
-	numShards   int
+	// shardsMtx is used during Start(), Stop(), and reshard()
+	shardsMtx sync.RWMutex
+
+	// shards is a set of running shards.
+	shards shardMap
+
+	// queue receives sized and counted Metric batches from the
+	// reader.  this channel is not closed.
+	queue chan retrieval.SizedMetric
+
+	// numShards is updated by updateShardsLoop, current value
+	// passed to the reshard loop.
+	numShards int
+
+	// reshardChan carries the output of updateShardsLoop to the
+	// reshard loop.  reshard() is synchronous, changes to
+	// numShards are ignored if reshard takes longer than an
+	// update interval.
 	reshardChan chan int
-	quit        chan struct{}
-	wg          sync.WaitGroup
+
+	// quit sends a signal to the resharding loop and updater to exit
+	quit chan struct{}
+
+	// wg is used to ensure the resharding loop and updater exit before
+	// Stop() returns.
+	wg sync.WaitGroup
+
+	// stopped and started ensure that Start and Stop are not
+	// called out of order.  The current run.Group code usage in
+	// start_components.go does not prevent Stop() being called
+	// before Start().
+	stopped, started bool
 
 	samplesIn, samplesOut, samplesOutDuration *ewmaRate
 	walSize, walOffset                        *ewmaRate
@@ -148,10 +173,8 @@ func NewQueueManager(logger log.Logger, cfg promconfig.QueueConfig, timeout time
 	if err != nil {
 		return nil, errors.Wrap(err, "get WAL size")
 	}
-	t.wg.Add(1)
 	t.lastSize = lastSize
 	t.lastOffset = tailer.Offset()
-	t.shards = map[*shard]struct{}{}
 
 	t.sendOutcomesCounter = sidecar.OTelMeterMust.NewInt64Counter(
 		config.OutcomeMetric,
@@ -225,7 +248,16 @@ func (t *QueueManager) Start() error {
 	t.shardsMtx.Lock()
 	defer t.shardsMtx.Unlock()
 
+	if t.started {
+		return errors.New("already started")
+	}
+	if t.stopped {
+		return errors.New("already stopped")
+	}
+	t.started = true
+
 	t.wg.Add(2)
+	t.shards = map[*shard]struct{}{}
 	go t.updateShardsLoop()
 	go t.reshardLoop()
 
@@ -246,26 +278,39 @@ func (t *QueueManager) numShardsRunning() int {
 // Stop stops sending samples to the remote storage and waits for pending
 // sends to complete.
 func (t *QueueManager) Stop() error {
-	level.Info(t.logger).Log("msg", "stopping remote storage")
-	close(t.quit)
+	toStop, err := func() (shardMap, error) {
+		t.shardsMtx.Lock()
+		defer t.shardsMtx.Unlock()
 
-	// Note: Do not close t.queue, as it means handling more cases
-	// in runShard().
+		if !t.started {
+			return nil, errors.New("not started")
+		}
+		if t.stopped {
+			return nil, errors.New("already stopped")
+		}
 
-	t.wg.Done() // For the Add() in NewQueueManager()
-	t.wg.Wait()
+		t.stopped = true
 
-	t.shardsMtx.Lock()
-	toStop := t.shards
-	t.shards = nil
-	t.shardsMtx.Unlock()
+		toStop := t.shards
+		t.shards = nil
+
+		// Note: Do not close t.queue, as it means handling more cases
+		// in runShard().
+
+		close(t.quit)
+
+		return toStop, nil
+	}()
+
+	if err == nil {
+		t.wg.Wait()
+	}
 
 	for sh := range toStop {
 		t.stopShard(sh)
 	}
 
-	level.Info(t.logger).Log("msg", "remote storage stopped")
-	return nil
+	return err
 }
 
 func (t *QueueManager) updateShardsLoop() {
@@ -441,6 +486,8 @@ type shard struct {
 	stop chan struct{}
 	wait sync.WaitGroup
 }
+
+type shardMap map[*shard]struct{}
 
 func (t *QueueManager) startShard() {
 	sh := &shard{
