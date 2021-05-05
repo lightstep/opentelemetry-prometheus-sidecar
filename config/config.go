@@ -178,13 +178,13 @@ type OTLPConfig struct {
 func (config OTLPConfig) Copy() OTLPConfig {
 	rv := config
 
-	headers := make(map[string]string)
+	headers := map[string]string{}
 	for key, value := range config.Headers {
 		headers[key] = value
 	}
 	rv.Headers = headers
 
-	attrs := make(map[string]string)
+	attrs := map[string]string{}
 	for key, value := range config.Attributes {
 		attrs[key] = value
 	}

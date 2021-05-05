@@ -622,15 +622,10 @@ static_metadata:
 }
 
 func TestCopyOTLPConfig(t *testing.T) {
-	headers := make(map[string]string)
-	headers["header"] = "value"
-	attrs := make(map[string]string)
-	attrs["attr"] = "value"
-
 	cfg := OTLPConfig{
 		Endpoint:    "http://otlp",
-		Headers:     headers,
-		Attributes:  attrs,
+		Headers:     map[string]string{"a": "b"},
+		Attributes:  map[string]string{"c": "d"},
 		Timeout:     DurationConfig{time.Since(time.Now())},
 		Compression: "gzip",
 	}
