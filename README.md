@@ -250,9 +250,6 @@ Flags:
       --prometheus.max-point-age=PROMETHEUS.MAX-POINT-AGE
                                  Skip points older than this, to assist
                                  recovery. Default: 25h0m0s
-      --prometheus.max-shards=PROMETHEUS.MAX-SHARDS
-                                 Max number of shards, i.e. amount of
-                                 concurrency. Default: 200
       --prometheus.scrape-interval=PROMETHEUS.SCRAPE-INTERVAL ...
                                  Ignored. This is inferred from the Prometheus
                                  via api/v1/status/config
@@ -266,8 +263,14 @@ Flags:
                                  in PEM format (e.g., root.crt). May be
                                  repeated.
       --opentelemetry.max-bytes-per-request=OPENTELEMETRY.MAX-BYTES-PER-REQUEST
-                                 Send at most this number of bytes per
-                                 request. Default: 65536
+                                 Send at most this many bytes per request.
+                                 Default: 65536
+      --opentelemetry.min-shards=OPENTELEMETRY.MIN-SHARDS
+                                 Min number of shards, i.e. amount of
+                                 concurrency. Default: 1
+      --opentelemetry.max-shards=OPENTELEMETRY.MAX-SHARDS
+                                 Max number of shards, i.e. amount of
+                                 concurrency. Default: 200
       --opentelemetry.metrics-prefix=OPENTELEMETRY.METRICS-PREFIX
                                  Customized prefix for exporter metrics. If not
                                  set, none will be used
@@ -277,7 +280,7 @@ Flags:
                                  pass any of the filter sets to be forwarded.
       --startup.timeout=STARTUP.TIMEOUT
                                  Timeout at startup to allow the endpoint to
-                                 become available. Default: 5m0s
+                                 become available. Default: 10m0s
       --healthcheck.period=HEALTHCHECK.PERIOD
                                  Period for internal health checking; set at a
                                  minimum to the shortest Promethues scrape
@@ -297,6 +300,7 @@ Flags:
       --disable-diagnostics      Disable diagnostics by default; if unset,
                                  diagnostics will be auto-configured to the
                                  primary destination
+
 ```
 
 Two kinds of sidecar customization are available only through the
@@ -327,7 +331,7 @@ The sidecar reports validation errors using conventions established by
 Lightstep for conveying information about _partial success_ when
 writing to the OTLP destination.  These errors are returned using gRPC
 "trailers" (a.k.a. http2 response headers) and are output as metrics
-and logs.  See the `sidecar.metrics.failing` metric to diagnose validation 
+and logs.  See the `sidecar.metrics.failing` metric to diagnose validation
 errors.
 
 #### Metadata errors
@@ -530,4 +534,4 @@ past WAL segment not found, sidecar may have dragged behind. Consider increasing
 This message means that the sidecar is looking for a WAL segment file that has been removed, usually due to Prometheus triggering a checkpoint. It's possible to look at the delta between `sidecar.wal.size` (total wal entries) and `sidecar.wal.offset` (where the sidecar currently is) to determine if the sidecar has enough resources to keep up. If the offset is increasingly further behind the size, it's recommended to increase the timeseries emitted per request using the following configuration options:
 
 - `--opentelemetry.max-bytes-per-request` configures the maximum number of timeseries sent with each request from the sidecar to the OTLP backend.
-- `--prometheus.max-shards` configures the number of parallel go routines and grpc connections used to transmit the data.
+- `--opentelemetry.max-shards` configures the number of parallel go routines and grpc connections used to transmit the data.

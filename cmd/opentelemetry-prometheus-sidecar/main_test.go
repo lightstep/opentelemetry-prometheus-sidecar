@@ -265,6 +265,14 @@ func TestSuperStackDump(t *testing.T) {
 	var bout, berr bytes.Buffer
 	cmd.Stdout = &bout
 	cmd.Stderr = &berr
+
+	defer func() {
+		if t.Failed() {
+			t.Logf("stdout: %v\n", bout.String())
+			t.Logf("stderr: %v\n", berr.String())
+		}
+	}()
+
 	err := cmd.Start()
 	if err != nil {
 		t.Errorf("execution error: %v", err)
