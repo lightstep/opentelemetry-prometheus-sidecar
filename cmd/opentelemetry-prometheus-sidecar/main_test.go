@@ -295,6 +295,7 @@ func TestSuperStackDump(t *testing.T) {
 			case <-timer.C:
 				t.Log("timeout waiting for spans")
 				t.FailNow()
+				cmd.Process.Kill()
 				return
 			case rs := <-ts.spans:
 				// Note: below searching for a stack dump and
@@ -313,18 +314,12 @@ func TestSuperStackDump(t *testing.T) {
 
 	go func() {
 		defer wg.Done()
-		timer := time.NewTimer(time.Second * 10)
-		defer timer.Stop()
 		for {
 			// Dumping the metrics diagnostics here.
 			// TODO: add testing support to validate
 			// metrics from tests and then build more
 			// tests based on metrics.
 			select {
-			case <-timer.C:
-				t.Log("timeout waiting for metrics")
-				t.FailNow()
-				return
 			case <-ms.metrics:
 			case <-ctx.Done():
 				return
