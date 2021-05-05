@@ -148,6 +148,7 @@ func NewQueueManager(logger log.Logger, cfg promconfig.QueueConfig, timeout time
 	if err != nil {
 		return nil, errors.Wrap(err, "get WAL size")
 	}
+	t.wg.Add(1)
 	t.lastSize = lastSize
 	t.lastOffset = tailer.Offset()
 	t.shards = map[*shard]struct{}{}
@@ -251,7 +252,7 @@ func (t *QueueManager) Stop() error {
 	// Note: Do not close t.queue, as it means handling more cases
 	// in runShard().
 
-	// wait for resharding loops to stop
+	t.wg.Done() // For the Add() in NewQueueManager()
 	t.wg.Wait()
 
 	t.shardsMtx.Lock()
