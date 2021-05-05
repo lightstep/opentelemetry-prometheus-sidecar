@@ -168,8 +168,6 @@ func (r *PrometheusReader) Run(ctx context.Context, startOffset int) error {
 
 	// NOTE(fabxc): wrap the tailer into a buffered reader once we become concerned
 	// with performance. The WAL reader will do a lot of tiny reads otherwise.
-	// This is also the reason for the series cache dealing with "maxSegment" hints
-	// for series rather than precise ones.
 	var (
 		started         = false
 		startupBypassed = 0
