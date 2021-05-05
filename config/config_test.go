@@ -623,3 +623,22 @@ static_metadata:
 		})
 	}
 }
+
+func TestCopyOTLPConfig(t *testing.T) {
+	cfg := OTLPConfig{
+		Endpoint:    "http://otlp",
+		Headers:     map[string]string{"a": "b"},
+		Attributes:  map[string]string{"c": "d"},
+		Timeout:     DurationConfig{time.Since(time.Now())},
+		Compression: "gzip",
+	}
+	copied_cfg := cfg.Copy()
+	require.Equal(t, cfg, copied_cfg)
+
+	copied_cfg.Headers["foo"] = "bar"
+	copied_cfg.Attributes["bar"] = "foo"
+	require.Equal(t, len(cfg.Headers), 1)
+	require.Equal(t, len(cfg.Attributes), 1)
+	require.Equal(t, len(copied_cfg.Headers), 2)
+	require.Equal(t, len(copied_cfg.Attributes), 2)
+}

@@ -22,7 +22,8 @@ func StartTelemetry(scfg SidecarConfig, defaultSvcName string, isSuper bool) *te
 	}
 
 	if diagConfig.Endpoint == "" {
-		diagConfig = scfg.Destination
+		// Create a copy, as we adjust the headers/attributes.
+		diagConfig = scfg.Destination.Copy()
 	}
 
 	if diagConfig.Endpoint == "" {
