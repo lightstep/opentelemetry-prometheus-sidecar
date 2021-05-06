@@ -325,14 +325,33 @@ it is waiting for during startup.  When using very long scrape
 intervals, raise the `--startup.timeout` setting so the sidecar will
 wait long enough to begin running.
 
+#### Throughput and memory configuration
+
+The following settings give the user control over the amount of memory
+used by the sidecar for concurrent RPCs.
+
+The sidecar uses a queue to manage distributing data points from the
+Prometheus WAL to a variable number of workers, referred to as
+"shards".  Each shard assembles a limited size request, determined by
+`--opentelemetry.max-bytes-per-request` (default: 64kB).
+
+The number of shards varies in response to load, based on the observed
+latency.  Upper and lower bounds on the number of shards are
+configured by `--opentelemetry.min-shards` and
+`--opentelemetry.max-shards`.
+
+CPU usage is determined by the number of shards and the workload.  Use
+`--opentelemetry.max-shards` to limit the maximum CPU used by the
+sidecar.
+
 #### Validation errors
 
 The sidecar reports validation errors using conventions established by
 Lightstep for conveying information about _partial success_ when
 writing to the OTLP destination.  These errors are returned using gRPC
 "trailers" (a.k.a. http2 response headers) and are output as metrics
-and logs.  See the `sidecar.metrics.failing` metric to diagnose validation
-errors.
+and logs.  See the `sidecar.metrics.failing` metric to diagnose
+validation errors.
 
 #### Metadata errors
 
@@ -342,9 +361,13 @@ no longer knows about.  Missing metadata, Prometheus API errors, and
 other forms of inconsistency are reported using
 `sidecar.metrics.failing` with `key_reason` and `metric_name` attributes.
 
-#### Resources
+#### OpenTelemetry Resource Attributes
 
-Use the `--destination.attribute=KEY=VALUE` flag to add additional resource attributes to all exported timeseries.
+Use the `--destination.attribute=KEY=VALUE` flag to add additional OpenTelemetry resource attributes to all exported timeseries.
+
+#### Prometheus External Labels
+
+Prometheus external labels are used for diagnostic purposes but are not attached to exported timeseries.
 
 #### Filters
 
@@ -471,6 +494,21 @@ troubleshooting.
 | sidecar.series.current | gauge | number of series in the cache | `status`: live, filtered, invalid |
 | sidecar.metrics.failing | gauge | failing metric names and explanations | `key_reason`, `metric_name` |
 
+**Progress Metrics**
+
+Two metrics indicate the sidecar's progress in processing the
+Prometheus write-ahead-log (WAL).  These are measured in bytes and are
+based on the assumption that each WAL segment is a complete 128MB.
+Both of these figures are exported as `current_segment_number *
+128MB + segment_offset`.  The difference (i.e., `sidecar.wal.size -
+sidecar.wal.offset`) indicates how far the sidecar has to catch up,
+assuming complete WAL segments.
+
+| Metric Name | Type | Description |
+| --- | --- | --- |
+| sidecar.wal.size | gauge | current writer position of the Prometheus write-ahead log |
+| sidecar.wal.offset | gauge | current reader position in the Prometheus write-ahead log |
+
 **Host and Runtime Metrics**
 
 | Metric Name | Type | Description | Additional Attributes |
@@ -498,8 +536,6 @@ sidecar performance.
 | sidecar.queue.size | gauge | number of samples (i.e., points) standing in a queue waiting to export | |
 | sidecar.series.defined | counter | number of series defined in the WAL | |
 | sidecar.metadata.lookups | counter | number of calls to lookup metadata | `error`: true, false |
-| sidecar.wal.size | gauge | size of the prometheus WAL | |
-| sidecar.wal.offset | gauge | current offset in the prometheus WAL | |
 | sidecar.refs.collected | counter | number of WAL series refs removed from memory by garbage collection | `error`: true, false |
 | sidecar.refs.notfound | counter | number of WAL series refs that were not found during lookup | |
 | sidecar.segment.opens | counter | number of WAL segment open() calls | |
