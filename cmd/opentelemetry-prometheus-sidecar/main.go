@@ -33,6 +33,7 @@ import (
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/common"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/health"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/leader"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/otlp"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/prometheus"
@@ -140,6 +141,25 @@ func Main() bool {
 		PromURL:                        promURL,
 		StartupDelayEffectiveStartTime: time.Now(),
 	})
+
+	// @@@ if ... { }
+	// @@@
+	lockNamespace := "otel-prom-sidecar"
+	lockName := "default"
+	lockID := scfg.InstanceId
+
+	scfg.LeaderElector, err = leader.NewCandidate(
+		lockNamespace,
+		lockName,
+		lockID,
+		log.With(scfg.Logger, "component", "leader"),
+	)
+
+	if err != nil {
+		level.Error(scfg.Logger).Log("msg", "new leader election")
+		return false
+	}
+	scfg.LeaderElector.Start(ctx)
 
 	metadataURL, err := promURL.Parse(config.PrometheusMetadataEndpointPath)
 	if err != nil {

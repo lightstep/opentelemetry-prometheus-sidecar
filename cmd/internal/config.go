@@ -4,6 +4,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/common"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/leader"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/metadata"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/otlp"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/prometheus"
@@ -22,6 +23,8 @@ type SidecarConfig struct {
 	MetadataCache *metadata.Cache
 
 	FailingReporter common.FailingReporter
+
+	LeaderElector leader.Candidate
 
 	config.MainConfig
 }

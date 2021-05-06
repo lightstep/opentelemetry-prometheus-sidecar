@@ -30,7 +30,7 @@ func createPrimaryDestinationResourceLabels(svcInstanceId string, externalLabels
 
 	allLabels := make(map[string]string)
 	for _, label := range externalLabels {
-		allLabels[externalLabelPrefix + label.Name] = label.Value
+		allLabels[externalLabelPrefix+label.Name] = label.Value
 	}
 	for name, value := range extraLabels {
 		allLabels[name] = value
