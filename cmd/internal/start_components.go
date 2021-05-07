@@ -154,6 +154,7 @@ func runComponents(ctx context.Context, scfg SidecarConfig, tailer tail.WalTaile
 						"err", err,
 					)
 				}
+				_ = level.Info(scfg.Logger).Log("msg", "stopping OpenTelemetry writer")
 				close(stopCh)
 			},
 		)

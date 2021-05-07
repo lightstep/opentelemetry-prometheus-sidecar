@@ -94,13 +94,38 @@ type QueueManager struct {
 	clientFactory StorageClientFactory
 	resource      *resourcepb.Resource
 
-	shardsMtx   sync.RWMutex
-	shards      map[*shard]struct{}
-	queue       chan retrieval.SizedMetric
-	numShards   int
+	// shardsMtx is used during Start(), Stop(), and reshard()
+	shardsMtx sync.RWMutex
+
+	// shards is a set of running shards.
+	shards shardMap
+
+	// queue receives sized and counted Metric batches from the
+	// reader.  this channel is not closed.
+	queue chan retrieval.SizedMetric
+
+	// numShards is updated by updateShardsLoop, current value
+	// passed to the reshard loop.
+	numShards int
+
+	// reshardChan carries the output of updateShardsLoop to the
+	// reshard loop.  reshard() is synchronous, changes to
+	// numShards are ignored if reshard takes longer than an
+	// update interval.
 	reshardChan chan int
-	quit        chan struct{}
-	wg          sync.WaitGroup
+
+	// quit sends a signal to the resharding loop and updater to exit
+	quit chan struct{}
+
+	// wg is used to ensure the resharding loop and updater exit before
+	// Stop() returns.
+	wg sync.WaitGroup
+
+	// stopped and started ensure that Start and Stop are not
+	// called out of order.  The current run.Group code usage in
+	// start_components.go does not prevent Stop() being called
+	// before Start().
+	stopped, started bool
 
 	samplesIn, samplesOut, samplesOutDuration *ewmaRate
 	walSize, walOffset                        *ewmaRate
@@ -150,10 +175,6 @@ func NewQueueManager(logger log.Logger, cfg promconfig.QueueConfig, timeout time
 	}
 	t.lastSize = lastSize
 	t.lastOffset = tailer.Offset()
-	t.shards = map[*shard]struct{}{}
-	for i := 0; i < t.numShards; i++ {
-		t.shards[t.newShard()] = struct{}{}
-	}
 
 	t.sendOutcomesCounter = sidecar.OTelMeterMust.NewInt64Counter(
 		config.OutcomeMetric,
@@ -173,14 +194,10 @@ func NewQueueManager(logger log.Logger, cfg promconfig.QueueConfig, timeout time
 			"The number of shards that have started and not stopped.",
 		),
 	)
-
-	// Note: the following two could be a batch observer.
 	t.queueCapacityObs = sidecar.OTelMeterMust.NewInt64UpDownSumObserver(
 		"sidecar.queue.capacity",
 		func(ctx context.Context, result metric.Int64ObserverResult) {
-			t.shardsMtx.Lock()
-			defer t.shardsMtx.Unlock()
-			result.Observe(int64(t.numShards * t.cfg.Capacity))
+			result.Observe(int64(t.cfg.Capacity))
 		},
 		metric.WithDescription(
 			"The capacity of the queue of samples to be sent to the remote storage.",
@@ -222,9 +239,6 @@ func (t *QueueManager) Append(sample retrieval.SizedMetric) {
 	t.queueLengthCounter.Add(context.Background(), int64(sample.Count()))
 	t.samplesIn.incr(int64(sample.Count()))
 
-	t.shardsMtx.RLock()
-	defer t.shardsMtx.RUnlock()
-
 	t.queue <- sample
 }
 
@@ -234,12 +248,21 @@ func (t *QueueManager) Start() error {
 	t.shardsMtx.Lock()
 	defer t.shardsMtx.Unlock()
 
+	if t.started {
+		return errors.New("already started")
+	}
+	if t.stopped {
+		return errors.New("already stopped")
+	}
+	t.started = true
+
 	t.wg.Add(2)
+	t.shards = map[*shard]struct{}{}
 	go t.updateShardsLoop()
 	go t.reshardLoop()
 
-	for shard := range t.shards {
-		go t.runShard(shard)
+	for i := 0; i < t.numShards; i++ {
+		t.startShard()
 	}
 
 	return nil
@@ -255,20 +278,39 @@ func (t *QueueManager) numShardsRunning() int {
 // Stop stops sending samples to the remote storage and waits for pending
 // sends to complete.
 func (t *QueueManager) Stop() error {
-	level.Info(t.logger).Log("msg", "stopping remote storage")
-	close(t.quit)
+	toStop, err := func() (shardMap, error) {
+		t.shardsMtx.Lock()
+		defer t.shardsMtx.Unlock()
 
-	t.shardsMtx.Lock()
-	defer t.shardsMtx.Unlock()
+		if !t.started {
+			return nil, errors.New("not started")
+		}
+		if t.stopped {
+			return nil, errors.New("already stopped")
+		}
 
-	t.wg.Wait()
+		t.stopped = true
 
-	for sh := range t.shards {
-		close(sh.stop)
+		toStop := t.shards
+		t.shards = nil
+
+		// Note: Do not close t.queue, as it means handling more cases
+		// in runShard().
+
+		close(t.quit)
+
+		return toStop, nil
+	}()
+
+	if err == nil {
+		t.wg.Wait()
 	}
 
-	level.Info(t.logger).Log("msg", "remote storage stopped")
-	return nil
+	for sh := range toStop {
+		t.stopShard(sh)
+	}
+
+	return err
 }
 
 func (t *QueueManager) updateShardsLoop() {
@@ -412,34 +454,53 @@ func (t *QueueManager) reshard(n int) {
 		// Do not remove all running shards!
 		return
 	}
-	t.shardsMtx.Lock()
-	defer t.shardsMtx.Unlock()
 
-	for len(t.shards) < n {
-		shard := t.newShard()
-		go t.runShard(shard)
-		t.shards[shard] = struct{}{}
-	}
-	for len(t.shards) > n {
-		for sh := range t.shards {
-			delete(t.shards, sh)
-			close(sh.stop)
-			break
+	toStop := func() (toStop []*shard) {
+		t.shardsMtx.Lock()
+		defer t.shardsMtx.Unlock()
+
+		for len(t.shards) < n {
+			t.startShard()
 		}
+		for len(t.shards) > n {
+			for sh := range t.shards {
+				delete(t.shards, sh)
+				toStop = append(toStop, sh)
+				break
+			}
+		}
+		return toStop
+	}()
+
+	for _, sh := range toStop {
+		t.stopShard(sh)
 	}
+}
+
+func (t *QueueManager) stopShard(sh *shard) {
+	close(sh.stop)
+	sh.wait.Wait()
 }
 
 type shard struct {
 	stop chan struct{}
+	wait sync.WaitGroup
 }
 
-func (t *QueueManager) newShard() *shard {
-	return &shard{
+type shardMap map[*shard]struct{}
+
+func (t *QueueManager) startShard() {
+	sh := &shard{
 		stop: make(chan struct{}),
 	}
+	t.shards[sh] = struct{}{}
+	sh.wait.Add(1)
+	go t.runShard(sh)
 }
 
 func (t *QueueManager) runShard(sh *shard) {
+	defer sh.wait.Done()
+
 	client := t.clientFactory.New()
 	defer client.Close()
 
@@ -465,14 +526,15 @@ func (t *QueueManager) runShard(sh *shard) {
 
 	for {
 		select {
-		case entry, ok := <-t.queue:
-			if !ok {
-				// The queue was closed.  Flush and return.
-				if len(pendingSamples) > 0 {
-					t.sendSamples(client, pendingSamples, pendingCount)
-				}
-				return
+		case <-sh.stop:
+			// This shard is stopping.  Flush and return.
+			if len(pendingSamples) > 0 {
+				t.sendSamples(client, pendingSamples, pendingCount)
 			}
+			return
+
+		case entry, _ := <-t.queue:
+			// Note: t.queue is never closed.
 
 			// Remove count from the queue size metric.
 			t.queueLengthCounter.Add(ctx, int64(-entry.Count()))
