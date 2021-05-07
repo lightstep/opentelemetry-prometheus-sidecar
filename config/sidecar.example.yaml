@@ -121,3 +121,8 @@ log:
   level: debug
   format: json
   verbose: 1
+
+# Control whether to use leadership election, which prevents bulk
+# duplication of data in a Promtheus HA environment.
+leader_election:
+  enabled: true

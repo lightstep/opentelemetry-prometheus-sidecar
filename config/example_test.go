@@ -100,6 +100,9 @@ func Example() {
 	//     "format": "json",
 	//     "verbose": 1
 	//   },
+	//   "leader_election": {
+	//     "enabled": true
+	//   },
 	//   "disable_supervisor": false,
 	//   "disable_diagnostics": false
 	// }
