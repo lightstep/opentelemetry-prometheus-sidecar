@@ -126,3 +126,8 @@ log:
 # duplication of data in a Promtheus HA environment.
 leader_election:
   enabled: true
+
+  # k8s leader election settings:
+  k8s:
+    namespace: tools
+ 

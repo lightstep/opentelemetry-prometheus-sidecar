@@ -101,7 +101,10 @@ func Example() {
 	//     "verbose": 1
 	//   },
 	//   "leader_election": {
-	//     "enabled": true
+	//     "enabled": true,
+	//     "k8s": {
+	//       "namespace": "tools"
+	//     }
 	//   },
 	//   "disable_supervisor": false,
 	//   "disable_diagnostics": false

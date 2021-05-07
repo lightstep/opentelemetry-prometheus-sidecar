@@ -26,17 +26,18 @@ import (
 )
 
 type (
-	MainConfig           = config.MainConfig
-	PromConfig           = config.PromConfig
-	AdminConfig          = config.AdminConfig
-	OTLPConfig           = config.OTLPConfig
-	LogConfig            = config.LogConfig
-	SecurityConfig       = config.SecurityConfig
-	DurationConfig       = config.DurationConfig
-	OTelConfig           = config.OTelConfig
-	MetricRenamesConfig  = config.MetricRenamesConfig
-	StaticMetadataConfig = config.StaticMetadataConfig
-	LeaderElectionConfig = config.LeaderElectionConfig
+	MainConfig              = config.MainConfig
+	PromConfig              = config.PromConfig
+	AdminConfig             = config.AdminConfig
+	OTLPConfig              = config.OTLPConfig
+	LogConfig               = config.LogConfig
+	SecurityConfig          = config.SecurityConfig
+	DurationConfig          = config.DurationConfig
+	OTelConfig              = config.OTelConfig
+	MetricRenamesConfig     = config.MetricRenamesConfig
+	StaticMetadataConfig    = config.StaticMetadataConfig
+	LeaderElectionConfig    = config.LeaderElectionConfig
+	K8SLeaderElectionConfig = config.K8SLeaderElectionConfig
 )
 
 func TestProcessFileConfig(t *testing.T) {
@@ -273,6 +274,7 @@ log:
 				"--opentelemetry.max-shards", "10",
 				"--opentelemetry.queue-size", "107",
 				"--leader-election.enabled",
+				"--leader-election.k8s-namespace=tools",
 				"--log.level=warning",
 				"--healthcheck.period=17s",
 				"--healthcheck.threshold-ratio=0.2",
@@ -338,6 +340,9 @@ log:
 				},
 				LeaderElection: LeaderElectionConfig{
 					Enabled: true,
+					K8S: K8SLeaderElectionConfig{
+						Namespace: "tools",
+					},
 				},
 				StartupTimeout: DurationConfig{
 					1777 * time.Second,

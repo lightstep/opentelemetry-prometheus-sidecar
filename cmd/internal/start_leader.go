@@ -19,14 +19,28 @@ const (
 	IDKey   = "prometheus_replica"
 )
 
+func cleanName(name string) string {
+	name = strings.Replace(name, "/", "-", -1)
+	name = strings.Replace(name, "_", "-", -1)
+	if len(name) > 64 {
+		name = name[len(name)-64:]
+	}
+	return name
+}
+
 func StartLeaderElection(ctx context.Context, cfg *SidecarConfig) error {
 	externalLabels := cfg.Monitor.GetGlobalConfig().ExternalLabels
 
-	lockName := strings.Replace(externalLabels.Get(nameKey), "/", "_", -1)
-	if lockName == "" {
-		lockName = "default"
+	lockNamespace := cfg.LeaderElection.K8S.Namespace
+	if lockNamespace == "" {
+		lockNamespace = config.LeaderLockDefaultNamespace
 	}
-	lockID := strings.Replace(externalLabels.Get(IDKey), "/", "_", -1)
+
+	lockName := cleanName(externalLabels.Get(nameKey))
+	if lockName == "" {
+		lockName = config.LeaderLockDefaultName
+	}
+	lockID := cleanName(externalLabels.Get(IDKey))
 	if lockID == "" {
 		lockID = fmt.Sprintf("unlabeled-%016x", rand.Uint64())
 	}
@@ -35,7 +49,7 @@ func StartLeaderElection(ctx context.Context, cfg *SidecarConfig) error {
 
 	var err error
 	cfg.LeaderElector, err = leader.NewCandidate(
-		config.LeaderLockNamespace,
+		lockNamespace,
 		lockName,
 		lockID,
 		logger,
@@ -46,6 +60,7 @@ func StartLeaderElection(ctx context.Context, cfg *SidecarConfig) error {
 
 	level.Info(cfg.Logger).Log(
 		"msg", "starting leader election",
+		"namespace", lockNamespace,
 		"name", lockName,
 		"ID", lockID,
 	)

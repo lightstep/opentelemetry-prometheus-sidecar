@@ -26,7 +26,7 @@ type candidate struct {
 	logger  log.Logger
 }
 
-func NewCandidate(name, namespace, id string, logger log.Logger) (Candidate, error) {
+func NewCandidate(namespace, name, id string, logger log.Logger) (Candidate, error) {
 
 	cfg, err := rest.InClusterConfig()
 	if err != nil {
