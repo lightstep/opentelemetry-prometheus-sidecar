@@ -2,13 +2,16 @@ package internal
 
 import (
 	"context"
+	"encoding/json"
 	"net"
 	"net/url"
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"go.opentelemetry.io/otel/semconv"
 )
 
@@ -34,10 +37,16 @@ func StartTelemetry(scfg SidecarConfig, defaultSvcName string, isSuper bool) *te
 	// because we are using metrics data for internal health checking.
 	reportingPeriod := scfg.Admin.HealthCheckPeriod.Duration / 2
 
-	return startTelemetry(diagConfig, reportingPeriod, defaultSvcName, scfg.InstanceId, isSuper, scfg.Logger)
+	// Use any external labels if we are the secondary target and *hence* Monitor is defined.
+	var externalLabels labels.Labels
+	if scfg.Monitor != nil {
+		externalLabels = scfg.Monitor.GetGlobalConfig().ExternalLabels
+	}
+
+	return startTelemetry(diagConfig, reportingPeriod, defaultSvcName, scfg.InstanceId, isSuper, externalLabels, scfg.Logger)
 }
 
-func startTelemetry(diagConfig config.OTLPConfig, reportingPeriod time.Duration, defaultSvcName string, svcInstanceId string, isSuper bool, logger log.Logger) *telemetry.Telemetry {
+func startTelemetry(diagConfig config.OTLPConfig, reportingPeriod time.Duration, defaultSvcName string, svcInstanceId string, isSuper bool, externalLabels labels.Labels, logger log.Logger) *telemetry.Telemetry {
 	endpoint, _ := url.Parse(diagConfig.Endpoint)
 	hostport := endpoint.Hostname()
 	if len(endpoint.Port()) > 0 {
@@ -64,9 +73,21 @@ func startTelemetry(diagConfig config.OTLPConfig, reportingPeriod time.Duration,
 		spanHostport = ""
 	}
 
+	diagConfig.Headers[config.AgentKey] = agentName
 	diagConfig.Attributes[string(semconv.ServiceNameKey)] = svcName
 	diagConfig.Attributes[string(semconv.ServiceInstanceIDKey)] = svcInstanceId
-	diagConfig.Headers[config.AgentKey] = agentName
+
+	// No need to add an external-label-prefix for the secondary target.
+	for _, label := range externalLabels {
+		diagConfig.Attributes[label.Name] = label.Value
+	}
+
+	if data, err := json.Marshal(diagConfig); err == nil {
+		level.Info(logger).Log(
+			"msg", "configuring OpenTelemetry Prometheus sidecar secondary target",
+			"config", string(data),
+		)
+	}
 
 	// TODO: Configure trace batching interval.
 

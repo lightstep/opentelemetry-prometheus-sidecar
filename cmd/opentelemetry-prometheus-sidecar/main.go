@@ -103,17 +103,16 @@ func Main() bool {
 
 	telemetry.StaticSetup(scfg.Logger)
 
-	telem := internal.StartTelemetry(
-		scfg,
-		"opentelemetry-prometheus-sidecar",
-		isSupervisor,
-	)
-	if telem != nil {
-		defer telem.Shutdown(context.Background())
-	}
-
-	// Start the supervisor.
+	// Return by starting the supervisor with an early-configured Telemetry
+	// instance having no Monitor/externalLabels.
 	if isSupervisor {
+		telem := internal.StartTelemetry(
+			scfg,
+			"opentelemetry-prometheus-sidecar",
+			isSupervisor,
+		)
+		defer telem.Shutdown(context.Background())
+
 		return startSupervisor(scfg, telem)
 	}
 
@@ -147,10 +146,6 @@ func Main() bool {
 	}
 	scfg.MetadataCache = metadata.NewCache(httpClient, metadataURL, staticMetadata)
 
-	healthChecker := health.NewChecker(
-		telem.Controller, scfg.Monitor, scfg.Admin.HealthCheckPeriod.Duration, scfg.Logger, scfg.Admin.HealthCheckThresholdRatio,
-	)
-
 	// Check the progress file, ensure we can write this file.
 	startOffset, err := readWriteStartOffset(scfg)
 	if err != nil {
@@ -179,6 +174,23 @@ func Main() bool {
 		FailingReporter:  scfg.FailingReporter,
 	})
 
+	// Test for Prometheus and Outbound dependencies before starting.
+	if err := selfTest(ctx, scfg); err != nil {
+		level.Error(scfg.Logger).Log("msg", "selftest failed, not starting", "err", err)
+		return false
+	}
+
+	telem := internal.StartTelemetry(
+		scfg,
+		"opentelemetry-prometheus-sidecar",
+		isSupervisor,
+	)
+	defer telem.Shutdown(context.Background())
+
+	healthChecker := health.NewChecker(
+		telem.Controller, scfg.Monitor, scfg.Admin.HealthCheckPeriod.Duration, scfg.Logger, scfg.Admin.HealthCheckThresholdRatio,
+	)
+
 	// Start the admin server.
 	go func() {
 		defer cancelMain()
@@ -199,12 +211,6 @@ func Main() bool {
 	}()
 
 	logStartup(cfg, scfg.Logger)
-
-	// Test for Prometheus and Outbound dependencies before starting.
-	if err := selfTest(ctx, scfg); err != nil {
-		level.Error(scfg.Logger).Log("msg", "selftest failed, not starting", "err", err)
-		return false
-	}
 
 	level.Debug(scfg.Logger).Log("msg", "entering run state")
 	healthChecker.SetRunning()
