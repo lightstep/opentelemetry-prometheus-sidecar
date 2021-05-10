@@ -634,6 +634,7 @@ const (
 const (
 	PrometheusMetadataEndpointPath = "api/v1/targets/metadata"
 	PrometheusConfigEndpointPath   = "api/v1/status/config"
+	PrometheusSimpleMetadataEndpointPathPath   = "api/v1/metadata"
 )
 
 // The old metric type value for textparse.MetricTypeUnknown that is used in

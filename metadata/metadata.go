@@ -45,6 +45,7 @@ var (
 // Its methods are not safe for concurrent use.
 type Cache struct {
 	promURL *url.URL
+	promSimpleURL *url.URL
 	client  *http.Client
 
 	metadata       map[string]*cacheEntry
@@ -60,12 +61,13 @@ type Cache struct {
 // NewCache returns a new cache that gets populated by the metadata endpoint
 // at the given URL.
 // It uses the default endpoint path if no specific path is provided.
-func NewCache(client *http.Client, promURL *url.URL, staticMetadata []*config.MetadataEntry) *Cache {
+func NewCache(client *http.Client, promURL *url.URL, promSimpleURL *url.URL, staticMetadata []*config.MetadataEntry) *Cache {
 	if client == nil {
 		client = http.DefaultClient
 	}
 	c := &Cache{
 		promURL:        promURL,
+		promSimpleURL:  promSimpleURL,
 		client:         client,
 		staticMetadata: map[string]*config.MetadataEntry{},
 		metadata:       map[string]*cacheEntry{},
@@ -172,28 +174,54 @@ const apiErrorNotFound = "not_found"
 // fetchSingle fetches metadata for the given job, instance, and metric combination.
 // It returns a not-found entry if the fetch is successful but returns no data.
 func (c *Cache) fetchSingle(ctx context.Context, job, instance, metric string) (*cacheEntry, error) {
-	job, instance = escapeLval(job), escapeLval(instance)
-
-	apiResp, err := c.fetch(ctx, "single", url.Values{
-		"match_target": []string{fmt.Sprintf("{job=\"%s\",instance=\"%s\"}", job, instance)},
+	q := url.Values{
 		"metric":       []string{metric},
-	})
-	if err != nil {
-		return nil, err
 	}
+
+	ctx, cancel := context.WithTimeout(ctx, config.DefaultPrometheusTimeout)
+	defer cancel()
+
+	// TODO: Properly return this error.
+	var retErr error
+	defer fetchTimer.Start(ctx).Stop(&retErr, attribute.String("mode", "single"))
+
+	u := *c.promSimpleURL
+	u.RawQuery = q.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", u.String(), nil)
+	if err != nil {
+		return nil, errors.Wrap(err, "build request")
+	}
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, errors.Wrap(err, "query Prometheus")
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("metadata request HTTP status %s", resp.Status)
+	}
+
+	var apiResp common.SimpleMetadataAPIResponse
+	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
+		return nil, errors.Wrap(err, "decode response")
+	}
+
 	now := time.Now()
 
 	if apiResp.ErrorType != "" && apiResp.ErrorType != apiErrorNotFound {
 		return nil, errors.Wrap(errors.New(apiResp.Error), "lookup failed")
 	}
-	if len(apiResp.Data) == 0 {
+	val, ok := apiResp.Data[metric]
+	if !ok {
 		// Cache a not-found entry.
 		return &cacheEntry{
 			lastFetch: now,
 			found:     false,
 		}, nil
 	}
-	d := apiResp.Data[0]
+	d := val[0] // TODO: Explain why the first, etc.
 
 	// Convert legacy "untyped" type used before Prometheus 2.5.
 	if d.Type == config.MetricTypeUntyped {

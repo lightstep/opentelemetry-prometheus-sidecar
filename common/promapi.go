@@ -17,6 +17,19 @@ type APIMetadata struct {
 	Type   textparse.MetricType `json:"type"`
 }
 
+type SimpleMetadataAPIResponse struct {
+	Status    string        `json:"status"`
+	Data      map[string][]APISimpleMetadata `json:"data,omitempty"`
+	Error     string        `json:"error,omitempty"`
+	ErrorType string        `json:"errorType,omitempty"`
+	Warnings  []string      `json:"warnings,omitempty"`
+}
+
+type APISimpleMetadata struct {
+	Help   string               `json:"help"`
+	Type   textparse.MetricType `json:"type"`
+}
+
 type ConfigAPIResponse struct {
 	Status    string    `json:"status"`
 	Data      APIConfig `json:"data,omitempty"`

@@ -31,6 +31,7 @@ import (
 )
 
 type metadataResponse common.MetadataAPIResponse
+type simpleMetadataResponse common.SimpleMetadataAPIResponse
 
 func TestCache_Get(t *testing.T) {
 	metrics := []common.APIMetadata{
@@ -43,7 +44,28 @@ func TestCache_Get(t *testing.T) {
 		{Metric: "metric_with_override", Type: textparse.MetricTypeGauge, Help: "help_metric_with_override"},
 	}
 	var handler func(qMetric, qMatch string) *metadataResponse
+	var handler2 func(qMetric string) *simpleMetadataResponse
 
+	mux := http.NewServeMux()
+	mux.HandleFunc("/targets/metadata/", func(w http.ResponseWriter, r *http.Request) {
+		err := json.NewEncoder(w).Encode(handler(
+			r.FormValue("metric"),
+			r.FormValue("match_target"),
+		))
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+	mux.HandleFunc("/metadata/", func(w http.ResponseWriter, r *http.Request) {
+		err := json.NewEncoder(w).Encode(handler2(
+			r.FormValue("metric"),
+		))
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	/*
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		err := json.NewEncoder(w).Encode(handler(
 			r.FormValue("metric"),
@@ -52,7 +74,8 @@ func TestCache_Get(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-	}))
+	}))*/
+	ts := httptest.NewServer(mux)
 	expect := func(want common.APIMetadata, got *config.MetadataEntry) {
 		if !reflect.DeepEqual(want, common.APIMetadata{
 			Metric: got.Metric,
@@ -65,7 +88,11 @@ func TestCache_Get(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	u, err := url.Parse(ts.URL)
+	u, err := url.Parse(ts.URL + "/targets/metadata/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	u2, err := url.Parse(ts.URL + "/metadata/")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +102,7 @@ func TestCache_Get(t *testing.T) {
 		&config.MetadataEntry{Metric: "static_metric2", MetricType: textparse.MetricTypeCounter, ValueType: config.DOUBLE, Help: "help_static2"},
 		&config.MetadataEntry{Metric: "metric_with_override", MetricType: textparse.MetricTypeCounter, ValueType: config.INT64, Help: "help_metric_override"},
 	}
-	c := NewCache(nil, u, staticMetadata)
+	c := NewCache(nil, u, u2, staticMetadata)
 
 	// First get for the job, we expect an initial batch request.
 	handler = func(qMetric, qMatch string) *metadataResponse {
@@ -111,14 +138,13 @@ func TestCache_Get(t *testing.T) {
 	expect(metrics[2], md)
 
 	// Query metric that was not in the batch, expect a single-metric query.
-	handler = func(qMetric, qMatch string) *metadataResponse {
+	handler2 = func(qMetric string) *simpleMetadataResponse {
 		if qMetric != "metric5" {
 			t.Fatalf("unexpected metric %v in request", qMetric)
 		}
-		if qMatch != `{job="prometheus",instance="localhost:9090"}` {
-			t.Fatalf("unexpected matcher %v in request", qMatch)
-		}
-		return &metadataResponse{Status: "success", Data: metrics[4:5]}
+		return &simpleMetadataResponse{Status: "success", Data: map[string][]common.APISimpleMetadata{
+			"metric5": []common.APISimpleMetadata{common.APISimpleMetadata{Type: metrics[4].Type, Help: metrics[4].Help}},
+		}}
 	}
 	md, err = c.Get(ctx, "prometheus", "localhost:9090", "metric5")
 	if err != nil {
@@ -137,14 +163,13 @@ func TestCache_Get(t *testing.T) {
 	expect(metrics[4], md)
 
 	// Test "untyped" metric type from Prometheus 2.4.
-	handler = func(qMetric, qMatch string) *metadataResponse {
+	handler2 = func(qMetric string) *simpleMetadataResponse {
 		if qMetric != "metric6" {
 			t.Fatalf("unexpected metric %v in request", qMetric)
 		}
-		if qMatch != `{job="prometheus",instance="localhost:9090"}` {
-			t.Fatalf("unexpected matcher %v in request", qMatch)
-		}
-		return &metadataResponse{Status: "success", Data: metrics[5:6]}
+		return &simpleMetadataResponse{Status: "success", Data: map[string][]common.APISimpleMetadata{
+			"metric6": []common.APISimpleMetadata{common.APISimpleMetadata{Type: metrics[5].Type, Help: metrics[5].Help}},
+		}}
 	}
 	md, err = c.Get(ctx, "prometheus", "localhost:9090", "metric6")
 	if err != nil {
@@ -165,14 +190,11 @@ func TestCache_Get(t *testing.T) {
 	}
 
 	// If a metric does not exist, we first expect a fetch attempt.
-	handler = func(qMetric, qMatch string) *metadataResponse {
+	handler2 = func(qMetric string) *simpleMetadataResponse {
 		if qMetric != "does_not_exist" {
 			t.Fatalf("unexpected metric %v in request", qMetric)
 		}
-		if qMatch != `{job="prometheus",instance="localhost:9090"}` {
-			t.Fatalf("unexpected matcher %v in request", qMatch)
-		}
-		return &metadataResponse{Status: "error", ErrorType: apiErrorNotFound, Error: "does not exist"}
+		return &simpleMetadataResponse{Status: "error", ErrorType: apiErrorNotFound, Error: "does not exist"}
 	}
 	md, err = c.Get(ctx, "prometheus", "localhost:9090", "does_not_exist")
 	if err != nil {
@@ -233,7 +255,7 @@ func TestCache_Get(t *testing.T) {
 	}
 
 	// Test recording rule.
-	handler = func(qMetric, qMatch string) *metadataResponse {
+	handler2 = func(qMetric string) *simpleMetadataResponse {
 		return nil
 	}
 	md, err = c.Get(ctx, "prometheus", "localhost:9090", "some:recording:rule")
@@ -254,7 +276,7 @@ func TestNewCache(t *testing.T) {
 		&config.MetadataEntry{Metric: "a", Help: "a"},
 		&config.MetadataEntry{Metric: "b", Help: "b"},
 	}
-	c := NewCache(nil, nil, static)
+	c := NewCache(nil, nil, nil, static)
 
 	want := map[string]*config.MetadataEntry{
 		"a": &config.MetadataEntry{Metric: "a", Help: "a"},

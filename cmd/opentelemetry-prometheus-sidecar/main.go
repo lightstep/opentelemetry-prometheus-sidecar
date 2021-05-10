@@ -145,7 +145,11 @@ func Main() bool {
 	if err != nil {
 		panic(err)
 	}
-	scfg.MetadataCache = metadata.NewCache(httpClient, metadataURL, staticMetadata)
+	simpleMetadataURL, err := promURL.Parse(config.PrometheusSimpleMetadataEndpointPathPath)
+	if err != nil {
+		panic(err)
+	}
+	scfg.MetadataCache = metadata.NewCache(httpClient, metadataURL, simpleMetadataURL, staticMetadata)
 
 	healthChecker := health.NewChecker(
 		telem.Controller, scfg.Monitor, scfg.Admin.HealthCheckPeriod.Duration, scfg.Logger, scfg.Admin.HealthCheckThresholdRatio,
