@@ -2,7 +2,7 @@ package internal
 
 import (
 	"context"
-	"encoding/json"
+	"fmt"
 	"net"
 	"net/url"
 	"time"
@@ -17,7 +17,7 @@ import (
 
 type ShutdownFunc func(context.Context)
 
-func StartTelemetry(scfg SidecarConfig, defaultSvcName string, isSuper bool) *telemetry.Telemetry {
+func StartTelemetry(scfg SidecarConfig, defaultSvcName string, isSuper bool, externalLabels labels.Labels) *telemetry.Telemetry {
 	diagConfig := scfg.Diagnostics
 
 	if scfg.DisableDiagnostics {
@@ -36,12 +36,6 @@ func StartTelemetry(scfg SidecarConfig, defaultSvcName string, isSuper bool) *te
 	// reportingPeriod should be faster than the health check period,
 	// because we are using metrics data for internal health checking.
 	reportingPeriod := scfg.Admin.HealthCheckPeriod.Duration / 2
-
-	// Use any external labels if we are the secondary target and *hence* Monitor is defined.
-	var externalLabels labels.Labels
-	if scfg.Monitor != nil {
-		externalLabels = scfg.Monitor.GetGlobalConfig().ExternalLabels
-	}
 
 	return startTelemetry(diagConfig, reportingPeriod, defaultSvcName, scfg.InstanceId, isSuper, externalLabels, scfg.Logger)
 }
@@ -82,10 +76,11 @@ func startTelemetry(diagConfig config.OTLPConfig, reportingPeriod time.Duration,
 		diagConfig.Attributes[label.Name] = label.Value
 	}
 
-	if data, err := json.Marshal(diagConfig); err == nil {
+	// No need to log this for the supervisor case.
+	if !isSuper {
 		level.Info(logger).Log(
-			"msg", "configuring OpenTelemetry Prometheus sidecar secondary target",
-			"config", string(data),
+			"msg", "configuring sidecar diagnostics",
+			"attributes", fmt.Sprintf("%s", diagConfig.Attributes),
 		)
 	}
 

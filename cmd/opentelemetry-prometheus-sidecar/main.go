@@ -110,6 +110,7 @@ func Main() bool {
 			scfg,
 			"opentelemetry-prometheus-sidecar",
 			isSupervisor,
+			nil,
 		)
 		defer telem.Shutdown(context.Background())
 
@@ -184,6 +185,7 @@ func Main() bool {
 		scfg,
 		"opentelemetry-prometheus-sidecar",
 		isSupervisor,
+		scfg.Monitor.GetGlobalConfig().ExternalLabels,
 	)
 	defer telem.Shutdown(context.Background())
 
