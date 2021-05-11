@@ -44,9 +44,9 @@ var (
 // from a given Prometheus server.
 // Its methods are not safe for concurrent use.
 type Cache struct {
-	promURL *url.URL
-	promSimpleURL *url.URL
-	client  *http.Client
+	targetMetadataURL *url.URL
+	metadataURL       *url.URL
+	client            *http.Client
 
 	metadata       map[string]*cacheEntry
 	seenJobs       map[string]struct{}
@@ -61,17 +61,17 @@ type Cache struct {
 // NewCache returns a new cache that gets populated by the metadata endpoint
 // at the given URL.
 // It uses the default endpoint path if no specific path is provided.
-func NewCache(client *http.Client, promURL *url.URL, promSimpleURL *url.URL, staticMetadata []*config.MetadataEntry) *Cache {
+func NewCache(client *http.Client, targetMetadataURL *url.URL, metadataURL *url.URL, staticMetadata []*config.MetadataEntry) *Cache {
 	if client == nil {
 		client = http.DefaultClient
 	}
 	c := &Cache{
-		promURL:        promURL,
-		promSimpleURL:  promSimpleURL,
-		client:         client,
-		staticMetadata: map[string]*config.MetadataEntry{},
-		metadata:       map[string]*cacheEntry{},
-		seenJobs:       map[string]struct{}{},
+		targetMetadataURL: targetMetadataURL,
+		metadataURL:       metadataURL,
+		client:            client,
+		staticMetadata:    map[string]*config.MetadataEntry{},
+		metadata:          map[string]*cacheEntry{},
+		seenJobs:          map[string]struct{}{},
 	}
 	for _, m := range staticMetadata {
 		c.staticMetadata[m.Metric] = m
@@ -167,16 +167,20 @@ func (c *Cache) fetch(ctx context.Context, mode, fullUrl string, apiResp interfa
 
 const apiErrorNotFound = "not_found"
 
-// fetchSingle fetches metadata for the given job, instance, and metric combination.
+// fetchSingle fetches metadata for the given metric.
 // It returns a not-found entry if the fetch is successful but returns no data.
+// 
+// If there is more than one metric defined for the given name, we use the first metric's metadata.
+// As per the OTel Metrics Data Model it is a semantic conflict to mix metric point kinds. See
+// https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/metrics/datamodel.md#opentelemetry-protocol-data-model
 func (c *Cache) fetchSingle(ctx context.Context, job, instance, metric string) (*cacheEntry, error) {
-	u := *c.promSimpleURL
+	u := *c.metadataURL
 	u.RawQuery = url.Values{
 		"metric":       []string{metric},
 		"limit":        []string{fmt.Sprintf("%d", 1)},
 	}.Encode()
 
-	var apiResp common.SimpleMetadataAPIResponse
+	var apiResp common.MetadataAPIResponse
 	err := c.fetch(ctx, "single", u.String(), &apiResp)
 	if err != nil {
 		return nil, err
@@ -195,7 +199,7 @@ func (c *Cache) fetchSingle(ctx context.Context, job, instance, metric string) (
 			found:     false,
 		}, nil
 	}
-	d := val[0] // TODO: Explain why the first, etc.
+	d := val[0]
 
 	// Convert legacy "untyped" type used before Prometheus 2.5.
 	if d.Type == config.MetricTypeUntyped {
@@ -215,12 +219,12 @@ func (c *Cache) fetchSingle(ctx context.Context, job, instance, metric string) (
 func (c *Cache) fetchBatch(ctx context.Context, job, instance string) (map[string]*cacheEntry, error) {
 	job, instance = escapeLval(job), escapeLval(instance)
 
-	u := *c.promURL
+	u := *c.targetMetadataURL
 	u.RawQuery = url.Values{
 		"match_target": []string{fmt.Sprintf("{job=\"%s\",instance=\"%s\"}", job, instance)},
 	}.Encode()
 
-	var apiResp common.MetadataAPIResponse
+	var apiResp common.TargetMetadataAPIResponse
 	err := c.fetch(ctx, "batch", u.String(), &apiResp)
 	if err != nil {
 		return nil, err

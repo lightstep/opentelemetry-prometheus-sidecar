@@ -141,15 +141,15 @@ func Main() bool {
 		StartupDelayEffectiveStartTime: time.Now(),
 	})
 
-	metadataURL, err := promURL.Parse(config.PrometheusMetadataEndpointPath)
+	targetsMetadataURL, err := promURL.Parse(config.PrometheusTargetMetadataEndpointPath)
 	if err != nil {
 		panic(err)
 	}
-	simpleMetadataURL, err := promURL.Parse(config.PrometheusSimpleMetadataEndpointPathPath)
+	metadataURL, err := promURL.Parse(config.PrometheusMetadataEndpointPathPath)
 	if err != nil {
 		panic(err)
 	}
-	scfg.MetadataCache = metadata.NewCache(httpClient, metadataURL, simpleMetadataURL, staticMetadata)
+	scfg.MetadataCache = metadata.NewCache(httpClient, targetsMetadataURL, metadataURL, staticMetadata)
 
 	healthChecker := health.NewChecker(
 		telem.Controller, scfg.Monitor, scfg.Admin.HealthCheckPeriod.Duration, scfg.Logger, scfg.Admin.HealthCheckThresholdRatio,
