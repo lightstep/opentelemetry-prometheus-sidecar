@@ -135,7 +135,9 @@ func TestCache_Get(t *testing.T) {
 			t.Fatalf("unexpected metric %v in request", qMetric)
 		}
 		return &metadataResponse{Status: "success", Data: map[string][]common.APIMetadata{
-			"metric5": []common.APIMetadata{common.APIMetadata{Type: metrics[4].Type, Help: metrics[4].Help}},
+			"metric5": []common.APIMetadata{common.APIMetadata{
+				Type: metrics[4].Type, Help: metrics[4].Help,
+			}},
 		}}
 	}
 	md, err = c.Get(ctx, "prometheus", "localhost:9090", "metric5")
@@ -144,7 +146,7 @@ func TestCache_Get(t *testing.T) {
 	}
 	expect(metrics[4], md)
 	// It should be in our cache afterwards.
-	tMetadataHandler = func(qMetric, qMatch string) *targetMetadataResponse {
+	metadataHandler = func(qMetric string) *metadataResponse {
 		t.Fatal("unexpected request")
 		return nil
 	}
@@ -160,7 +162,9 @@ func TestCache_Get(t *testing.T) {
 			t.Fatalf("unexpected metric %v in request", qMetric)
 		}
 		return &metadataResponse{Status: "success", Data: map[string][]common.APIMetadata{
-			"metric6": []common.APIMetadata{common.APIMetadata{Type: metrics[5].Type, Help: metrics[5].Help}},
+			"metric6": []common.APIMetadata{common.APIMetadata{
+				Type: metrics[5].Type, Help: metrics[5].Help,
+			}},
 		}}
 	}
 	md, err = c.Get(ctx, "prometheus", "localhost:9090", "metric6")
@@ -181,7 +185,7 @@ func TestCache_Get(t *testing.T) {
 		md, err = c.Get(ctx, "prometheus", "localhost:9090", internalName)
 	}
 
-	// If a metric does not exist, we first expect a fetch attempt.
+	// If a metric does not exist, we first expect a fetch (single metric) attempt.
 	metadataHandler = func(qMetric string) *metadataResponse {
 		if qMetric != "does_not_exist" {
 			t.Fatalf("unexpected metric %v in request", qMetric)
@@ -195,8 +199,8 @@ func TestCache_Get(t *testing.T) {
 	if md != nil {
 		t.Fatalf("expected nil metadata but got %v", md)
 	}
-	// Requesting it again should not do another request (modulo timeout).
-	tMetadataHandler = func(qMetric, qMatch string) *targetMetadataResponse {
+	// Requesting it again should not do another (single metric) request (modulo timeout).
+	metadataHandler = func(qMetric string) *metadataResponse {
 		t.Fatal("unexpected request")
 		return nil
 	}
@@ -246,7 +250,7 @@ func TestCache_Get(t *testing.T) {
 		t.Errorf("expected metadata %v but got %v", want, md)
 	}
 
-	// Test recording rule.
+	// Test recording rule (uses single metric fetching).
 	metadataHandler = func(qMetric string) *metadataResponse {
 		return nil
 	}
