@@ -138,35 +138,31 @@ func (c *Cache) Get(ctx context.Context, job, instance, metric string) (*config.
 	return nil, nil
 }
 
-func (c *Cache) fetch(ctx context.Context, mode string, q url.Values) (_ *common.MetadataAPIResponse, retErr error) {
+func (c *Cache) fetch(ctx context.Context, mode, fullUrl string, apiResp interface{}) (retErr error) {
 	ctx, cancel := context.WithTimeout(ctx, config.DefaultPrometheusTimeout)
 	defer cancel()
 
 	defer fetchTimer.Start(ctx).Stop(&retErr, attribute.String("mode", mode))
 
-	u := *c.promURL
-	u.RawQuery = q.Encode()
-
-	req, err := http.NewRequestWithContext(ctx, "GET", u.String(), nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", fullUrl, nil)
 	if err != nil {
-		return nil, errors.Wrap(err, "build request")
+		return errors.Wrap(err, "build request")
 	}
 
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return nil, errors.Wrap(err, "query Prometheus")
+		return errors.Wrap(err, "query Prometheus")
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("metadata request HTTP status %s", resp.Status)
+		return fmt.Errorf("metadata request HTTP status %s", resp.Status)
 	}
 
-	var apiResp common.MetadataAPIResponse
-	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
-		return nil, errors.Wrap(err, "decode response")
+	if err := json.NewDecoder(resp.Body).Decode(apiResp); err != nil {
+		return errors.Wrap(err, "decode response")
 	}
-	return &apiResp, nil
+	return nil
 }
 
 const apiErrorNotFound = "not_found"
@@ -174,45 +170,23 @@ const apiErrorNotFound = "not_found"
 // fetchSingle fetches metadata for the given job, instance, and metric combination.
 // It returns a not-found entry if the fetch is successful but returns no data.
 func (c *Cache) fetchSingle(ctx context.Context, job, instance, metric string) (*cacheEntry, error) {
-	q := url.Values{
-		"metric":       []string{metric},
-	}
-
-	ctx, cancel := context.WithTimeout(ctx, config.DefaultPrometheusTimeout)
-	defer cancel()
-
-	// TODO: Properly return this error.
-	var retErr error
-	defer fetchTimer.Start(ctx).Stop(&retErr, attribute.String("mode", "single"))
-
 	u := *c.promSimpleURL
-	u.RawQuery = q.Encode()
-
-	req, err := http.NewRequestWithContext(ctx, "GET", u.String(), nil)
-	if err != nil {
-		return nil, errors.Wrap(err, "build request")
-	}
-
-	resp, err := c.client.Do(req)
-	if err != nil {
-		return nil, errors.Wrap(err, "query Prometheus")
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("metadata request HTTP status %s", resp.Status)
-	}
+	u.RawQuery = url.Values{
+		"metric":       []string{metric},
+		"limit":        []string{fmt.Sprintf("%d", 1)},
+	}.Encode()
 
 	var apiResp common.SimpleMetadataAPIResponse
-	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
-		return nil, errors.Wrap(err, "decode response")
+	err := c.fetch(ctx, "single", u.String(), &apiResp)
+	if err != nil {
+		return nil, err
 	}
-
 	now := time.Now()
 
 	if apiResp.ErrorType != "" && apiResp.ErrorType != apiErrorNotFound {
 		return nil, errors.Wrap(errors.New(apiResp.Error), "lookup failed")
 	}
+
 	val, ok := apiResp.Data[metric]
 	if !ok {
 		// Cache a not-found entry.
@@ -241,9 +215,13 @@ func (c *Cache) fetchSingle(ctx context.Context, job, instance, metric string) (
 func (c *Cache) fetchBatch(ctx context.Context, job, instance string) (map[string]*cacheEntry, error) {
 	job, instance = escapeLval(job), escapeLval(instance)
 
-	apiResp, err := c.fetch(ctx, "batch", url.Values{
+	u := *c.promURL
+	u.RawQuery = url.Values{
 		"match_target": []string{fmt.Sprintf("{job=\"%s\",instance=\"%s\"}", job, instance)},
-	})
+	}.Encode()
+
+	var apiResp common.MetadataAPIResponse
+	err := c.fetch(ctx, "batch", u.String(), &apiResp)
 	if err != nil {
 		return nil, err
 	}
