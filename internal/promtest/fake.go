@@ -110,15 +110,15 @@ func NewFakePrometheus(cfg Config) *FakePrometheus {
 	})
 
 	// Serve instrument metadata
-	fp.mux.HandleFunc("/"+config.PrometheusMetadataEndpointPath,
+	fp.mux.HandleFunc("/"+config.PrometheusTargetMetadataEndpointPath,
 		func(w http.ResponseWriter, r *http.Request) {
-			var metaResp common.MetadataAPIResponse
+			var metaResp common.TargetMetadataAPIResponse
 			for _, entry := range cfg.Metadata {
 				// Note: This endpoint is used to request metadata
 				// for a specific target.  It does not use the target
 				// details and returns constant metadata for testing
 				// purposes.
-				metaResp.Data = append(metaResp.Data, common.APIMetadata{
+				metaResp.Data = append(metaResp.Data, common.APITargetMetadata{
 					Metric: entry.Metric,
 					Help:   "helpful",
 					Type:   entry.MetricType,

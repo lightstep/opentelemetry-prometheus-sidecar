@@ -656,8 +656,9 @@ const (
 // DefaultEndpointPath is the default HTTP path on which Prometheus serves
 // the target metadata endpoint.
 const (
-	PrometheusMetadataEndpointPath = "api/v1/targets/metadata"
-	PrometheusConfigEndpointPath   = "api/v1/status/config"
+	PrometheusTargetMetadataEndpointPath = "api/v1/targets/metadata"
+	PrometheusMetadataEndpointPath       = "api/v1/metadata"
+	PrometheusConfigEndpointPath         = "api/v1/status/config"
 )
 
 // The old metric type value for textparse.MetricTypeUnknown that is used in
