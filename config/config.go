@@ -633,7 +633,7 @@ const (
 // the target metadata endpoint.
 const (
 	PrometheusTargetMetadataEndpointPath = "api/v1/targets/metadata"
-	PrometheusMetadataEndpointPathPath   = "api/v1/metadata"
+	PrometheusMetadataEndpointPath       = "api/v1/metadata"
 	PrometheusConfigEndpointPath         = "api/v1/status/config"
 )
 

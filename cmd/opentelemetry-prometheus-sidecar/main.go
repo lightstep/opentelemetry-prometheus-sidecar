@@ -145,7 +145,7 @@ func Main() bool {
 	if err != nil {
 		panic(err)
 	}
-	metadataURL, err := promURL.Parse(config.PrometheusMetadataEndpointPathPath)
+	metadataURL, err := promURL.Parse(config.PrometheusMetadataEndpointPath)
 	if err != nil {
 		panic(err)
 	}
