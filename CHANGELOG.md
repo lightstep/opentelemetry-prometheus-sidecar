@@ -8,6 +8,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+## [0.25.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.25.0) - 2021-05-13
+
+### Changed
+
+- Single metric metadata fetching happens through /metadata/, not /targets/medatada, which
+  should prevent causing too much stress on Prometheus (less data to query/fetch). (#252)
+
 ## [0.24.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.24.0) - 2021-05-07
 
 ### Changed
