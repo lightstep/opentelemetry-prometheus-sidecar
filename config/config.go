@@ -140,6 +140,7 @@ an OpenTelemetry (https://opentelemetry.io) Protocol endpoint.
 	PrometheusMinVersion = "2.10.0"
 
 	// LeaderLockDefaultNamespace is the name of the default k8s namespace.
+	// Note: can't be empty.
 	LeaderLockDefaultNamespace = "default"
 
 	// LeaderLockDefaultName will be used when no `prometheus`
