@@ -47,11 +47,17 @@ func StartLeaderElection(ctx context.Context, cfg *SidecarConfig) error {
 
 	logger := log.With(cfg.Logger, "component", "leader")
 
-	var err error
+	client, err := leader.NewClient()
+	if err != nil {
+		return errors.Wrap(err, "leader election client")
+	}
+
 	cfg.LeaderElector, err = leader.NewCandidate(
+		client,
 		lockNamespace,
 		lockName,
 		lockID,
+		leader.LoggingController{logger},
 		logger,
 	)
 	if err != nil {

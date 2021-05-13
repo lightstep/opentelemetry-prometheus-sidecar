@@ -19,22 +19,40 @@ type Candidate interface {
 	Start(ctx context.Context) error
 }
 
+type Controller interface {
+	OnNewLeader(self bool, identity string)
+	OnStartedLeading(ctx context.Context)
+	OnStoppedLeading()
+}
+
 type candidate struct {
-	client  *kubernetes.Clientset
+	client  kubernetes.Interface
+	ctrl    Controller
 	id      string
 	elector *leaderelection.LeaderElector
 	logger  log.Logger
 }
 
-func NewCandidate(namespace, name, id string, logger log.Logger) (Candidate, error) {
+type LoggingController struct {
+	log.Logger
+}
 
+func NewClient() (*kubernetes.Clientset, error) {
 	cfg, err := rest.InClusterConfig()
 	if err != nil {
 		return nil, errors.Wrap(err, "in-cluster k8s config")
 	}
+	client, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		return nil, errors.Wrap(err, "new k8s client")
+	}
+	return client, err
+}
 
+func NewCandidate(client kubernetes.Interface, namespace, name, id string, ctrl Controller, logger log.Logger) (Candidate, error) {
 	c := &candidate{
-		client: kubernetes.NewForConfigOrDie(cfg),
+		client: client,
+		ctrl:   ctrl,
 		id:     id,
 		logger: logger,
 	}
@@ -58,39 +76,42 @@ func NewCandidate(namespace, name, id string, logger log.Logger) (Candidate, err
 		RenewDeadline:   15 * time.Second,
 		RetryPeriod:     5 * time.Second,
 		Callbacks: leaderelection.LeaderCallbacks{
-			OnStartedLeading: c.onStartedLeading,
-			OnStoppedLeading: c.onStoppedLeading,
-			OnNewLeader:      c.onNewLeader,
+			OnStartedLeading: ctrl.OnStartedLeading,
+			OnStoppedLeading: ctrl.OnStoppedLeading,
+			OnNewLeader: func(id string) {
+				ctrl.OnNewLeader(lock.LockConfig.Identity == c.id, id)
+			},
 		},
 	}
 
-	c.elector, err = leaderelection.NewLeaderElector(lec)
+	elector, err := leaderelection.NewLeaderElector(lec)
 	if err != nil {
 		return nil, errors.Wrap(err, "start elector")
 	}
-
+	c.elector = elector
 	return c, nil
 
 }
+
 func (c *candidate) Start(ctx context.Context) error {
-	// ...
+	// This runs until the context is canceled by main().
 	go c.elector.Run(ctx)
-	// ...
+
 	return nil
 }
 
-func (c *candidate) onStartedLeading(ctx context.Context) {
-	level.Info(c.logger).Log("msg", "started leading")
+func (c LoggingController) OnStartedLeading(ctx context.Context) {
+	level.Info(c.Logger).Log("msg", "this sidecar started leading")
 }
 
-func (c *candidate) onStoppedLeading() {
-	level.Info(c.logger).Log("msg", "stopped leading")
+func (c LoggingController) OnStoppedLeading() {
+	level.Info(c.Logger).Log("msg", "this sidecar stopped leading")
 }
 
-func (c *candidate) onNewLeader(identity string) {
-	if identity == c.id {
-		level.Info(c.logger).Log("msg", "new leader is ME", "id", identity)
+func (c LoggingController) OnNewLeader(self bool, identity string) {
+	if self {
+		level.Info(c.Logger).Log("msg", "this sidecar has become leader", "id", identity)
 		return
 	}
-	level.Info(c.logger).Log("msg", "new leader is SOMEONE", "id", identity)
+	level.Info(c.Logger).Log("msg", "another sidecar became leader is", "id", identity)
 }
