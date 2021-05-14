@@ -141,22 +141,20 @@ func Main() bool {
 		StartupDelayEffectiveStartTime: time.Now(),
 	})
 
+	targetsMetadataURL, err := promURL.Parse(config.PrometheusTargetMetadataEndpointPath)
+	if err != nil {
+		panic(err)
+	}
 	metadataURL, err := promURL.Parse(config.PrometheusMetadataEndpointPath)
 	if err != nil {
 		panic(err)
 	}
-	scfg.MetadataCache = metadata.NewCache(httpClient, metadataURL, staticMetadata)
+	scfg.MetadataCache = metadata.NewCache(httpClient, targetsMetadataURL, metadataURL, staticMetadata)
 
 	// Check the progress file, ensure we can write this file.
 	startOffset, err := readWriteStartOffset(scfg)
 	if err != nil {
 		level.Error(scfg.Logger).Log("msg", "cannot write progress file", "err", err)
-		return false
-	}
-
-	tailer, err := internal.NewTailer(ctx, scfg)
-	if err != nil {
-		level.Error(scfg.Logger).Log("msg", "tailing WAL failed", "err", err)
 		return false
 	}
 
@@ -174,12 +172,6 @@ func Main() bool {
 		Prometheus:       scfg.Prometheus,
 		FailingReporter:  scfg.FailingReporter,
 	})
-
-	// Test for Prometheus and Outbound dependencies before starting.
-	if err := selfTest(ctx, scfg); err != nil {
-		level.Error(scfg.Logger).Log("msg", "selftest failed, not starting", "err", err)
-		return false
-	}
 
 	telem := internal.StartTelemetry(
 		scfg,
@@ -212,7 +204,35 @@ func Main() bool {
 		}
 	}()
 
-	logStartup(cfg, scfg.Logger)
+	logStartup(scfg)
+
+	// Test for Prometheus and Outbound dependencies before starting.
+	if err := selfTest(ctx, scfg); err != nil {
+		level.Error(scfg.Logger).Log("msg", "selftest failed, not starting", "err", err)
+		return false
+	}
+
+	tailer, err := internal.NewTailer(ctx, scfg)
+	if err != nil {
+		level.Error(scfg.Logger).Log("msg", "tailing WAL failed", "err", err)
+		return false
+	}
+
+	// Show the external labels, if any.
+	externalLabels := scfg.Monitor.GetGlobalConfig().ExternalLabels
+	if len(externalLabels) != 0 {
+		level.Info(scfg.Logger).Log(
+			"msg", "process has external labels",
+			"labels", scfg.Monitor.GetGlobalConfig().ExternalLabels.String(),
+		)
+	}
+
+	if scfg.LeaderElection.Enabled {
+		if err := internal.StartLeaderElection(ctx, &scfg); err != nil {
+			level.Error(scfg.Logger).Log("msg", "leader election", "err", err)
+			return false
+		}
+	}
 
 	level.Debug(scfg.Logger).Log("msg", "entering run state")
 	healthChecker.SetRunning()
@@ -282,7 +302,9 @@ func selfTest(ctx context.Context, scfg internal.SidecarConfig) error {
 	return nil
 }
 
-func logStartup(cfg config.MainConfig, logger log.Logger) {
+func logStartup(cfg internal.SidecarConfig) {
+	logger := cfg.Logger
+
 	level.Info(logger).Log(
 		"msg", "starting OpenTelemetry Prometheus sidecar",
 		"version", version.Info(),
