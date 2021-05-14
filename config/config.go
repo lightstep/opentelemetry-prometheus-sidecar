@@ -138,6 +138,14 @@ an OpenTelemetry (https://opentelemetry.io) Protocol endpoint.
 	PrometheusBuildInfoName = "prometheus_build_info"
 	// PrometheusMinVersion is the minimum supported version
 	PrometheusMinVersion = "2.10.0"
+
+	// LeaderLockDefaultNamespace is the name of the default k8s namespace.
+	// Note: can't be empty.
+	LeaderLockDefaultNamespace = "default"
+
+	// LeaderLockDefaultName will be used when no `prometheus`
+	// external label is found.
+	LeaderLockDefaultName = "otel-prom-sidecar"
 )
 
 var (
@@ -227,6 +235,16 @@ type AdminConfig struct {
 	HealthCheckThresholdRatio float64        `json:"health_check_threshold_ratio"`
 }
 
+type K8SLeaderElectionConfig struct {
+	Namespace string `json:"namespace"`
+}
+
+type LeaderElectionConfig struct {
+	Enabled bool `json:"enabled"`
+
+	K8S K8SLeaderElectionConfig `json:"k8s"`
+}
+
 type MainConfig struct {
 	// Note: These fields are ordered so that JSON and YAML
 	// marshal in order of importance.
@@ -242,6 +260,7 @@ type MainConfig struct {
 	MetricRenames  []MetricRenamesConfig  `json:"metric_renames"`
 	StaticMetadata []StaticMetadataConfig `json:"static_metadata"`
 	LogConfig      LogConfig              `json:"log"`
+	LeaderElection LeaderElectionConfig   `json:"leader_election"`
 
 	DisableSupervisor  bool `json:"disable_supervisor"`
 	DisableDiagnostics bool `json:"disable_diagnostics"`
@@ -400,6 +419,12 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 	a.Flag(promlogflag.FormatFlagName, promlogflag.FormatFlagHelp).StringVar(&cfg.LogConfig.Format)
 	a.Flag("log.verbose", "Verbose logging level: 0 = off, 1 = some, 2 = more; 1 is automatically added when log.level is 'debug'; impacts logging from the gRPC library in particular").
 		IntVar(&cfg.LogConfig.Verbose)
+
+	a.Flag("leader-election.enabled", "Enable leader election to choose a single writer.").
+		BoolVar(&cfg.LeaderElection.Enabled)
+
+	a.Flag("leader-election.k8s-namespace", "Namespace used for the leadership election lease.").
+		StringVar(&cfg.LeaderElection.K8S.Namespace)
 
 	a.Flag("disable-supervisor", "Disable the supervisor.").
 		BoolVar(&cfg.DisableSupervisor)

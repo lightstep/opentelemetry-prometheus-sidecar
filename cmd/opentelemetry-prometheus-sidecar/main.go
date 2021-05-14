@@ -162,12 +162,6 @@ func Main() bool {
 		return false
 	}
 
-	tailer, err := internal.NewTailer(ctx, scfg)
-	if err != nil {
-		level.Error(scfg.Logger).Log("msg", "tailing WAL failed", "err", err)
-		return false
-	}
-
 	outputURL, _ := url.Parse(scfg.Destination.Endpoint)
 
 	scfg.Destination.Headers[config.AgentKey] = config.AgentMainValue
@@ -202,12 +196,34 @@ func Main() bool {
 		}
 	}()
 
-	logStartup(cfg, scfg.Logger)
+	logStartup(scfg)
 
 	// Test for Prometheus and Outbound dependencies before starting.
 	if err := selfTest(ctx, scfg); err != nil {
 		level.Error(scfg.Logger).Log("msg", "selftest failed, not starting", "err", err)
 		return false
+	}
+
+	tailer, err := internal.NewTailer(ctx, scfg)
+	if err != nil {
+		level.Error(scfg.Logger).Log("msg", "tailing WAL failed", "err", err)
+		return false
+	}
+
+	// Show the external labels, if any.
+	externalLabels := scfg.Monitor.GetGlobalConfig().ExternalLabels
+	if len(externalLabels) != 0 {
+		level.Info(scfg.Logger).Log(
+			"msg", "process has external labels",
+			"labels", scfg.Monitor.GetGlobalConfig().ExternalLabels.String(),
+		)
+	}
+
+	if scfg.LeaderElection.Enabled {
+		if err := internal.StartLeaderElection(ctx, &scfg); err != nil {
+			level.Error(scfg.Logger).Log("msg", "leader election", "err", err)
+			return false
+		}
 	}
 
 	level.Debug(scfg.Logger).Log("msg", "entering run state")
@@ -278,7 +294,9 @@ func selfTest(ctx context.Context, scfg internal.SidecarConfig) error {
 	return nil
 }
 
-func logStartup(cfg config.MainConfig, logger log.Logger) {
+func logStartup(cfg internal.SidecarConfig) {
+	logger := cfg.Logger
+
 	level.Info(logger).Log(
 		"msg", "starting OpenTelemetry Prometheus sidecar",
 		"version", version.Info(),
