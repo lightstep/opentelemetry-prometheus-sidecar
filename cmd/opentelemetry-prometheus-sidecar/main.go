@@ -43,6 +43,7 @@ import (
 	"github.com/prometheus/common/version"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
+	controller "go.opentelemetry.io/otel/sdk/metric/controller/basic"
 	grpcMetadata "google.golang.org/grpc/metadata"
 
 	// register grpc compressors
@@ -68,6 +69,18 @@ func main() {
 	if !Main() {
 		os.Exit(1)
 	}
+}
+
+type ControllerGetter struct {
+	controller *controller.Controller
+}
+
+func (g *ControllerGetter) SetController(cont *controller.Controller) {
+	g.controller = cont
+}
+
+func (g *ControllerGetter) GetController() *controller.Controller {
+	return g.controller
 }
 
 func Main() bool {
@@ -173,16 +186,10 @@ func Main() bool {
 		FailingReporter:  scfg.FailingReporter,
 	})
 
-	telem := internal.StartTelemetry(
-		scfg,
-		"opentelemetry-prometheus-sidecar",
-		isSupervisor,
-		scfg.Monitor.GetGlobalConfig().ExternalLabels,
-	)
-	defer telem.Shutdown(context.Background())
-
+	// metrics controller will be ready for consumption upon starting telemetry.
+	metricsContGetter := ControllerGetter{}
 	healthChecker := health.NewChecker(
-		telem.Controller, scfg.Monitor, scfg.Admin.HealthCheckPeriod.Duration, scfg.Logger, scfg.Admin.HealthCheckThresholdRatio,
+		&metricsContGetter, scfg.Monitor, scfg.Admin.HealthCheckPeriod.Duration, scfg.Logger, scfg.Admin.HealthCheckThresholdRatio,
 	)
 
 	// Start the admin server.
@@ -211,6 +218,17 @@ func Main() bool {
 		level.Error(scfg.Logger).Log("msg", "selftest failed, not starting", "err", err)
 		return false
 	}
+
+	telem := internal.StartTelemetry(
+		scfg,
+		"opentelemetry-prometheus-sidecar",
+		isSupervisor,
+		scfg.Monitor.GetGlobalConfig().ExternalLabels,
+	)
+	defer telem.Shutdown(context.Background())
+
+	// Let HealthChecker know Controller/metrics are ready to be consumed.
+	metricsContGetter.SetController(telem.Controller)
 
 	tailer, err := internal.NewTailer(ctx, scfg)
 	if err != nil {

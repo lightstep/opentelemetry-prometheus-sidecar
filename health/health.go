@@ -53,7 +53,7 @@ type (
 		logger            log.Logger
 		period            time.Duration
 		startTime         time.Time
-		metricsController *controller.Controller
+		metricsContGetter ControllerGetter
 		promConfigGetter  PromGlobalConfigGetter
 
 		lock         sync.Mutex
@@ -96,6 +96,10 @@ type (
 		Value  float64 `json:"value"`
 	}
 
+	ControllerGetter interface {
+		GetController() *controller.Controller
+	}
+
         PromGlobalConfigGetter interface {
                 GetGlobalConfig() promconfig.GlobalConfig
         }
@@ -103,12 +107,12 @@ type (
 
 // NewChecker returns a new ready and liveness checkers based on
 // state from the metrics controller.
-func NewChecker(cont *controller.Controller, promConfigGetter PromGlobalConfigGetter, period time.Duration, logger log.Logger, thresholdRatio float64) *Checker {
+func NewChecker(contGetter ControllerGetter, promConfigGetter PromGlobalConfigGetter, period time.Duration, logger log.Logger, thresholdRatio float64) *Checker {
 	c := &Checker{
 		logger:            logger,
 		period:            period,
 		startTime:         time.Now(),
-		metricsController: cont,
+		metricsContGetter: contGetter,
 		promConfigGetter:  promConfigGetter,
 		tracker:           map[string]*metricTracker{},
 		lastResponse: Response{
@@ -137,9 +141,14 @@ func (c *Checker) SetRunning() {
 // `sidecar.*` metrics into the result, for use in the healtcheck
 // body.
 func (a *alive) getMetrics() (map[string][]exportRecord, error) {
-	cont := a.metricsController
 	ret := map[string][]exportRecord{}
 	enc := attribute.DefaultEncoder()
+
+	cont := a.metricsContGetter.GetController()
+	if cont == nil {
+		// getMetrics() SHOULD NOT be called prior to be alive.
+		return ret, nil
+	}
 
 	// Note: we use the latest checkpoint, which is computed
 	// periodically for the OTLP metrics exporter.
