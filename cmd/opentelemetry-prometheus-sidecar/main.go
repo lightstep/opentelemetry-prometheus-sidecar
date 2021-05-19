@@ -64,6 +64,7 @@ import (
 // be useful after other matters are resolved.
 
 const supervisorEnv = "MAIN_SUPERVISOR"
+const serviceIdEnv = "SERVICE_ID"
 
 func main() {
 	if !Main() {
@@ -102,11 +103,15 @@ func Main() bool {
 	isSupervisor := !cfg.DisableSupervisor && os.Getenv(supervisorEnv) == ""
 	logger := internal.NewLogger(cfg, isSupervisor)
 
+	svcId := os.Getenv(serviceIdEnv)
+	if len(svcId) == 0 {
+		svcId = uuid.New().String()
+	}
 	scfg := internal.SidecarConfig{
 		ClientFactory:   nil,
 		Monitor:         nil,
 		Logger:          logger,
-		InstanceId:      uuid.New().String(),
+		InstanceId:      svcId,
 		Matchers:        [][]*labels.Matcher{},
 		MetricRenames:   metricRenames,
 		MetadataCache:   nil,
@@ -348,6 +353,7 @@ func startSupervisor(scfg internal.SidecarConfig, telem *telemetry.Telemetry) bo
 	})
 
 	os.Setenv(supervisorEnv, "active")
+	os.Setenv(serviceIdEnv, scfg.InstanceId)
 
 	return super.Run(os.Args)
 }
