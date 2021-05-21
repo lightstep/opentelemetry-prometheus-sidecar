@@ -33,6 +33,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
 	"github.com/prometheus/prometheus/tsdb/record"
+	"github.com/prometheus/prometheus/tsdb/tombstones"
 	"github.com/prometheus/prometheus/tsdb/wal"
 	"go.opentelemetry.io/otel/metric"
 	metric_pb "go.opentelemetry.io/proto/otlp/metrics/v1"
@@ -48,6 +49,11 @@ var (
 	seriesDefined = sidecar.OTelMeterMust.NewInt64Counter(
 		config.SeriesDefinedMetric,
 		metric.WithDescription("Number of Metric series defined"),
+	)
+
+	tombstoneRecords = sidecar.OTelMeterMust.NewInt64Counter(
+		config.TombstonesDroppedMetric,
+		metric.WithDescription("Number of Tombstone records dropped"),
 	)
 
 	errBuildFailed = errors.New("unknown build failure")
@@ -176,6 +182,7 @@ func (r *PrometheusReader) Run(ctx context.Context, startOffset int) error {
 		lastSave        time.Time
 		samples         []record.RefSample
 		series          []record.RefSeries
+		tstones         []tombstones.Stone
 	)
 Outer:
 	for reader.Next() {
@@ -303,6 +310,14 @@ Outer:
 			pointsProduced.Add(ctx, int64(produced))
 
 		case record.Tombstones:
+			// start counting tombstone records we're not using
+			tstones, err = decoder.Tombstones(rec, tstones[:0])
+			if err != nil {
+				level.Error(r.logger).Log("msg", "decode tombstones", "err", err)
+				continue
+			}
+			tombstoneRecords.Add(ctx, int64(len(tstones)))
+
 		default:
 			level.Warn(r.logger).Log("msg", "unknown WAL record type")
 		}
