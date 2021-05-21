@@ -43,6 +43,14 @@ type tester struct {
 	aliveServer  *httptest.Server
 }
 
+type controllerGetter struct {
+	controller *controller.Controller
+}
+
+func (getter *controllerGetter) GetController() *controller.Controller {
+	return getter.controller
+}
+
 type promGlobalConfigGetter struct {
         externalLabels labels.Labels
 }
@@ -60,7 +68,7 @@ func testController(t *testing.T) *tester {
 	outcome := metric.Must(provider.Meter("test")).NewInt64Counter(config.OutcomeMetric)
 	configGetter := &promGlobalConfigGetter{externalLabels: labels.FromStrings("test_name", "test_value")}
 
-	checker := NewChecker(cont, configGetter, 0 /* uncached */, telemetry.DefaultLogger(), config.DefaultHealthCheckThresholdRatio)
+	checker := NewChecker(&controllerGetter{cont}, configGetter, 0 /* uncached */, telemetry.DefaultLogger(), config.DefaultHealthCheckThresholdRatio)
 
 	aliveServer := httptest.NewServer(checker.Alive())
 
