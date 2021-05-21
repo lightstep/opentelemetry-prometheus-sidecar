@@ -542,6 +542,7 @@ sidecar performance.
 | sidecar.segment.reads | counter | number of WAL segment read() calls | |
 | sidecar.segment.bytes | counter | number of WAL segment bytes read | |
 | sidecar.segment.skipped | counter | number of skipped WAL segments | |
+| sidecar.tombstones.dropped | counter | number of tombstone records dropped | |
 
 ## Upstream
 
