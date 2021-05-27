@@ -20,9 +20,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
+	"go.opentelemetry.io/otel/metric"
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/common"
@@ -51,6 +54,9 @@ type Cache struct {
 	metadata       map[string]*cacheEntry
 	seenJobs       map[string]struct{}
 	staticMetadata map[string]*config.MetadataEntry
+
+	currentMetricsObs metric.Int64UpDownSumObserver
+	mtx               sync.Mutex
 }
 
 // TODO: This code could use metrics to report the current size of the
@@ -76,6 +82,37 @@ func NewCache(client *http.Client, targetMetadataURL *url.URL, metadataURL *url.
 	for _, m := range staticMetadata {
 		c.staticMetadata[m.Metric] = m
 	}
+
+	c.currentMetricsObs = sidecar.OTelMeterMust.NewInt64UpDownSumObserver(
+		config.CurrentMetricsMetric,
+		func(ctx context.Context, result metric.Int64ObserverResult) {
+			c.mtx.Lock()
+			defer c.mtx.Unlock()
+
+			counters := make(map[textparse.MetricType]int64)
+
+			var notFound int64
+			for _, cEntry := range c.metadata {
+				if cEntry.found {
+					if ent := cEntry.Entry; ent != nil {
+						counters[ent.MetricType]++
+					}
+				} else {
+					notFound++
+				}
+			}
+
+			t := attribute.Key("type")
+			for metricType, c := range counters {
+				result.Observe(c, t.String(string(metricType)))
+			}
+			result.Observe(notFound, attribute.String("status", "notFound"))
+		},
+		metric.WithDescription(
+			"The current number of metrics in the metadata cache.",
+		),
+	)
+
 	return c
 }
 
@@ -99,6 +136,8 @@ func (c *Cache) Get(ctx context.Context, job, instance, metric string) (*config.
 	if md, ok := c.staticMetadata[metric]; ok {
 		return md, nil
 	}
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
 	md, ok := c.metadata[metric]
 	if !ok || md.shouldRefetch() {
 		// If we are seeing the job for the first time, preemptively get a full
@@ -169,15 +208,15 @@ const apiErrorNotFound = "not_found"
 
 // fetchSingle fetches metadata for the given metric.
 // It returns a not-found entry if the fetch is successful but returns no data.
-// 
+//
 // If there is more than one metric defined for the given name, we use the first metric's metadata.
 // As per the OTel Metrics Data Model it is a semantic conflict to mix metric point kinds. See
 // https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/metrics/datamodel.md#opentelemetry-protocol-data-model
 func (c *Cache) fetchSingle(ctx context.Context, job, instance, metric string) (*cacheEntry, error) {
 	u := *c.metadataURL
 	u.RawQuery = url.Values{
-		"metric":       []string{metric},
-		"limit":        []string{fmt.Sprintf("%d", 1)},
+		"metric": []string{metric},
+		"limit":  []string{fmt.Sprintf("%d", 1)},
 	}.Encode()
 
 	var apiResp common.MetadataAPIResponse

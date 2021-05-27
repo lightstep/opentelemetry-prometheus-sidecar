@@ -111,15 +111,20 @@ an OpenTelemetry (https://opentelemetry.io) Protocol endpoint.
 
 	// Some metric names are shared across packages, for healthchecking.
 
-	SidecarPrefix        = "sidecar."
-	SeriesDefinedMetric  = "sidecar.series.defined"
-	OutcomeMetric        = "sidecar.queue.outcome"
-	DroppedSeriesMetric  = "sidecar.series.dropped"
+	SidecarPrefix = "sidecar."
+
+	SeriesDefinedMetric = "sidecar.series.defined"
+	DroppedSeriesMetric = "sidecar.series.dropped"
+	CurrentSeriesMetric = "sidecar.series.current"
+
+	OutcomeMetric = "sidecar.queue.outcome"
+
 	ProducedPointsMetric = "sidecar.points.produced"
 	DroppedPointsMetric  = "sidecar.points.dropped"
 	SkippedPointsMetric  = "sidecar.points.skipped"
+
 	FailingMetricsMetric = "sidecar.metrics.failing"
-	CurrentSeriesMetric  = "sidecar.series.current"
+	CurrentMetricsMetric = "sidecar.metrics.current"
 
 	OutcomeKey          = attribute.Key("outcome")
 	OutcomeSuccessValue = "success"
@@ -673,4 +678,3 @@ type MetadataEntry struct {
 	ValueType  ValueType
 	Help       string
 }
-
