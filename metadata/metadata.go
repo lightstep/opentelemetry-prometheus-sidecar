@@ -106,7 +106,7 @@ func NewCache(client *http.Client, targetMetadataURL *url.URL, metadataURL *url.
 			for metricType, c := range counters {
 				result.Observe(c, t.String(string(metricType)))
 			}
-			result.Observe(notFound, attribute.String("status", "notFound"))
+			result.Observe(notFound, t.String("metadata_not_found"))
 		},
 		metric.WithDescription(
 			"The current number of metrics in the metadata cache.",
