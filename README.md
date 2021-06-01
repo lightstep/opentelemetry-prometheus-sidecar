@@ -72,7 +72,7 @@ An example command-line:
 ```
 opentelemetry-prometheus-sidecar \
   --destination.endpoint=${DESTINATION} \
-  --destination.header="Custom-Header=${VALUE}" \
+  --destination.header="lightstep-access-token=${VALUE}" \
   --destination.attribute="service.name=${SERVICE}" \
   --prometheus.wal=${WAL} \
   --prometheus.endpoint=${PROMETHEUS} \
@@ -123,7 +123,7 @@ server:
     args:
     - --prometheus.wal=/data/wal
     - --destination.endpoint=$(DESTINATION)
-    - --destination.header=access-token=AAAAAAAAAAAAAAAA
+    - --destination.header=lightstep-access-token=AAAAAAAAAAAAAAAA
     volumeMounts:
     - name: storage-volume
       mountPath: /data
@@ -147,13 +147,13 @@ prometheus:
   prometheusSpec:
     containers:
       - name: otel-sidecar
-        image: lightstep/opentelemetry-prometheus-sidecar:v0.18.3
+        image: lightstep/opentelemetry-prometheus-sidecar:latest
         imagePullPolicy: Always
 
         args:
         - --prometheus.wal=/prometheus/prometheus-db/wal
         - --destination.endpoint=$(DESTINATION)
-        - --destination.header=access-token=AAAAAAAAAAAAAAAA
+        - --destination.header=lightstep-access-token=AAAAAAAAAAAAAAAA
 
         #####
         ports:
