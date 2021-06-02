@@ -55,6 +55,10 @@ const (
 	failingConstant = 1
 
 	failingMetricSummaryInterval = time.Minute * 5
+
+	// Limits the number of metrics names that are reported as metric labels,
+	// this ensures that we don't explode the label cardinality of the failing metric.
+	failingMetricMaxReportedMetrics = 50
 )
 
 func NewFailingSet(logger log.Logger) *FailingSet {
@@ -99,10 +103,18 @@ func (i *FailingSet) observe(_ context.Context, result metric.Int64ObserverResul
 		for name := range nm {
 			names = append(names, name)
 		}
+		if names == nil {
+			continue
+		}
 		sort.Strings(names)
+		count := len(names)
+		if count > failingMetricMaxReportedMetrics {
+			names = names[:failingMetricMaxReportedMetrics]
+		}
 		level.Warn(i.logger).Log(
 			"reason", strings.ReplaceAll(reason, "-", " "),
 			"names", fmt.Sprint(names),
+			"metrics_failed", count,
 		)
 	}
 }
@@ -112,7 +124,12 @@ func (i *FailingSet) observeLocked(result metric.Int64ObserverResult) stateMap {
 	defer i.lock.Unlock()
 
 	for reason, names := range i.short {
+		var observedCount int
 		for metricName := range names {
+			if observedCount >= failingMetricMaxReportedMetrics {
+				break
+			}
+			observedCount++
 			result.Observe(failingConstant,
 				DroppedKeyReason.String(reason),
 				MetricNameKey.String(metricName),
