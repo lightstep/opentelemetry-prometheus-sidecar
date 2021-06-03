@@ -103,9 +103,6 @@ func (i *FailingSet) observe(_ context.Context, result metric.Int64ObserverResul
 		for name := range nm {
 			names = append(names, name)
 		}
-		if names == nil {
-			continue
-		}
 		sort.Strings(names)
 		count := len(names)
 		if count > failingMetricMaxReportedMetrics {
