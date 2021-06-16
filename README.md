@@ -41,9 +41,9 @@ The sidecar includes:
 * Specify whether to use use int64 (optional) vs. double (default) protocol encoding
 
 Sidecar operates by continually:
-1. reading the prometheus WAL log (package retrieval and tail);
-1. refreshing its view of the instrument metadata (package metadata);
-1. transforming WAL samples into OpenTelemetry Protocol(OTLP) metrics (package retrieval);
+1. Reading the prometheus WAL log (package retrieval and tail);
+1. Refreshing its view of the instrument metadata (package metadata);
+1. Transforming WAL samples into OpenTelemetry Protocol(OTLP) metrics (package retrieval);
 1. Sending OTLP metrics to the destination endpoint (package otlp).
 
 
