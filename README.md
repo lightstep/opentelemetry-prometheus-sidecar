@@ -88,7 +88,7 @@ opentelemetry-prometheus-sidecar \
 where:
 
 * `DESTINATION`: Destination address https://host:port for sending prometheus metrics
-* `DIAGNOSTICS`: Destination address https://host:port for sending sidecar telemetry
+* `DIAGNOSTICS`: Diagnostics address https://host:port for sending sidecar telemetry
 * `VALUE`: Value for the `Custom-Header` request header
 * `SERVICE`: Value for the `service.name` resource attribute
 * `WAL`: Prometheus' WAL directory, defaults to `data/wal`
