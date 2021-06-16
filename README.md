@@ -40,10 +40,14 @@ The sidecar includes:
 * Filters to avoid reporting specific metric timeseries
 * Specify whether to use use int64 (optional) vs. double (default) protocol encoding
 
-The sidecar operates by continually (and concurrently) reading the
-log, refreshing its view of the instrument metadata,
-transforming the data into OpenTelemetry Protocol metrics, and sending
-over gRPC to an OpenTelemetry metrics service.
+Sidecar operates by continually:
+1. reading the prometheus WAL log (package retrieval and tail);
+1. refreshing its view of the instrument metadata (package metadata);
+1. transforming WAL samples into OpenTelemetry Protocol(OTLP) metrics (package retrieval);
+1. Sending OTLP metrics to the destination endpoint (package otlp).
+
+
+Resources to understand how the WAL log works can be found [here](https://ganeshvernekar.com/blog/prometheus-tsdb-wal-and-checkpoint/).
 
 ## Installation
 
@@ -74,13 +78,17 @@ opentelemetry-prometheus-sidecar \
   --destination.endpoint=${DESTINATION} \
   --destination.header="lightstep-access-token=${VALUE}" \
   --destination.attribute="service.name=${SERVICE}" \
+  --diagnostics.endpoint=${DIAGNOSTICS} \
+  --diagnostics.header="lightstep-access-token=${VALUE}" \
+  --diagnostics.attribute="service.name=${SERVICE}" \
   --prometheus.wal=${WAL} \
   --prometheus.endpoint=${PROMETHEUS} \
 ```
 
 where:
 
-* `DESTINATION`: Destination address https://host:port
+* `DESTINATION`: Destination address https://host:port for sending prometheus metrics
+* `DIAGNOSTICS`: Destination address https://host:port for sending sidecar telemetry
 * `VALUE`: Value for the `Custom-Header` request header
 * `SERVICE`: Value for the `service.name` resource attribute
 * `WAL`: Prometheus' WAL directory, defaults to `data/wal`
@@ -92,6 +100,12 @@ Settings can also be passed through a configuration file.  For example:
 
 ```
 destination:
+  endpoint: https://otlp.io:443
+  headers:
+    Custom-Header: custom-value
+  attributes:
+    service.name: my-service-name
+diagnostics:
   endpoint: https://otlp.io:443
   headers:
     Custom-Header: custom-value
@@ -124,6 +138,8 @@ server:
     - --prometheus.wal=/data/wal
     - --destination.endpoint=$(DESTINATION)
     - --destination.header=lightstep-access-token=AAAAAAAAAAAAAAAA
+    - --diagnostics.endpoint=$(DIAGNOSTIC)
+    - --diagnostics.header=lightstep-access-token=AAAAAAAAAAAAAAAA
     volumeMounts:
     - name: storage-volume
       mountPath: /data
@@ -149,11 +165,17 @@ prometheus:
       - name: otel-sidecar
         image: lightstep/opentelemetry-prometheus-sidecar:latest
         imagePullPolicy: Always
-
+        
+        ### Prometheus metrics are sent to destination.endpoint,
+        ### sidecar telemetry are sent to diagnostics.endpoint.
+        ### If diagnostics are not defined, sidecar telemetry will
+        ### be sent to the destination.endpoint.
         args:
         - --prometheus.wal=/prometheus/prometheus-db/wal
         - --destination.endpoint=$(DESTINATION)
         - --destination.header=lightstep-access-token=AAAAAAAAAAAAAAAA
+        - --diagnostics.endpoint=$(DIAGNOSTIC)
+        - --diagnostics.header=lightstep-access-token=AAAAAAAAAAAAAAAA
 
         #####
         ports:
@@ -305,7 +327,7 @@ Flags:
 
 Two kinds of sidecar customization are available only through the
 configuration file.  An [example sidecar yaml configuration documents
-the available options](./sidecar.yaml).
+the available options](./config/sidecar.example.yaml).
 
 Command-line and configuration files can be used at the same time,
 where command-line parameter values override configuration-file
@@ -456,7 +478,7 @@ Likewise, these fields can be accessed using `--diagnostics.endpoint`,
 
 #### Log levels
 
-The Prometheus sidecar provides options for logging in the case of diagnoising an issue.
+The Prometheus sidecar provides options for logging in the case of diagnosing an issue.
 * We recommend starting with setting the `--log.level` to be `debug`, `info`, `warn`, `error`.
 * Additional options are available to set the output format of the logs (`--log.format` to be `logfmt` or `json`), and the number of logs to recorded (`--log.verbose` to be `0` for off, `1` for some, `2` for more)
 
