@@ -165,7 +165,7 @@ prometheus:
       - name: otel-sidecar
         image: lightstep/opentelemetry-prometheus-sidecar:latest
         imagePullPolicy: Always
-        
+
         args:
         - --prometheus.wal=/prometheus/prometheus-db/wal
         - --destination.endpoint=$(DESTINATION)
