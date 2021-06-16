@@ -166,10 +166,6 @@ prometheus:
         image: lightstep/opentelemetry-prometheus-sidecar:latest
         imagePullPolicy: Always
         
-        ### Prometheus metrics are sent to destination.endpoint,
-        ### sidecar telemetry are sent to diagnostics.endpoint.
-        ### If diagnostics are not defined, sidecar telemetry will
-        ### be sent to the destination.endpoint.
         args:
         - --prometheus.wal=/prometheus/prometheus-db/wal
         - --destination.endpoint=$(DESTINATION)
