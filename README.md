@@ -47,7 +47,7 @@ Sidecar operates by continually:
 1. Sending OTLP metrics to the destination endpoint (package otlp).
 
 
-Resources to understand how the WAL log works can be found [here](https://ganeshvernekar.com/blog/prometheus-tsdb-wal-and-checkpoint/).
+Resources to understand how the WAL log works can be found [here](https://prometheus.io/docs/prometheus/latest/storage/) and [here](https://ganeshvernekar.com/blog/prometheus-tsdb-wal-and-checkpoint/).
 
 ## Installation
 
