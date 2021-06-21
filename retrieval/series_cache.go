@@ -543,3 +543,12 @@ func matchfilter(lset labels.Labels, filter []*labels.Matcher) bool {
 	}
 	return true
 }
+
+// copyLabels copies a slice of labels.  The caller will mutate the
+// copy, otherwise the types are the same.  Note that the code could
+// be restructured to avoid this copy.
+func copyLabels(input labels.Labels) labels.Labels {
+	output := make(labels.Labels, len(input))
+	copy(output, input)
+	return output
+}
