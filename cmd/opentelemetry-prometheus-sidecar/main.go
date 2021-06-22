@@ -191,10 +191,17 @@ func Main() bool {
 		FailingReporter:  scfg.FailingReporter,
 	})
 
+	if scfg.LeaderElection.Enabled {
+		if err := internal.StartLeaderElection(ctx, &scfg); err != nil {
+			level.Error(scfg.Logger).Log("msg", "leader election", "err", err)
+			return false
+		}
+	}
+
 	// metrics controller will be ready for consumption upon starting telemetry.
 	metricsContGetter := ControllerGetter{}
 	healthChecker := health.NewChecker(
-		&metricsContGetter, scfg.Monitor, scfg.Admin.HealthCheckPeriod.Duration, scfg.Logger, scfg.Admin.HealthCheckThresholdRatio,
+		&metricsContGetter, scfg.Monitor, scfg.Admin.HealthCheckPeriod.Duration, scfg.Logger, scfg.Admin.HealthCheckThresholdRatio, scfg.LeaderElector,
 	)
 
 	// Start the admin server.
@@ -248,13 +255,6 @@ func Main() bool {
 			"msg", "process has external labels",
 			"labels", scfg.Monitor.GetGlobalConfig().ExternalLabels.String(),
 		)
-	}
-
-	if scfg.LeaderElection.Enabled {
-		if err := internal.StartLeaderElection(ctx, &scfg); err != nil {
-			level.Error(scfg.Logger).Log("msg", "leader election", "err", err)
-			return false
-		}
 	}
 
 	level.Debug(scfg.Logger).Log("msg", "entering run state")

@@ -3,6 +3,9 @@ package leader
 import (
 	"context"
 	"fmt"
+	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
+	"go.opentelemetry.io/otel/metric"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -17,6 +20,7 @@ import (
 
 type Candidate interface {
 	Start(ctx context.Context) error
+	IsLeader() bool
 }
 
 type Controller interface {
@@ -26,11 +30,12 @@ type Controller interface {
 }
 
 type candidate struct {
-	client  kubernetes.Interface
-	ctrl    Controller
-	id      string
-	elector *leaderelection.LeaderElector
-	logger  log.Logger
+	client       kubernetes.Interface
+	ctrl         Controller
+	id           string
+	elector      *leaderelection.LeaderElector
+	logger       log.Logger
+	leaderMetric metric.Int64UpDownSumObserver
 }
 
 type LoggingController struct {
@@ -57,6 +62,18 @@ func NewCandidate(client kubernetes.Interface, namespace, name, id string, ctrl 
 		logger: logger,
 	}
 
+	c.leaderMetric = sidecar.OTelMeterMust.NewInt64UpDownSumObserver(
+		config.LeadershipMetric,
+		func(ctx context.Context, result metric.Int64ObserverResult) {
+			if c.IsLeader() {
+				result.Observe(1)
+			} else {
+				result.Observe(0)
+			}
+		},
+		metric.WithDescription("Leadership status of this sidecar"),
+	)
+
 	lock := &resourcelock.LeaseLock{
 		LeaseMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -76,10 +93,14 @@ func NewCandidate(client kubernetes.Interface, namespace, name, id string, ctrl 
 		RenewDeadline:   15 * time.Second,
 		RetryPeriod:     5 * time.Second,
 		Callbacks: leaderelection.LeaderCallbacks{
-			OnStartedLeading: ctrl.OnStartedLeading,
-			OnStoppedLeading: ctrl.OnStoppedLeading,
+			OnStartedLeading: func(ctx context.Context) {
+				ctrl.OnStartedLeading(ctx)
+			},
+			OnStoppedLeading: func() {
+				ctrl.OnStoppedLeading()
+			},
 			OnNewLeader: func(id string) {
-				ctrl.OnNewLeader(lock.LockConfig.Identity == c.id, id)
+				ctrl.OnNewLeader(lock.LockConfig.Identity == id, id)
 			},
 		},
 	}
@@ -98,6 +119,10 @@ func (c *candidate) Start(ctx context.Context) error {
 	go c.elector.Run(ctx)
 
 	return nil
+}
+
+func (c *candidate) IsLeader() bool {
+	return c.elector.IsLeader()
 }
 
 func (c LoggingController) OnStartedLeading(ctx context.Context) {

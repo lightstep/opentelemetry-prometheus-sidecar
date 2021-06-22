@@ -126,6 +126,8 @@ an OpenTelemetry (https://opentelemetry.io) Protocol endpoint.
 	FailingMetricsMetric = "sidecar.metrics.failing"
 	CurrentMetricsMetric = "sidecar.metrics.current"
 
+	LeadershipMetric = "sidecar.leadership"
+
 	OutcomeKey          = attribute.Key("outcome")
 	OutcomeSuccessValue = "success"
 
