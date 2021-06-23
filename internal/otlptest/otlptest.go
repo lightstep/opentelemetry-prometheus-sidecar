@@ -61,30 +61,27 @@ func InstrumentationLibraryMetrics(lib *otlpcommon.InstrumentationLibrary, ms ..
 	}
 }
 
-func Label(key, value string) *otlpcommon.StringKeyValue {
-	return &otlpcommon.StringKeyValue{
-		Key:   key,
-		Value: value,
+func Attribute(key, value string) *otlpcommon.KeyValue {
+	return &otlpcommon.KeyValue{
+		Key: key,
+		Value: &otlpcommon.AnyValue{
+			Value: &otlpcommon.AnyValue_StringValue{
+				StringValue: value,
+			},
+		},
 	}
 }
 
-func Labels(kvs ...*otlpcommon.StringKeyValue) []*otlpcommon.StringKeyValue {
-	if len(kvs) == 0 {
-		return []*otlpcommon.StringKeyValue{}
-	}
-	return kvs
-}
-
-func ResourceLabels(kvs ...*otlpcommon.KeyValue) []*otlpcommon.KeyValue {
+func Attributes(kvs ...*otlpcommon.KeyValue) []*otlpcommon.KeyValue {
 	if len(kvs) == 0 {
 		return []*otlpcommon.KeyValue{}
 	}
 	return kvs
 }
 
-func IntDataPoint(labels []*otlpcommon.StringKeyValue, start, end time.Time, value int64) *otlpmetrics.NumberDataPoint {
+func IntDataPoint(labels []*otlpcommon.KeyValue, start, end time.Time, value int64) *otlpmetrics.NumberDataPoint {
 	return &otlpmetrics.NumberDataPoint{
-		Labels:            labels,
+		Attributes:        labels,
 		StartTimeUnixNano: uint64(start.UnixNano()),
 		TimeUnixNano:      uint64(end.UnixNano()),
 		Value:             &otlpmetrics.NumberDataPoint_AsInt{AsInt: value},
@@ -122,9 +119,9 @@ func SumCumulativeMonotonic(name, desc, unit string, ddps ...*otlpmetrics.Number
 	}
 }
 
-func DoubleDataPoint(labels []*otlpcommon.StringKeyValue, start, end time.Time, value float64) *otlpmetrics.NumberDataPoint {
+func DoubleDataPoint(labels []*otlpcommon.KeyValue, start, end time.Time, value float64) *otlpmetrics.NumberDataPoint {
 	return &otlpmetrics.NumberDataPoint{
-		Labels:            labels,
+		Attributes:        labels,
 		StartTimeUnixNano: uint64(start.UnixNano()),
 		TimeUnixNano:      uint64(end.UnixNano()),
 		Value:             &otlpmetrics.NumberDataPoint_AsDouble{AsDouble: value},
@@ -156,7 +153,7 @@ func HistogramBucket(boundary float64, count uint64) HistogramBucketStruct {
 	}
 }
 
-func HistogramDataPoint(labels []*otlpcommon.StringKeyValue, start, end time.Time, sum float64, total uint64, buckets ...HistogramBucketStruct) *otlpmetrics.HistogramDataPoint {
+func HistogramDataPoint(labels []*otlpcommon.KeyValue, start, end time.Time, sum float64, total uint64, buckets ...HistogramBucketStruct) *otlpmetrics.HistogramDataPoint {
 	blen := 0
 	if len(buckets) > 0 {
 		blen = len(buckets) - 1
@@ -171,7 +168,7 @@ func HistogramDataPoint(labels []*otlpcommon.StringKeyValue, start, end time.Tim
 		counts[len(buckets)-1] = buckets[len(buckets)-1].Count
 	}
 	return &otlpmetrics.HistogramDataPoint{
-		Labels:            labels,
+		Attributes:        labels,
 		StartTimeUnixNano: uint64(start.UnixNano()),
 		TimeUnixNano:      uint64(end.UnixNano()),
 		Sum:               sum,
@@ -210,7 +207,7 @@ func SummaryQuantileValue(quantile, value float64) SummaryQuantileValueStruct {
 	}
 }
 
-func SummaryDataPoint(labels []*otlpcommon.StringKeyValue, start, end time.Time, sum float64, count uint64, quantiles ...SummaryQuantileValueStruct) *otlpmetrics.SummaryDataPoint {
+func SummaryDataPoint(labels []*otlpcommon.KeyValue, start, end time.Time, sum float64, count uint64, quantiles ...SummaryQuantileValueStruct) *otlpmetrics.SummaryDataPoint {
 	quantileValues := make([]*otlpmetrics.SummaryDataPoint_ValueAtQuantile, 0, len(quantiles))
 	for _, value := range quantiles {
 		quantileValues = append(quantileValues, &otlpmetrics.SummaryDataPoint_ValueAtQuantile{
@@ -219,7 +216,7 @@ func SummaryDataPoint(labels []*otlpcommon.StringKeyValue, start, end time.Time,
 		})
 	}
 	return &otlpmetrics.SummaryDataPoint{
-		Labels:            labels,
+		Attributes:        labels,
 		StartTimeUnixNano: uint64(start.UnixNano()),
 		TimeUnixNano:      uint64(end.UnixNano()),
 		Sum:               sum,

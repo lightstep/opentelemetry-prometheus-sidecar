@@ -119,7 +119,7 @@ func (b *sampleBuilder) next(ctx context.Context, samples []record.RefSample) (*
 
 	// Allocate the proto and fill in its metadata.
 	point := protoMetric(entry.desc)
-	labels := protoStringLabels(entry.desc.Labels)
+	attrs := protoAttributes(entry.desc.Labels)
 
 	var resetTimestamp int64
 	switch entry.metadata.MetricType {
@@ -129,22 +129,22 @@ func (b *sampleBuilder) next(ctx context.Context, samples []record.RefSample) (*
 
 		if entry.metadata.ValueType == config.INT64 {
 			point.Data = &metric_pb.Metric_Sum{
-				Sum: monotonicIntegerPoint(labels, resetTimestamp, sample.T, value),
+				Sum: monotonicIntegerPoint(attrs, resetTimestamp, sample.T, value),
 			}
 		} else {
 			point.Data = &metric_pb.Metric_Sum{
-				Sum: monotonicDoublePoint(labels, resetTimestamp, sample.T, value),
+				Sum: monotonicDoublePoint(attrs, resetTimestamp, sample.T, value),
 			}
 		}
 
 	case textparse.MetricTypeGauge, textparse.MetricTypeUnknown:
 		if entry.metadata.ValueType == config.INT64 {
 			point.Data = &metric_pb.Metric_Gauge{
-				Gauge: intGauge(labels, sample.T, sample.V),
+				Gauge: intGauge(attrs, sample.T, sample.V),
 			}
 		} else {
 			point.Data = &metric_pb.Metric_Gauge{
-				Gauge: doubleGauge(labels, sample.T, sample.V),
+				Gauge: doubleGauge(attrs, sample.T, sample.V),
 			}
 		}
 
@@ -160,7 +160,7 @@ func (b *sampleBuilder) next(ctx context.Context, samples []record.RefSample) (*
 			return nil, tailSamples, err
 		}
 
-		value.Labels = labels
+		value.Attributes = attrs
 		value.StartTimeUnixNano = getNanos(resetTimestamp)
 		value.TimeUnixNano = getNanos(sample.T)
 
@@ -187,7 +187,7 @@ func (b *sampleBuilder) next(ctx context.Context, samples []record.RefSample) (*
 			return nil, tailSamples, err
 		}
 
-		value.Labels = labels
+		value.Attributes = attrs
 		value.StartTimeUnixNano = getNanos(resetTimestamp)
 		value.TimeUnixNano = getNanos(sample.T)
 
@@ -217,7 +217,7 @@ func (b *sampleBuilder) next(ctx context.Context, samples []record.RefSample) (*
 	return point, tailSamples, nil
 }
 
-func protoLabel(l labels.Label) *common_pb.KeyValue {
+func protoAttribute(l labels.Label) *common_pb.KeyValue {
 	return &common_pb.KeyValue{
 		Key: l.Name,
 		Value: &common_pb.AnyValue{
@@ -225,13 +225,6 @@ func protoLabel(l labels.Label) *common_pb.KeyValue {
 				StringValue: l.Value,
 			},
 		},
-	}
-}
-
-func protoStringLabel(l labels.Label) *common_pb.StringKeyValue {
-	return &common_pb.StringKeyValue{
-		Key:   l.Name,
-		Value: l.Value,
 	}
 }
 
@@ -243,26 +236,18 @@ func protoMetric(desc *tsDesc) *metric_pb.Metric {
 	}
 }
 
-func protoResourceAttributes(labels labels.Labels) []*common_pb.KeyValue {
+func protoAttributes(labels labels.Labels) []*common_pb.KeyValue {
 	ret := make([]*common_pb.KeyValue, len(labels))
 	for i := range labels {
-		ret[i] = protoLabel(labels[i])
+		ret[i] = protoAttribute(labels[i])
 	}
 	return ret
 }
 
 func LabelsToResource(labels labels.Labels) *resource_pb.Resource {
 	return &resource_pb.Resource{
-		Attributes: protoResourceAttributes(labels),
+		Attributes: protoAttributes(labels),
 	}
-}
-
-func protoStringLabels(labels labels.Labels) []*common_pb.StringKeyValue {
-	ret := make([]*common_pb.StringKeyValue, len(labels))
-	for i := range labels {
-		ret[i] = protoStringLabel(labels[i])
-	}
-	return ret
 }
 
 const (
@@ -575,9 +560,9 @@ func labelsEqual(a, b labels.Labels, commonLabel string) bool {
 	return i == len(a) && j == len(b)
 }
 
-func monotonicIntegerPoint(labels []*common_pb.StringKeyValue, start, end int64, value float64) *metric_pb.Sum {
+func monotonicIntegerPoint(attrs []*common_pb.KeyValue, start, end int64, value float64) *metric_pb.Sum {
 	integer := &metric_pb.NumberDataPoint{
-		Labels:            labels,
+		Attributes:        attrs,
 		StartTimeUnixNano: getNanos(start),
 		TimeUnixNano:      getNanos(end),
 		Value:             &metric_pb.NumberDataPoint_AsInt{AsInt: int64(value + 0.5)},
@@ -589,9 +574,9 @@ func monotonicIntegerPoint(labels []*common_pb.StringKeyValue, start, end int64,
 	}
 }
 
-func monotonicDoublePoint(labels []*common_pb.StringKeyValue, start, end int64, value float64) *metric_pb.Sum {
+func monotonicDoublePoint(attrs []*common_pb.KeyValue, start, end int64, value float64) *metric_pb.Sum {
 	double := &metric_pb.NumberDataPoint{
-		Labels:            labels,
+		Attributes:        attrs,
 		StartTimeUnixNano: getNanos(start),
 		TimeUnixNano:      getNanos(end),
 		Value:             &metric_pb.NumberDataPoint_AsDouble{AsDouble: value},
@@ -603,9 +588,9 @@ func monotonicDoublePoint(labels []*common_pb.StringKeyValue, start, end int64, 
 	}
 }
 
-func intGauge(labels []*common_pb.StringKeyValue, ts int64, value float64) *metric_pb.Gauge {
+func intGauge(attrs []*common_pb.KeyValue, ts int64, value float64) *metric_pb.Gauge {
 	integer := &metric_pb.NumberDataPoint{
-		Labels:       labels,
+		Attributes:   attrs,
 		TimeUnixNano: getNanos(ts),
 		Value:        &metric_pb.NumberDataPoint_AsInt{AsInt: int64(value + 0.5)},
 	}
@@ -614,9 +599,9 @@ func intGauge(labels []*common_pb.StringKeyValue, ts int64, value float64) *metr
 	}
 }
 
-func doubleGauge(labels []*common_pb.StringKeyValue, ts int64, value float64) *metric_pb.Gauge {
+func doubleGauge(attrs []*common_pb.KeyValue, ts int64, value float64) *metric_pb.Gauge {
 	double := &metric_pb.NumberDataPoint{
-		Labels:       labels,
+		Attributes:   attrs,
 		TimeUnixNano: getNanos(ts),
 		Value:        &metric_pb.NumberDataPoint_AsDouble{AsDouble: value},
 	}

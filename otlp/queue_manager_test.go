@@ -63,7 +63,7 @@ func newTestSample(name string, timestamp int64, v float64) *metric_pb.Metric {
 	return otlptest.Gauge(
 		name, "", "",
 		otlptest.DoubleDataPoint(
-			otlptest.Labels(),
+			otlptest.Attributes(),
 			time.Unix(0, 0),
 			time.Unix(timestamp, 0),
 			v,

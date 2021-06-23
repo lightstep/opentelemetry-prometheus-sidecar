@@ -248,16 +248,16 @@ func TestCombinePair(t *testing.T) {
 	t4 := t3.Add(time.Second)
 
 	dp1 := otlptest.DoubleDataPoint(
-		otlptest.Labels(
-			otlptest.Label("A", "B"),
-			otlptest.Label("C", "D"),
+		otlptest.Attributes(
+			otlptest.Attribute("A", "B"),
+			otlptest.Attribute("C", "D"),
 		),
 		t1, t2, 10,
 	)
 	dp2 := otlptest.DoubleDataPoint(
-		otlptest.Labels(
-			otlptest.Label("A", "C"),
-			otlptest.Label("B", "D"),
+		otlptest.Attributes(
+			otlptest.Attribute("A", "C"),
+			otlptest.Attribute("B", "D"),
 		),
 		t3, t4, 20,
 	)
@@ -275,7 +275,7 @@ func TestAppendSamples(t *testing.T) {
 		lsize    = 1024
 		overhead = 100
 	)
-	hugeLabels := otlptest.Labels(otlptest.Label("1kb", strings.Repeat("x", lsize)))
+	hugeLabels := otlptest.Attributes(otlptest.Attribute("1kb", strings.Repeat("x", lsize)))
 	recorder := &nopAppender{}
 
 	startTime := time.Now()
