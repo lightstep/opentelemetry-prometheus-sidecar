@@ -60,7 +60,7 @@ type TestPoint struct {
 }
 
 func newTestSample(name string, timestamp int64, v float64) *metric_pb.Metric {
-	return otlptest.DoubleGauge(
+	return otlptest.Gauge(
 		name, "", "",
 		otlptest.DoubleDataPoint(
 			otlptest.Labels(),
@@ -103,8 +103,9 @@ func (c *TestStorageClient) expectSamples(samples []*metric_pb.Metric) {
 			monotonic bool,
 			point interface{},
 		) error {
-			nanos := point.(*metric_pb.DoubleDataPoint).TimeUnixNano
-			value := point.(*metric_pb.DoubleDataPoint).Value
+			nanos := point.(*metric_pb.NumberDataPoint).TimeUnixNano
+			number := point.(*metric_pb.NumberDataPoint).Value
+			value := number.(*metric_pb.NumberDataPoint_AsDouble).AsDouble
 			c.expectedSamples[metricName] = append(c.expectedSamples[metricName], TestPoint{
 				T: time.Unix(0, int64(nanos)),
 				V: value,
@@ -152,8 +153,9 @@ func (c *TestStorageClient) Store(req *metricsService.ExportMetricsServiceReques
 			monotonic bool,
 			point interface{},
 		) error {
-			nanos := point.(*metric_pb.DoubleDataPoint).TimeUnixNano
-			value := point.(*metric_pb.DoubleDataPoint).Value
+			nanos := point.(*metric_pb.NumberDataPoint).TimeUnixNano
+			number := point.(*metric_pb.NumberDataPoint).Value
+			value := number.(*metric_pb.NumberDataPoint_AsDouble).AsDouble
 			recv++
 
 			c.receivedSamples[metricName] = append(c.receivedSamples[metricName], TestPoint{

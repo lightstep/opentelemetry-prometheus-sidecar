@@ -43,7 +43,6 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/sdk/trace"
 	"google.golang.org/grpc/credentials"
-	//semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
 )
 
 type (

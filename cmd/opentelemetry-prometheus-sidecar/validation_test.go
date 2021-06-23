@@ -184,10 +184,12 @@ outer:
 		) error {
 			switch name {
 			case "counter", "gauge", "correct":
-				if point.(*otlpmetrics.DoubleDataPoint).Value == 0 {
+				num := point.(*otlpmetrics.NumberDataPoint).Value
+				val := num.(*otlpmetrics.NumberDataPoint_AsDouble).AsDouble
+				if val == 0 {
 					// OK!
 				} else {
-					require.InEpsilon(t, 100, point.(*otlpmetrics.DoubleDataPoint).Value, 0.01)
+					require.InEpsilon(t, 100, val, 0.01)
 				}
 				got++
 			case config.DroppedPointsMetric:

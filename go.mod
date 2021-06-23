@@ -43,6 +43,7 @@ require (
 	go.opentelemetry.io/otel/sdk/export/metric v0.21.0
 	go.opentelemetry.io/otel/sdk/metric v0.21.0
 	go.opentelemetry.io/otel/trace v1.0.0-RC1
+	go.opentelemetry.io/proto/otlp v0.9.0
 	golang.org/x/net v0.0.0-20201224014010-6772e930b67b
 	google.golang.org/genproto v0.0.0-20201201144952-b05cb90ed32e
 	google.golang.org/grpc v1.38.0

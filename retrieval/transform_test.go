@@ -40,24 +40,24 @@ type seriesMap map[uint64]labels.Labels
 
 func TestSampleBuilder(t *testing.T) {
 	type (
-		DoubleHistogramBucketStruct      = otlptest.DoubleHistogramBucketStruct
-		DoubleSummaryQuantileValueStruct = otlptest.DoubleSummaryQuantileValueStruct
+		HistogramBucketStruct      = otlptest.HistogramBucketStruct
+		SummaryQuantileValueStruct = otlptest.SummaryQuantileValueStruct
 	)
 	var (
-		IntSumCumulativeMonotonic    = otlptest.IntSumCumulativeMonotonic
-		IntGauge                     = otlptest.IntGauge
-		IntDataPoint                 = otlptest.IntDataPoint
-		DoubleSumCumulativeMonotonic = otlptest.DoubleSumCumulativeMonotonic
-		DoubleGauge                  = otlptest.DoubleGauge
-		DoubleDataPoint              = otlptest.DoubleDataPoint
-		DoubleHistogramDataPoint     = otlptest.DoubleHistogramDataPoint
-		DoubleHistogramCumulative    = otlptest.DoubleHistogramCumulative
-		DoubleHistogramBucket        = otlptest.DoubleHistogramBucket
-		DoubleSummary                = otlptest.DoubleSummary
-		DoubleSummaryDataPoint       = otlptest.DoubleSummaryDataPoint
-		DoubleSummaryQuantileValue   = otlptest.DoubleSummaryQuantileValue
-		Labels                       = otlptest.Labels
-		Label                        = otlptest.Label
+		IntSumCumulativeMonotonic = otlptest.IntSumCumulativeMonotonic
+		IntGauge                  = otlptest.IntGauge
+		IntDataPoint              = otlptest.IntDataPoint
+		SumCumulativeMonotonic    = otlptest.SumCumulativeMonotonic
+		Gauge                     = otlptest.Gauge
+		DoubleDataPoint           = otlptest.DoubleDataPoint
+		HistogramDataPoint        = otlptest.HistogramDataPoint
+		HistogramCumulative       = otlptest.HistogramCumulative
+		HistogramBucket           = otlptest.HistogramBucket
+		Summary                   = otlptest.Summary
+		SummaryDataPoint          = otlptest.SummaryDataPoint
+		SummaryQuantileValue      = otlptest.SummaryQuantileValue
+		Labels                    = otlptest.Labels
+		Label                     = otlptest.Label
 
 		DoubleCounterPoint = func(
 			labels []*common_pb.StringKeyValue,
@@ -65,7 +65,7 @@ func TestSampleBuilder(t *testing.T) {
 			start, end time.Time,
 			value float64,
 		) *metric_pb.Metric {
-			return DoubleSumCumulativeMonotonic(
+			return SumCumulativeMonotonic(
 				name, "", "",
 				DoubleDataPoint(
 					labels,
@@ -75,13 +75,13 @@ func TestSampleBuilder(t *testing.T) {
 				),
 			)
 		}
-		DoubleGaugePoint = func(
+		GaugePoint = func(
 			labels []*common_pb.StringKeyValue,
 			name string,
 			end time.Time,
 			value float64,
 		) *metric_pb.Metric {
-			return DoubleGauge(
+			return Gauge(
 				name, "", "",
 				DoubleDataPoint(
 					labels,
@@ -124,16 +124,16 @@ func TestSampleBuilder(t *testing.T) {
 			)
 		}
 
-		DoubleHistogramPoint = func(
+		HistogramPoint = func(
 			labels []*common_pb.StringKeyValue,
 			name string,
 			start, end time.Time,
 			sum float64, count uint64,
-			buckets ...DoubleHistogramBucketStruct,
+			buckets ...HistogramBucketStruct,
 		) *metric_pb.Metric {
-			return DoubleHistogramCumulative(
+			return HistogramCumulative(
 				name, "", "",
-				DoubleHistogramDataPoint(
+				HistogramDataPoint(
 					labels,
 					start,
 					end,
@@ -144,16 +144,16 @@ func TestSampleBuilder(t *testing.T) {
 			)
 		}
 
-		DoubleSummaryPoint = func(
+		SummaryPoint = func(
 			labels []*common_pb.StringKeyValue,
 			name string,
 			start, end time.Time,
 			sum float64, count uint64,
-			quantiles ...DoubleSummaryQuantileValueStruct,
+			quantiles ...SummaryQuantileValueStruct,
 		) *metric_pb.Metric {
-			return DoubleSummary(
+			return Summary(
 				name, "", "",
-				DoubleSummaryDataPoint(
+				SummaryDataPoint(
 					labels,
 					start,
 					end,
@@ -279,7 +279,7 @@ func TestSampleBuilder(t *testing.T) {
 					time.Unix(5, 0),
 					3,
 				),
-				DoubleGaugePoint( // 4: A double Gauge
+				GaugePoint( // 4: A double Gauge
 					Labels(
 						Label("a", "1"),
 						Label("instance", "instance1"),
@@ -289,7 +289,7 @@ func TestSampleBuilder(t *testing.T) {
 					time.Unix(1, 0),
 					200,
 				),
-				DoubleGaugePoint( // 5: A double gauge w/ 10 keys
+				GaugePoint( // 5: A double gauge w/ 10 keys
 					Labels(
 						Label("a", "1"),
 						Label("b", "2"),
@@ -308,7 +308,7 @@ func TestSampleBuilder(t *testing.T) {
 					time.Unix(3, 0),
 					1,
 				),
-				DoubleGaugePoint( // 6: A double gauge w/ 11 keys
+				GaugePoint( // 6: A double gauge w/ 11 keys
 					Labels(
 						Label("a", "1"),
 						Label("b", "2"),
@@ -328,7 +328,7 @@ func TestSampleBuilder(t *testing.T) {
 					time.Unix(4, 0),
 					2,
 				),
-				DoubleGaugePoint( // 7
+				GaugePoint( // 7
 					// A double gauge w/ 2 labels
 					Labels(
 						Label("a", "1"),
@@ -372,7 +372,7 @@ func TestSampleBuilder(t *testing.T) {
 					time.Unix(7, 0),
 					3,
 				),
-				DoubleGaugePoint( // 11
+				GaugePoint( // 11
 					// A double gauge.
 					Labels(
 						Label("instance", "instance1"),
@@ -468,7 +468,7 @@ func TestSampleBuilder(t *testing.T) {
 				{Ref: 7, T: 2000, V: 3},
 			},
 			result: []*metric_pb.Metric{
-				DoubleSummaryPoint( // 0:
+				SummaryPoint( // 0:
 					Labels(
 						Label("instance", "instance1"),
 						Label("job", "job1"),
@@ -478,10 +478,10 @@ func TestSampleBuilder(t *testing.T) {
 					time.Unix(1, 0),
 					0,
 					0,
-					DoubleSummaryQuantileValue(0.5, 0),
-					DoubleSummaryQuantileValue(0.9, 0),
+					SummaryQuantileValue(0.5, 0),
+					SummaryQuantileValue(0.9, 0),
 				),
-				DoubleSummaryPoint( // 1:
+				SummaryPoint( // 1:
 					Labels(
 						Label("instance", "instance1"),
 						Label("job", "job1"),
@@ -491,10 +491,10 @@ func TestSampleBuilder(t *testing.T) {
 					time.Unix(2, 0),
 					float64(123.4)-float64(55.1),
 					21-10,
-					DoubleSummaryQuantileValue(0.5, float64(0.7)-float64(0.3)),
-					DoubleSummaryQuantileValue(0.9, float64(0.8)-float64(0.6)),
+					SummaryQuantileValue(0.5, float64(0.7)-float64(0.3)),
+					SummaryQuantileValue(0.9, float64(0.8)-float64(0.6)),
 				),
-				DoubleSummaryPoint( // 2: summary w/ no quantile values
+				SummaryPoint( // 2: summary w/ no quantile values
 					Labels(
 						Label("a", "b"),
 						Label("instance", "instance1"),
@@ -506,7 +506,7 @@ func TestSampleBuilder(t *testing.T) {
 					0,
 					0,
 				),
-				DoubleSummaryPoint( // 3: summary w/ no quantile values
+				SummaryPoint( // 3: summary w/ no quantile values
 					Labels(
 						Label("a", "b"),
 						Label("instance", "instance1"),
@@ -518,7 +518,7 @@ func TestSampleBuilder(t *testing.T) {
 					float64(123.4)-float64(55.1),
 					21-10,
 				),
-				DoubleGaugePoint( // 4: not a summary
+				GaugePoint( // 4: not a summary
 					Labels(
 						Label("a", "b"),
 						Label("instance", "instance1"),
@@ -579,7 +579,7 @@ func TestSampleBuilder(t *testing.T) {
 				{Ref: 10, T: 1000, V: 3},
 			},
 			result: []*metric_pb.Metric{
-				DoubleHistogramPoint( // 0:
+				HistogramPoint( // 0:
 					Labels(
 						Label("instance", "instance1"),
 						Label("job", "job1"),
@@ -589,13 +589,13 @@ func TestSampleBuilder(t *testing.T) {
 					time.Unix(1, 0),
 					0,
 					0,
-					DoubleHistogramBucket(0.1, 0),
-					DoubleHistogramBucket(0.5, 0),
-					DoubleHistogramBucket(1, 0),
-					DoubleHistogramBucket(2.5, 0),
-					DoubleHistogramBucket(math.Inf(+1), 0),
+					HistogramBucket(0.1, 0),
+					HistogramBucket(0.5, 0),
+					HistogramBucket(1, 0),
+					HistogramBucket(2.5, 0),
+					HistogramBucket(math.Inf(+1), 0),
 				),
-				DoubleHistogramPoint( // 1:
+				HistogramPoint( // 1:
 					Labels(
 						Label("instance", "instance1"),
 						Label("job", "job1"),
@@ -605,13 +605,13 @@ func TestSampleBuilder(t *testing.T) {
 					time.Unix(2, 0),
 					float64(123.4)-float64(55.1),
 					21-10,
-					DoubleHistogramBucket(0.1, 2),
-					DoubleHistogramBucket(0.5, 2),
-					DoubleHistogramBucket(1, 1),
-					DoubleHistogramBucket(2.5, 2),
-					DoubleHistogramBucket(math.Inf(+1), 4),
+					HistogramBucket(0.1, 2),
+					HistogramBucket(0.5, 2),
+					HistogramBucket(1, 1),
+					HistogramBucket(2.5, 2),
+					HistogramBucket(math.Inf(+1), 4),
 				),
-				DoubleHistogramPoint( // 2: histogram w/ no buckets
+				HistogramPoint( // 2: histogram w/ no buckets
 					Labels(
 						Label("a", "b"),
 						Label("instance", "instance1"),
@@ -623,7 +623,7 @@ func TestSampleBuilder(t *testing.T) {
 					0,
 					0,
 				),
-				DoubleHistogramPoint( // 3: histogram w/ no buckets
+				HistogramPoint( // 3: histogram w/ no buckets
 					Labels(
 						Label("a", "b"),
 						Label("instance", "instance1"),
@@ -635,7 +635,7 @@ func TestSampleBuilder(t *testing.T) {
 					15,
 					3,
 				),
-				DoubleGaugePoint( // 4: not a histogram
+				GaugePoint( // 4: not a histogram
 					Labels(
 						Label("a", "b"),
 						Label("instance", "instance1"),
@@ -670,7 +670,7 @@ func TestSampleBuilder(t *testing.T) {
 				{Ref: 4, T: 1000, V: 10},
 			},
 			result: []*metric_pb.Metric{
-				DoubleGaugePoint(
+				GaugePoint(
 					Labels(
 						Label("a", "1"),
 						Label("instance", "instance1"),
@@ -680,7 +680,7 @@ func TestSampleBuilder(t *testing.T) {
 					time.Unix(1, 0),
 					200,
 				),
-				DoubleSummaryPoint(
+				SummaryPoint(
 					Labels(
 						Label("instance", "instance1"),
 						Label("job", "job1"),
@@ -690,7 +690,7 @@ func TestSampleBuilder(t *testing.T) {
 					time.Unix(1, 0),
 					0,
 					0,
-					DoubleSummaryQuantileValue(0.5, 0),
+					SummaryQuantileValue(0.5, 0),
 				),
 			},
 		},
@@ -788,7 +788,7 @@ func TestSampleBuilder(t *testing.T) {
 				{Ref: 1, T: 3000, V: 8},
 			},
 			result: []*metric_pb.Metric{
-				DoubleGaugePoint(
+				GaugePoint(
 					Labels(
 						Label("a", "1"),
 						Label("instance", "instance1"),
