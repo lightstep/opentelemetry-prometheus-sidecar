@@ -82,56 +82,12 @@ func ResourceLabels(kvs ...*otlpcommon.KeyValue) []*otlpcommon.KeyValue {
 	return kvs
 }
 
-func IntSumCumulative(name, desc, unit string, idps ...*otlpmetrics.IntDataPoint) *otlpmetrics.Metric {
-
-	return &otlpmetrics.Metric{
-		Name:        name,
-		Description: desc,
-		Unit:        unit,
-		Data: &otlpmetrics.Metric_IntSum{
-			IntSum: &otlpmetrics.IntSum{
-				AggregationTemporality: otlpmetrics.AggregationTemporality_AGGREGATION_TEMPORALITY_CUMULATIVE,
-				IsMonotonic:            false,
-				DataPoints:             idps,
-			},
-		},
-	}
-}
-
-func IntSumCumulativeMonotonic(name, desc, unit string, idps ...*otlpmetrics.IntDataPoint) *otlpmetrics.Metric {
-	return &otlpmetrics.Metric{
-		Name:        name,
-		Description: desc,
-		Unit:        unit,
-		Data: &otlpmetrics.Metric_IntSum{
-			IntSum: &otlpmetrics.IntSum{
-				AggregationTemporality: otlpmetrics.AggregationTemporality_AGGREGATION_TEMPORALITY_CUMULATIVE,
-				IsMonotonic:            true,
-				DataPoints:             idps,
-			},
-		},
-	}
-}
-
-func IntDataPoint(labels []*otlpcommon.StringKeyValue, start, end time.Time, value int64) *otlpmetrics.IntDataPoint {
-	return &otlpmetrics.IntDataPoint{
+func IntDataPoint(labels []*otlpcommon.StringKeyValue, start, end time.Time, value int64) *otlpmetrics.NumberDataPoint {
+	return &otlpmetrics.NumberDataPoint{
 		Labels:            labels,
 		StartTimeUnixNano: uint64(start.UnixNano()),
 		TimeUnixNano:      uint64(end.UnixNano()),
-		Value:             value,
-	}
-}
-
-func IntGauge(name, desc, unit string, idps ...*otlpmetrics.IntDataPoint) *otlpmetrics.Metric {
-	return &otlpmetrics.Metric{
-		Name:        name,
-		Description: desc,
-		Unit:        unit,
-		Data: &otlpmetrics.Metric_IntGauge{
-			IntGauge: &otlpmetrics.IntGauge{
-				DataPoints: idps,
-			},
-		},
+		Value:             &otlpmetrics.NumberDataPoint_AsInt{AsInt: value},
 	}
 }
 
@@ -304,8 +260,8 @@ type Visitor func(
 	// information is not conveyed via OTLP-v0.5 for the histogram
 	// representation.
 	monotonic bool,
-	// point is one of IntDataPoint, NumberDataPoint,
-	// IntHistogram, Histogram.
+	// point is one of NumberDataPoint, HistogramDataPoint,
+	// SummaryDataPoint.
 	point interface{},
 ) error
 
@@ -349,15 +305,6 @@ func (vs *VisitorState) Visit(
 				}
 
 				switch t := m.Data.(type) {
-				case *otlpmetrics.Metric_IntGauge:
-					if t.IntGauge != nil {
-						kind := config.GAUGE
-						for _, p := range t.IntGauge.DataPoints {
-							vs.pointCount++
-							noticeError(m, visitor(res, m.Name, kind, false, p))
-						}
-						continue
-					}
 				case *otlpmetrics.Metric_Gauge:
 					if t.Gauge != nil {
 						kind := config.GAUGE
@@ -367,30 +314,12 @@ func (vs *VisitorState) Visit(
 						}
 						continue
 					}
-				case *otlpmetrics.Metric_IntSum:
-					if t.IntSum != nil {
-						kind := toModelKind(t.IntSum.AggregationTemporality)
-						for _, p := range t.IntSum.DataPoints {
-							vs.pointCount++
-							noticeError(m, visitor(res, m.Name, kind, t.IntSum.IsMonotonic, p))
-						}
-						continue
-					}
 				case *otlpmetrics.Metric_Sum:
 					if t.Sum != nil {
 						kind := toModelKind(t.Sum.AggregationTemporality)
 						for _, p := range t.Sum.DataPoints {
 							vs.pointCount++
 							noticeError(m, visitor(res, m.Name, kind, t.Sum.IsMonotonic, p))
-						}
-						continue
-					}
-				case *otlpmetrics.Metric_IntHistogram:
-					if t.IntHistogram != nil {
-						kind := toModelKind(t.IntHistogram.AggregationTemporality)
-						for _, p := range t.IntHistogram.DataPoints {
-							vs.pointCount++
-							noticeError(m, visitor(res, m.Name, kind, false, p))
 						}
 						continue
 					}

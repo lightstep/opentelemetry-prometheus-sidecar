@@ -128,8 +128,8 @@ func (b *sampleBuilder) next(ctx context.Context, samples []record.RefSample) (*
 		resetTimestamp, value = b.series.getResetAdjusted(entry, sample.T, sample.V)
 
 		if entry.metadata.ValueType == config.INT64 {
-			point.Data = &metric_pb.Metric_IntSum{
-				IntSum: monotonicIntegerPoint(labels, resetTimestamp, sample.T, value),
+			point.Data = &metric_pb.Metric_Sum{
+				Sum: monotonicIntegerPoint(labels, resetTimestamp, sample.T, value),
 			}
 		} else {
 			point.Data = &metric_pb.Metric_Sum{
@@ -139,8 +139,8 @@ func (b *sampleBuilder) next(ctx context.Context, samples []record.RefSample) (*
 
 	case textparse.MetricTypeGauge, textparse.MetricTypeUnknown:
 		if entry.metadata.ValueType == config.INT64 {
-			point.Data = &metric_pb.Metric_IntGauge{
-				IntGauge: intGauge(labels, sample.T, sample.V),
+			point.Data = &metric_pb.Metric_Gauge{
+				Gauge: intGauge(labels, sample.T, sample.V),
 			}
 		} else {
 			point.Data = &metric_pb.Metric_Gauge{
@@ -575,17 +575,17 @@ func labelsEqual(a, b labels.Labels, commonLabel string) bool {
 	return i == len(a) && j == len(b)
 }
 
-func monotonicIntegerPoint(labels []*common_pb.StringKeyValue, start, end int64, value float64) *metric_pb.IntSum {
-	integer := &metric_pb.IntDataPoint{
+func monotonicIntegerPoint(labels []*common_pb.StringKeyValue, start, end int64, value float64) *metric_pb.Sum {
+	integer := &metric_pb.NumberDataPoint{
 		Labels:            labels,
 		StartTimeUnixNano: getNanos(start),
 		TimeUnixNano:      getNanos(end),
-		Value:             int64(value + 0.5),
+		Value:             &metric_pb.NumberDataPoint_AsInt{AsInt: int64(value + 0.5)},
 	}
-	return &metric_pb.IntSum{
+	return &metric_pb.Sum{
 		IsMonotonic:            true,
 		AggregationTemporality: otlpCUMULATIVE,
-		DataPoints:             []*metric_pb.IntDataPoint{integer},
+		DataPoints:             []*metric_pb.NumberDataPoint{integer},
 	}
 }
 
@@ -603,14 +603,14 @@ func monotonicDoublePoint(labels []*common_pb.StringKeyValue, start, end int64, 
 	}
 }
 
-func intGauge(labels []*common_pb.StringKeyValue, ts int64, value float64) *metric_pb.IntGauge {
-	integer := &metric_pb.IntDataPoint{
+func intGauge(labels []*common_pb.StringKeyValue, ts int64, value float64) *metric_pb.Gauge {
+	integer := &metric_pb.NumberDataPoint{
 		Labels:       labels,
 		TimeUnixNano: getNanos(ts),
-		Value:        int64(value + 0.5),
+		Value:        &metric_pb.NumberDataPoint_AsInt{AsInt: int64(value + 0.5)},
 	}
-	return &metric_pb.IntGauge{
-		DataPoints: []*metric_pb.IntDataPoint{integer},
+	return &metric_pb.Gauge{
+		DataPoints: []*metric_pb.NumberDataPoint{integer},
 	}
 }
 

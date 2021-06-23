@@ -193,11 +193,13 @@ outer:
 				}
 				got++
 			case config.DroppedPointsMetric:
-				droppedPointsFound = point.(*otlpmetrics.IntDataPoint).Value
+				num := point.(*otlpmetrics.NumberDataPoint).Value
+				droppedPointsFound = num.(*otlpmetrics.NumberDataPoint_AsInt).AsInt
 			case config.DroppedSeriesMetric:
-				droppedSeriesFound = point.(*otlpmetrics.IntDataPoint).Value
+				num := point.(*otlpmetrics.NumberDataPoint).Value
+				droppedSeriesFound = num.(*otlpmetrics.NumberDataPoint_AsInt).AsInt
 			case config.FailingMetricsMetric:
-				labels := point.(*otlpmetrics.IntDataPoint).Labels
+				labels := point.(*otlpmetrics.NumberDataPoint).Labels
 
 				var reason, mname string
 				for _, label := range labels {

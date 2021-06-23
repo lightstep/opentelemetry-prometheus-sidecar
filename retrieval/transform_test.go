@@ -44,20 +44,22 @@ func TestSampleBuilder(t *testing.T) {
 		SummaryQuantileValueStruct = otlptest.SummaryQuantileValueStruct
 	)
 	var (
-		IntSumCumulativeMonotonic = otlptest.IntSumCumulativeMonotonic
-		IntGauge                  = otlptest.IntGauge
-		IntDataPoint              = otlptest.IntDataPoint
-		SumCumulativeMonotonic    = otlptest.SumCumulativeMonotonic
-		Gauge                     = otlptest.Gauge
-		DoubleDataPoint           = otlptest.DoubleDataPoint
-		HistogramDataPoint        = otlptest.HistogramDataPoint
-		HistogramCumulative       = otlptest.HistogramCumulative
-		HistogramBucket           = otlptest.HistogramBucket
-		Summary                   = otlptest.Summary
-		SummaryDataPoint          = otlptest.SummaryDataPoint
-		SummaryQuantileValue      = otlptest.SummaryQuantileValue
-		Labels                    = otlptest.Labels
-		Label                     = otlptest.Label
+		DoubleDataPoint = otlptest.DoubleDataPoint
+		IntDataPoint    = otlptest.IntDataPoint
+
+		SumCumulativeMonotonic = otlptest.SumCumulativeMonotonic
+		Gauge                  = otlptest.Gauge
+
+		HistogramBucket     = otlptest.HistogramBucket
+		HistogramCumulative = otlptest.HistogramCumulative
+		HistogramDataPoint  = otlptest.HistogramDataPoint
+
+		Summary              = otlptest.Summary
+		SummaryDataPoint     = otlptest.SummaryDataPoint
+		SummaryQuantileValue = otlptest.SummaryQuantileValue
+
+		Label  = otlptest.Label
+		Labels = otlptest.Labels
 
 		DoubleCounterPoint = func(
 			labels []*common_pb.StringKeyValue,
@@ -97,7 +99,7 @@ func TestSampleBuilder(t *testing.T) {
 			start, end time.Time,
 			value int64,
 		) *metric_pb.Metric {
-			return IntSumCumulativeMonotonic(
+			return SumCumulativeMonotonic(
 				name, "", "",
 				IntDataPoint(
 					labels,
@@ -113,7 +115,7 @@ func TestSampleBuilder(t *testing.T) {
 			end time.Time,
 			value int64,
 		) *metric_pb.Metric {
-			return IntGauge(
+			return Gauge(
 				name, "", "",
 				IntDataPoint(
 					labels,
