@@ -56,7 +56,7 @@ func StartLeaderElection(ctx context.Context, cfg *SidecarConfig) error {
 		return errors.Wrap(err, "leader election client")
 	}
 
-	cfg.LeaderElector, err = leader.NewCandidate(
+	cfg.LeaderCandidate, err = leader.NewKubernetesCandidate(
 		client,
 		lockNamespace,
 		lockName,
@@ -75,7 +75,7 @@ func StartLeaderElection(ctx context.Context, cfg *SidecarConfig) error {
 		"ID", lockID,
 	)
 
-	if err := cfg.LeaderElector.Start(ctx); err != nil {
+	if err := cfg.LeaderCandidate.Start(ctx); err != nil {
 		return errors.Wrap(err, "leader election start")
 	}
 	return nil

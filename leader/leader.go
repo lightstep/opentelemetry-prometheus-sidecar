@@ -42,6 +42,20 @@ type LoggingController struct {
 	log.Logger
 }
 
+func NewAlwaysLeaderCandidate() Candidate {
+	return alwaysLeader{}
+}
+
+type alwaysLeader struct{}
+
+func (a alwaysLeader) Start(_ context.Context) error {
+	return nil
+}
+
+func (a alwaysLeader) IsLeader() bool {
+	return true
+}
+
 func NewClient() (*kubernetes.Clientset, error) {
 	cfg, err := rest.InClusterConfig()
 	if err != nil {
@@ -54,7 +68,7 @@ func NewClient() (*kubernetes.Clientset, error) {
 	return client, err
 }
 
-func NewCandidate(client kubernetes.Interface, namespace, name, id string, ctrl Controller, logger log.Logger) (Candidate, error) {
+func NewKubernetesCandidate(client kubernetes.Interface, namespace, name, id string, ctrl Controller, logger log.Logger) (Candidate, error) {
 	c := &candidate{
 		client: client,
 		ctrl:   ctrl,
@@ -120,6 +134,8 @@ func (c *candidate) Start(ctx context.Context) error {
 
 	return nil
 }
+
+var _ Candidate = (*alwaysLeader)(nil)
 
 func (c *candidate) IsLeader() bool {
 	return c.elector.IsLeader()

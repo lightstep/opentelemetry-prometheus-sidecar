@@ -59,18 +59,6 @@ func (a *nopAppender) getSamples() []SizedMetric {
 	return a.samples
 }
 
-type alwaysLeader struct{}
-
-func (a alwaysLeader) Start(_ context.Context) error {
-	return nil
-}
-
-func (a alwaysLeader) IsLeader() bool {
-	return true
-}
-
-var _ leader.Candidate = (*alwaysLeader)(nil)
-
 func TestReader_Progress(t *testing.T) {
 	dir, err := ioutil.TempDir("", "progress")
 	if err != nil {
@@ -107,7 +95,7 @@ func TestReader_Progress(t *testing.T) {
 	}
 
 	failingSet := testFailingReporter{}
-	r := NewPrometheusReader(nil, dir, tailer, nil, nil, metadataMap, &nopAppender{}, "", 0, nil, failingSet, &alwaysLeader{})
+	r := NewPrometheusReader(nil, dir, tailer, nil, nil, metadataMap, &nopAppender{}, "", 0, nil, failingSet, leader.NewAlwaysLeaderCandidate())
 	r.progressSaveInterval = 200 * time.Millisecond
 
 	// Populate sample data
@@ -173,7 +161,7 @@ func TestReader_Progress(t *testing.T) {
 
 	recorder := &nopAppender{}
 
-	r = NewPrometheusReader(nil, dir, tailer, nil, nil, metadataMap, recorder, "", 0, nil, failingSet, &alwaysLeader{})
+	r = NewPrometheusReader(nil, dir, tailer, nil, nil, metadataMap, recorder, "", 0, nil, failingSet, leader.NewAlwaysLeaderCandidate())
 	go r.Run(ctx, progressOffset)
 
 	// Wait for reader to process until the end.
