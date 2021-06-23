@@ -20,7 +20,7 @@ import (
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/internal/otlptest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/otel/semconv"
+	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
 	metricService "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
 	traceService "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	common "go.opentelemetry.io/proto/otlp/common/v1"
@@ -324,7 +324,8 @@ func TestE2E(t *testing.T) {
 				return nil
 			}
 
-			val := point.(*metrics.DoubleDataPoint).Value
+			number := point.(*metrics.NumberDataPoint).Value
+			val := number.(*metrics.NumberDataPoint_AsDouble).AsDouble
 			rvals := map[string]string{}
 			for _, attr := range resource.Attributes {
 				if _, has := rvals[attr.Key]; has {
@@ -338,9 +339,9 @@ func TestE2E(t *testing.T) {
 			// passed to the Resource.
 			assert.Equal(t, rvals[string(semconv.ServiceNameKey)], "Service")
 			assert.Equal(t, rvals[string(semconv.ServiceInstanceIDKey)], "")
-                        // External labels include an __external_ prefix.
-                        assert.Equal(t, rvals["__external_monitor"], "e2e-test")
-                        assert.Equal(t, rvals["__external_fruit"], "watermelon")
+			// External labels include an __external_ prefix.
+			assert.Equal(t, rvals["__external_monitor"], "e2e-test")
+			assert.Equal(t, rvals["__external_fruit"], "watermelon")
 
 			output[metricName] = append(output[metricName], val)
 			return nil
