@@ -25,6 +25,6 @@ var (
 )
 
 const (
-	DroppedKeyReason attribute.Key = "key_reason"
-	MetricNameKey    attribute.Key = "metric_name"
+	ReasonKey     attribute.Key = "key_reason"
+	MetricNameKey attribute.Key = "metric_name"
 )

@@ -308,7 +308,7 @@ func (c *Client) parseResponseMetadata(ctx context.Context, md grpcMetadata.MD) 
 				common.DroppedPoints.Add(
 					ctx,
 					int64(points),
-					common.DroppedKeyReason.String("validation"),
+					common.ReasonKey.String("validation"),
 				)
 			}
 		} else if key == "otlp-metrics-dropped" {
@@ -316,7 +316,7 @@ func (c *Client) parseResponseMetadata(ctx context.Context, md grpcMetadata.MD) 
 				common.DroppedSeries.Add(
 					ctx,
 					int64(points),
-					common.DroppedKeyReason.String("validation"),
+					common.ReasonKey.String("validation"),
 				)
 			}
 		} else if strings.HasPrefix(key, invalidTrailerPrefix) {

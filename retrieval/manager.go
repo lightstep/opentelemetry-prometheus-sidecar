@@ -231,7 +231,7 @@ Outer:
 				common.DroppedSeries.Add(
 					ctx,
 					int64(failed),
-					common.DroppedKeyReason.String("metadata"),
+					common.ReasonKey.String("metadata"),
 				)
 			}
 			seriesDefined.Add(ctx, int64(success))
@@ -303,7 +303,7 @@ Outer:
 			}
 
 			if !r.leaderCandidate.IsLeader() {
-				common.SkippedPoints.Add(ctx, int64(len(outputs)), attribute.String("reason", "not_leader"))
+				common.SkippedPoints.Add(ctx, int64(len(outputs)), common.ReasonKey.String("not_leader"))
 				// This side is not the leader, we should not append these samples.
 				continue
 			}
@@ -312,7 +312,7 @@ Outer:
 
 			if droppedPoints != 0 {
 				common.DroppedPoints.Add(ctx, int64(droppedPoints),
-					common.DroppedKeyReason.String("metadata"),
+					common.ReasonKey.String("metadata"),
 				)
 			}
 			if skippedPoints != 0 {

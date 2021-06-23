@@ -200,7 +200,7 @@ outer:
 				var reason, mname string
 				for _, label := range labels {
 					switch attribute.Key(label.Key) {
-					case common.DroppedKeyReason:
+					case common.ReasonKey:
 						reason = label.Value
 					case common.MetricNameKey:
 						mname = label.Value
