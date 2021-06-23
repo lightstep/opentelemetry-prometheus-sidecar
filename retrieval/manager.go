@@ -145,6 +145,14 @@ func (r *PrometheusReader) getJobInstanceMap() map[string]string {
 	return jobInstanceMap
 }
 
+// Run starts the main read loop, that reads the prometheus' WAL log to
+// find and parse Series and Samples.
+//
+// Series read are used to update an internal time series cache, containing
+// metadata, labels and reset times.
+//
+// Samples read are transformed by the retrieval.sampleBuilder into
+// OTLP metrics and forwarded to the PrometheusReader.appender, generally a otlp.QueueManager.
 func (r *PrometheusReader) Run(ctx context.Context, startOffset int) error {
 	level.Info(r.logger).Log("msg", "starting Prometheus reader")
 	jobInstanceMap := r.getJobInstanceMap()
@@ -168,8 +176,6 @@ func (r *PrometheusReader) Run(ctx context.Context, startOffset int) error {
 
 	// NOTE(fabxc): wrap the tailer into a buffered reader once we become concerned
 	// with performance. The WAL reader will do a lot of tiny reads otherwise.
-	// This is also the reason for the series cache dealing with "maxSegment" hints
-	// for series rather than precise ones.
 	var (
 		started         = false
 		startupBypassed = 0
@@ -357,15 +363,6 @@ func SaveProgressFile(dir string, offset int) error {
 		return err
 	}
 	return nil
-}
-
-// copyLabels copies a slice of labels.  The caller will mutate the
-// copy, otherwise the types are the same.  Note that the code could
-// be restructured to avoid this copy.
-func copyLabels(input labels.Labels) labels.Labels {
-	output := make(labels.Labels, len(input))
-	copy(output, input)
-	return output
 }
 
 // appendSamples mutates the input to keep this code simple.

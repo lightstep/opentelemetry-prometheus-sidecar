@@ -26,16 +26,18 @@ import (
 )
 
 type (
-	MainConfig           = config.MainConfig
-	PromConfig           = config.PromConfig
-	AdminConfig          = config.AdminConfig
-	OTLPConfig           = config.OTLPConfig
-	LogConfig            = config.LogConfig
-	SecurityConfig       = config.SecurityConfig
-	DurationConfig       = config.DurationConfig
-	OTelConfig           = config.OTelConfig
-	MetricRenamesConfig  = config.MetricRenamesConfig
-	StaticMetadataConfig = config.StaticMetadataConfig
+	MainConfig              = config.MainConfig
+	PromConfig              = config.PromConfig
+	AdminConfig             = config.AdminConfig
+	OTLPConfig              = config.OTLPConfig
+	LogConfig               = config.LogConfig
+	SecurityConfig          = config.SecurityConfig
+	DurationConfig          = config.DurationConfig
+	OTelConfig              = config.OTelConfig
+	MetricRenamesConfig     = config.MetricRenamesConfig
+	StaticMetadataConfig    = config.StaticMetadataConfig
+	LeaderElectionConfig    = config.LeaderElectionConfig
+	K8SLeaderElectionConfig = config.K8SLeaderElectionConfig
 )
 
 func TestProcessFileConfig(t *testing.T) {
@@ -271,6 +273,8 @@ log:
 				"--opentelemetry.min-shards", "5",
 				"--opentelemetry.max-shards", "10",
 				"--opentelemetry.queue-size", "107",
+				"--leader-election.enabled",
+				"--leader-election.k8s-namespace=tools",
 				"--log.level=warning",
 				"--healthcheck.period=17s",
 				"--healthcheck.threshold-ratio=0.2",
@@ -333,6 +337,12 @@ log:
 				LogConfig: LogConfig{
 					Level:  "warning",
 					Format: "json",
+				},
+				LeaderElection: LeaderElectionConfig{
+					Enabled: true,
+					K8S: K8SLeaderElectionConfig{
+						Namespace: "tools",
+					},
 				},
 				StartupTimeout: DurationConfig{
 					1777 * time.Second,
@@ -406,6 +416,9 @@ static_metadata:
   type:       counter
   value_type: int64
   help:       Number of bits transferred by this process.
+
+leader_election:
+  enabled: true
 
 `,
 			nil,
@@ -484,6 +497,9 @@ static_metadata:
 						ValueType: "int64",
 						Help:      "Number of bits transferred by this process.",
 					},
+				},
+				LeaderElection: LeaderElectionConfig{
+					Enabled: true,
 				},
 			},
 			"",
@@ -622,4 +638,23 @@ static_metadata:
 			}
 		})
 	}
+}
+
+func TestCopyOTLPConfig(t *testing.T) {
+	cfg := OTLPConfig{
+		Endpoint:    "http://otlp",
+		Headers:     map[string]string{"a": "b"},
+		Attributes:  map[string]string{"c": "d"},
+		Timeout:     DurationConfig{time.Since(time.Now())},
+		Compression: "gzip",
+	}
+	copied_cfg := cfg.Copy()
+	require.Equal(t, cfg, copied_cfg)
+
+	copied_cfg.Headers["foo"] = "bar"
+	copied_cfg.Attributes["bar"] = "foo"
+	require.Equal(t, len(cfg.Headers), 1)
+	require.Equal(t, len(cfg.Attributes), 1)
+	require.Equal(t, len(copied_cfg.Headers), 2)
+	require.Equal(t, len(copied_cfg.Attributes), 2)
 }

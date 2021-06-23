@@ -48,6 +48,8 @@ require (
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 	gopkg.in/d4l3k/messagediff.v1 v1.2.1
 	gopkg.in/yaml.v2 v2.4.0
+	k8s.io/apimachinery v0.20.1
+	k8s.io/client-go v0.20.1
 )
 
 go 1.15

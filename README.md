@@ -40,10 +40,14 @@ The sidecar includes:
 * Filters to avoid reporting specific metric timeseries
 * Specify whether to use use int64 (optional) vs. double (default) protocol encoding
 
-The sidecar operates by continually (and concurrently) reading the
-log, refreshing its view of the instrument metadata,
-transforming the data into OpenTelemetry Protocol metrics, and sending
-over gRPC to an OpenTelemetry metrics service.
+Sidecar operates by continually:
+1. Reading the prometheus WAL log (package retrieval and tail);
+1. Refreshing its view of the instrument metadata (package metadata);
+1. Transforming WAL samples into OpenTelemetry Protocol(OTLP) metrics (package retrieval);
+1. Sending OTLP metrics to the destination endpoint (package otlp).
+
+
+Resources to understand how the WAL log works can be found [here](https://prometheus.io/docs/prometheus/latest/storage/) and [here](https://ganeshvernekar.com/blog/prometheus-tsdb-wal-and-checkpoint/).
 
 ## Installation
 
@@ -72,15 +76,19 @@ An example command-line:
 ```
 opentelemetry-prometheus-sidecar \
   --destination.endpoint=${DESTINATION} \
-  --destination.header="Custom-Header=${VALUE}" \
+  --destination.header="lightstep-access-token=${VALUE}" \
   --destination.attribute="service.name=${SERVICE}" \
+  --diagnostics.endpoint=${DIAGNOSTICS} \
+  --diagnostics.header="lightstep-access-token=${VALUE}" \
+  --diagnostics.attribute="service.name=${SERVICE}" \
   --prometheus.wal=${WAL} \
   --prometheus.endpoint=${PROMETHEUS} \
 ```
 
 where:
 
-* `DESTINATION`: Destination address https://host:port
+* `DESTINATION`: Destination address https://host:port for sending prometheus metrics
+* `DIAGNOSTICS`: Diagnostics address https://host:port for sending sidecar telemetry
 * `VALUE`: Value for the `Custom-Header` request header
 * `SERVICE`: Value for the `service.name` resource attribute
 * `WAL`: Prometheus' WAL directory, defaults to `data/wal`
@@ -92,6 +100,12 @@ Settings can also be passed through a configuration file.  For example:
 
 ```
 destination:
+  endpoint: https://otlp.io:443
+  headers:
+    Custom-Header: custom-value
+  attributes:
+    service.name: my-service-name
+diagnostics:
   endpoint: https://otlp.io:443
   headers:
     Custom-Header: custom-value
@@ -123,7 +137,9 @@ server:
     args:
     - --prometheus.wal=/data/wal
     - --destination.endpoint=$(DESTINATION)
-    - --destination.header=access-token=AAAAAAAAAAAAAAAA
+    - --destination.header=lightstep-access-token=AAAAAAAAAAAAAAAA
+    - --diagnostics.endpoint=$(DIAGNOSTIC)
+    - --diagnostics.header=lightstep-access-token=AAAAAAAAAAAAAAAA
     volumeMounts:
     - name: storage-volume
       mountPath: /data
@@ -147,13 +163,15 @@ prometheus:
   prometheusSpec:
     containers:
       - name: otel-sidecar
-        image: lightstep/opentelemetry-prometheus-sidecar:v0.18.3
+        image: lightstep/opentelemetry-prometheus-sidecar:latest
         imagePullPolicy: Always
 
         args:
         - --prometheus.wal=/prometheus/prometheus-db/wal
         - --destination.endpoint=$(DESTINATION)
-        - --destination.header=access-token=AAAAAAAAAAAAAAAA
+        - --destination.header=lightstep-access-token=AAAAAAAAAAAAAAAA
+        - --diagnostics.endpoint=$(DIAGNOSTIC)
+        - --diagnostics.header=lightstep-access-token=AAAAAAAAAAAAAAAA
 
         #####
         ports:
@@ -305,7 +323,7 @@ Flags:
 
 Two kinds of sidecar customization are available only through the
 configuration file.  An [example sidecar yaml configuration documents
-the available options](./sidecar.yaml).
+the available options](./config/sidecar.example.yaml).
 
 Command-line and configuration files can be used at the same time,
 where command-line parameter values override configuration-file
@@ -325,14 +343,33 @@ it is waiting for during startup.  When using very long scrape
 intervals, raise the `--startup.timeout` setting so the sidecar will
 wait long enough to begin running.
 
+#### Throughput and memory configuration
+
+The following settings give the user control over the amount of memory
+used by the sidecar for concurrent RPCs.
+
+The sidecar uses a queue to manage distributing data points from the
+Prometheus WAL to a variable number of workers, referred to as
+"shards".  Each shard assembles a limited size request, determined by
+`--opentelemetry.max-bytes-per-request` (default: 64kB).
+
+The number of shards varies in response to load, based on the observed
+latency.  Upper and lower bounds on the number of shards are
+configured by `--opentelemetry.min-shards` and
+`--opentelemetry.max-shards`.
+
+CPU usage is determined by the number of shards and the workload.  Use
+`--opentelemetry.max-shards` to limit the maximum CPU used by the
+sidecar.
+
 #### Validation errors
 
 The sidecar reports validation errors using conventions established by
 Lightstep for conveying information about _partial success_ when
 writing to the OTLP destination.  These errors are returned using gRPC
 "trailers" (a.k.a. http2 response headers) and are output as metrics
-and logs.  See the `sidecar.metrics.failing` metric to diagnose validation
-errors.
+and logs.  See the `sidecar.metrics.failing` metric to diagnose
+validation errors.
 
 #### Metadata errors
 
@@ -342,9 +379,13 @@ no longer knows about.  Missing metadata, Prometheus API errors, and
 other forms of inconsistency are reported using
 `sidecar.metrics.failing` with `key_reason` and `metric_name` attributes.
 
-#### Resources
+#### OpenTelemetry Resource Attributes
 
-Use the `--destination.attribute=KEY=VALUE` flag to add additional resource attributes to all exported timeseries.
+Use the `--destination.attribute=KEY=VALUE` flag to add additional OpenTelemetry resource attributes to all exported timeseries.
+
+#### Prometheus External Labels
+
+Prometheus external labels are used for diagnostic purposes but are not attached to exported timeseries.
 
 #### Filters
 
@@ -433,7 +474,7 @@ Likewise, these fields can be accessed using `--diagnostics.endpoint`,
 
 #### Log levels
 
-The Prometheus sidecar provides options for logging in the case of diagnoising an issue.
+The Prometheus sidecar provides options for logging in the case of diagnosing an issue.
 * We recommend starting with setting the `--log.level` to be `debug`, `info`, `warn`, `error`.
 * Additional options are available to set the output format of the logs (`--log.format` to be `logfmt` or `json`), and the number of logs to recorded (`--log.verbose` to be `0` for off, `1` for some, `2` for more)
 
@@ -471,6 +512,21 @@ troubleshooting.
 | sidecar.series.current | gauge | number of series in the cache | `status`: live, filtered, invalid |
 | sidecar.metrics.failing | gauge | failing metric names and explanations | `key_reason`, `metric_name` |
 
+**Progress Metrics**
+
+Two metrics indicate the sidecar's progress in processing the
+Prometheus write-ahead-log (WAL).  These are measured in bytes and are
+based on the assumption that each WAL segment is a complete 128MB.
+Both of these figures are exported as `current_segment_number *
+128MB + segment_offset`.  The difference (i.e., `sidecar.wal.size -
+sidecar.wal.offset`) indicates how far the sidecar has to catch up,
+assuming complete WAL segments.
+
+| Metric Name | Type | Description |
+| --- | --- | --- |
+| sidecar.wal.size | gauge | current writer position of the Prometheus write-ahead log |
+| sidecar.wal.offset | gauge | current reader position in the Prometheus write-ahead log |
+
 **Host and Runtime Metrics**
 
 | Metric Name | Type | Description | Additional Attributes |
@@ -498,8 +554,6 @@ sidecar performance.
 | sidecar.queue.size | gauge | number of samples (i.e., points) standing in a queue waiting to export | |
 | sidecar.series.defined | counter | number of series defined in the WAL | |
 | sidecar.metadata.lookups | counter | number of calls to lookup metadata | `error`: true, false |
-| sidecar.wal.size | gauge | size of the prometheus WAL | |
-| sidecar.wal.offset | gauge | current offset in the prometheus WAL | |
 | sidecar.refs.collected | counter | number of WAL series refs removed from memory by garbage collection | `error`: true, false |
 | sidecar.refs.notfound | counter | number of WAL series refs that were not found during lookup | |
 | sidecar.segment.opens | counter | number of WAL segment open() calls | |

@@ -2,19 +2,22 @@ package internal
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"net/url"
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"go.opentelemetry.io/otel/semconv"
 )
 
 type ShutdownFunc func(context.Context)
 
-func StartTelemetry(scfg SidecarConfig, defaultSvcName string, isSuper bool) *telemetry.Telemetry {
+func StartTelemetry(scfg SidecarConfig, defaultSvcName string, isSuper bool, externalLabels labels.Labels) *telemetry.Telemetry {
 	diagConfig := scfg.Diagnostics
 
 	if scfg.DisableDiagnostics {
@@ -22,7 +25,8 @@ func StartTelemetry(scfg SidecarConfig, defaultSvcName string, isSuper bool) *te
 	}
 
 	if diagConfig.Endpoint == "" {
-		diagConfig = scfg.Destination
+		// Create a copy, as we adjust the headers/attributes.
+		diagConfig = scfg.Destination.Copy()
 	}
 
 	if diagConfig.Endpoint == "" {
@@ -33,10 +37,10 @@ func StartTelemetry(scfg SidecarConfig, defaultSvcName string, isSuper bool) *te
 	// because we are using metrics data for internal health checking.
 	reportingPeriod := scfg.Admin.HealthCheckPeriod.Duration / 2
 
-	return startTelemetry(diagConfig, reportingPeriod, defaultSvcName, scfg.InstanceId, isSuper, scfg.Logger)
+	return startTelemetry(diagConfig, reportingPeriod, defaultSvcName, scfg.InstanceId, isSuper, externalLabels, scfg.Logger)
 }
 
-func startTelemetry(diagConfig config.OTLPConfig, reportingPeriod time.Duration, defaultSvcName string, svcInstanceId string, isSuper bool, logger log.Logger) *telemetry.Telemetry {
+func startTelemetry(diagConfig config.OTLPConfig, reportingPeriod time.Duration, defaultSvcName string, svcInstanceId string, isSuper bool, externalLabels labels.Labels, logger log.Logger) *telemetry.Telemetry {
 	endpoint, _ := url.Parse(diagConfig.Endpoint)
 	hostport := endpoint.Hostname()
 	if len(endpoint.Port()) > 0 {
@@ -63,9 +67,22 @@ func startTelemetry(diagConfig config.OTLPConfig, reportingPeriod time.Duration,
 		spanHostport = ""
 	}
 
+	diagConfig.Headers[config.AgentKey] = agentName
 	diagConfig.Attributes[string(semconv.ServiceNameKey)] = svcName
 	diagConfig.Attributes[string(semconv.ServiceInstanceIDKey)] = svcInstanceId
-	diagConfig.Headers[config.AgentKey] = agentName
+
+	// No need to add an external-label-prefix for the secondary target.
+	for _, label := range externalLabels {
+		diagConfig.Attributes[label.Name] = label.Value
+	}
+
+	// No need to log this for the supervisor case.
+	if !isSuper {
+		level.Info(logger).Log(
+			"msg", "configuring sidecar diagnostics",
+			"attributes", fmt.Sprintf("%s", diagConfig.Attributes),
+		)
+	}
 
 	// TODO: Configure trace batching interval.
 

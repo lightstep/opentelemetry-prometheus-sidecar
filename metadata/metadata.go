@@ -20,9 +20,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
+	"go.opentelemetry.io/otel/metric"
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/common"
@@ -44,12 +47,16 @@ var (
 // from a given Prometheus server.
 // Its methods are not safe for concurrent use.
 type Cache struct {
-	promURL *url.URL
-	client  *http.Client
+	targetMetadataURL *url.URL
+	metadataURL       *url.URL
+	client            *http.Client
 
 	metadata       map[string]*cacheEntry
 	seenJobs       map[string]struct{}
 	staticMetadata map[string]*config.MetadataEntry
+
+	currentMetricsObs metric.Int64UpDownSumObserver
+	mtx               sync.Mutex
 }
 
 // TODO: This code could use metrics to report the current size of the
@@ -60,20 +67,52 @@ type Cache struct {
 // NewCache returns a new cache that gets populated by the metadata endpoint
 // at the given URL.
 // It uses the default endpoint path if no specific path is provided.
-func NewCache(client *http.Client, promURL *url.URL, staticMetadata []*config.MetadataEntry) *Cache {
+func NewCache(client *http.Client, targetMetadataURL *url.URL, metadataURL *url.URL, staticMetadata []*config.MetadataEntry) *Cache {
 	if client == nil {
 		client = http.DefaultClient
 	}
 	c := &Cache{
-		promURL:        promURL,
-		client:         client,
-		staticMetadata: map[string]*config.MetadataEntry{},
-		metadata:       map[string]*cacheEntry{},
-		seenJobs:       map[string]struct{}{},
+		targetMetadataURL: targetMetadataURL,
+		metadataURL:       metadataURL,
+		client:            client,
+		staticMetadata:    map[string]*config.MetadataEntry{},
+		metadata:          map[string]*cacheEntry{},
+		seenJobs:          map[string]struct{}{},
 	}
 	for _, m := range staticMetadata {
 		c.staticMetadata[m.Metric] = m
 	}
+
+	c.currentMetricsObs = sidecar.OTelMeterMust.NewInt64UpDownSumObserver(
+		config.CurrentMetricsMetric,
+		func(ctx context.Context, result metric.Int64ObserverResult) {
+			c.mtx.Lock()
+			defer c.mtx.Unlock()
+
+			counters := make(map[textparse.MetricType]int64)
+
+			var notFound int64
+			for _, cEntry := range c.metadata {
+				if cEntry.found {
+					if ent := cEntry.Entry; ent != nil {
+						counters[ent.MetricType]++
+					}
+				} else {
+					notFound++
+				}
+			}
+
+			t := attribute.Key("type")
+			for metricType, c := range counters {
+				result.Observe(c, t.String(string(metricType)))
+			}
+			result.Observe(notFound, t.String("metadata_not_found"))
+		},
+		metric.WithDescription(
+			"The current number of metrics in the metadata cache.",
+		),
+	)
+
 	return c
 }
 
@@ -97,6 +136,8 @@ func (c *Cache) Get(ctx context.Context, job, instance, metric string) (*config.
 	if md, ok := c.staticMetadata[metric]; ok {
 		return md, nil
 	}
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
 	md, ok := c.metadata[metric]
 	if !ok || md.shouldRefetch() {
 		// If we are seeing the job for the first time, preemptively get a full
@@ -136,48 +177,50 @@ func (c *Cache) Get(ctx context.Context, job, instance, metric string) (*config.
 	return nil, nil
 }
 
-func (c *Cache) fetch(ctx context.Context, mode string, q url.Values) (_ *common.MetadataAPIResponse, retErr error) {
+func (c *Cache) fetch(ctx context.Context, mode, fullUrl string, apiResp interface{}) (retErr error) {
 	ctx, cancel := context.WithTimeout(ctx, config.DefaultPrometheusTimeout)
 	defer cancel()
 
 	defer fetchTimer.Start(ctx).Stop(&retErr, attribute.String("mode", mode))
 
-	u := *c.promURL
-	u.RawQuery = q.Encode()
-
-	req, err := http.NewRequestWithContext(ctx, "GET", u.String(), nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", fullUrl, nil)
 	if err != nil {
-		return nil, errors.Wrap(err, "build request")
+		return errors.Wrap(err, "build request")
 	}
 
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return nil, errors.Wrap(err, "query Prometheus")
+		return errors.Wrap(err, "query Prometheus")
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("metadata request HTTP status %s", resp.Status)
+		return fmt.Errorf("metadata request HTTP status %s", resp.Status)
 	}
 
-	var apiResp common.MetadataAPIResponse
-	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
-		return nil, errors.Wrap(err, "decode response")
+	if err := json.NewDecoder(resp.Body).Decode(apiResp); err != nil {
+		return errors.Wrap(err, "decode response")
 	}
-	return &apiResp, nil
+	return nil
 }
 
 const apiErrorNotFound = "not_found"
 
-// fetchSingle fetches metadata for the given job, instance, and metric combination.
+// fetchSingle fetches metadata for the given metric.
 // It returns a not-found entry if the fetch is successful but returns no data.
+//
+// If there is more than one metric defined for the given name, we use the first metric's metadata.
+// As per the OTel Metrics Data Model it is a semantic conflict to mix metric point kinds. See
+// https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/metrics/datamodel.md#opentelemetry-protocol-data-model
 func (c *Cache) fetchSingle(ctx context.Context, job, instance, metric string) (*cacheEntry, error) {
-	job, instance = escapeLval(job), escapeLval(instance)
+	u := *c.metadataURL
+	u.RawQuery = url.Values{
+		"metric": []string{metric},
+		"limit":  []string{fmt.Sprintf("%d", 1)},
+	}.Encode()
 
-	apiResp, err := c.fetch(ctx, "single", url.Values{
-		"match_target": []string{fmt.Sprintf("{job=\"%s\",instance=\"%s\"}", job, instance)},
-		"metric":       []string{metric},
-	})
+	var apiResp common.MetadataAPIResponse
+	err := c.fetch(ctx, "single", u.String(), &apiResp)
 	if err != nil {
 		return nil, err
 	}
@@ -186,14 +229,16 @@ func (c *Cache) fetchSingle(ctx context.Context, job, instance, metric string) (
 	if apiResp.ErrorType != "" && apiResp.ErrorType != apiErrorNotFound {
 		return nil, errors.Wrap(errors.New(apiResp.Error), "lookup failed")
 	}
-	if len(apiResp.Data) == 0 {
+
+	val, ok := apiResp.Data[metric]
+	if !ok {
 		// Cache a not-found entry.
 		return &cacheEntry{
 			lastFetch: now,
 			found:     false,
 		}, nil
 	}
-	d := apiResp.Data[0]
+	d := val[0]
 
 	// Convert legacy "untyped" type used before Prometheus 2.5.
 	if d.Type == config.MetricTypeUntyped {
@@ -213,9 +258,13 @@ func (c *Cache) fetchSingle(ctx context.Context, job, instance, metric string) (
 func (c *Cache) fetchBatch(ctx context.Context, job, instance string) (map[string]*cacheEntry, error) {
 	job, instance = escapeLval(job), escapeLval(instance)
 
-	apiResp, err := c.fetch(ctx, "batch", url.Values{
+	u := *c.targetMetadataURL
+	u.RawQuery = url.Values{
 		"match_target": []string{fmt.Sprintf("{job=\"%s\",instance=\"%s\"}", job, instance)},
-	})
+	}.Encode()
+
+	var apiResp common.TargetMetadataAPIResponse
+	err := c.fetch(ctx, "batch", u.String(), &apiResp)
 	if err != nil {
 		return nil, err
 	}

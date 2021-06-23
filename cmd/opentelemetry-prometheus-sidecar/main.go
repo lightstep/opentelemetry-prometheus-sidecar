@@ -43,6 +43,7 @@ import (
 	"github.com/prometheus/common/version"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql/parser"
+	controller "go.opentelemetry.io/otel/sdk/metric/controller/basic"
 	grpcMetadata "google.golang.org/grpc/metadata"
 
 	// register grpc compressors
@@ -63,11 +64,24 @@ import (
 // be useful after other matters are resolved.
 
 const supervisorEnv = "MAIN_SUPERVISOR"
+const serviceIdEnv = "SERVICE_ID"
 
 func main() {
 	if !Main() {
 		os.Exit(1)
 	}
+}
+
+type ControllerGetter struct {
+	controller *controller.Controller
+}
+
+func (g *ControllerGetter) SetController(cont *controller.Controller) {
+	g.controller = cont
+}
+
+func (g *ControllerGetter) GetController() *controller.Controller {
+	return g.controller
 }
 
 func Main() bool {
@@ -89,11 +103,15 @@ func Main() bool {
 	isSupervisor := !cfg.DisableSupervisor && os.Getenv(supervisorEnv) == ""
 	logger := internal.NewLogger(cfg, isSupervisor)
 
+	svcId := os.Getenv(serviceIdEnv)
+	if len(svcId) == 0 {
+		svcId = uuid.New().String()
+	}
 	scfg := internal.SidecarConfig{
 		ClientFactory:   nil,
 		Monitor:         nil,
 		Logger:          logger,
-		InstanceId:      uuid.New().String(),
+		InstanceId:      svcId,
 		Matchers:        [][]*labels.Matcher{},
 		MetricRenames:   metricRenames,
 		MetadataCache:   nil,
@@ -103,17 +121,17 @@ func Main() bool {
 
 	telemetry.StaticSetup(scfg.Logger)
 
-	telem := internal.StartTelemetry(
-		scfg,
-		"opentelemetry-prometheus-sidecar",
-		isSupervisor,
-	)
-	if telem != nil {
-		defer telem.Shutdown(context.Background())
-	}
-
-	// Start the supervisor.
+	// Return by starting the supervisor with an early-configured Telemetry
+	// instance having no Monitor/externalLabels.
 	if isSupervisor {
+		telem := internal.StartTelemetry(
+			scfg,
+			"opentelemetry-prometheus-sidecar",
+			isSupervisor,
+			nil,
+		)
+		defer telem.Shutdown(context.Background())
+
 		return startSupervisor(scfg, telem)
 	}
 
@@ -141,26 +159,20 @@ func Main() bool {
 		StartupDelayEffectiveStartTime: time.Now(),
 	})
 
+	targetsMetadataURL, err := promURL.Parse(config.PrometheusTargetMetadataEndpointPath)
+	if err != nil {
+		panic(err)
+	}
 	metadataURL, err := promURL.Parse(config.PrometheusMetadataEndpointPath)
 	if err != nil {
 		panic(err)
 	}
-	scfg.MetadataCache = metadata.NewCache(httpClient, metadataURL, staticMetadata)
-
-	healthChecker := health.NewChecker(
-		telem.Controller, scfg.Monitor, scfg.Admin.HealthCheckPeriod.Duration, scfg.Logger, scfg.Admin.HealthCheckThresholdRatio,
-	)
+	scfg.MetadataCache = metadata.NewCache(httpClient, targetsMetadataURL, metadataURL, staticMetadata)
 
 	// Check the progress file, ensure we can write this file.
 	startOffset, err := readWriteStartOffset(scfg)
 	if err != nil {
 		level.Error(scfg.Logger).Log("msg", "cannot write progress file", "err", err)
-		return false
-	}
-
-	tailer, err := internal.NewTailer(ctx, scfg)
-	if err != nil {
-		level.Error(scfg.Logger).Log("msg", "tailing WAL failed", "err", err)
 		return false
 	}
 
@@ -178,6 +190,12 @@ func Main() bool {
 		Prometheus:       scfg.Prometheus,
 		FailingReporter:  scfg.FailingReporter,
 	})
+
+	// metrics controller will be ready for consumption upon starting telemetry.
+	metricsContGetter := ControllerGetter{}
+	healthChecker := health.NewChecker(
+		&metricsContGetter, scfg.Monitor, scfg.Admin.HealthCheckPeriod.Duration, scfg.Logger, scfg.Admin.HealthCheckThresholdRatio,
+	)
 
 	// Start the admin server.
 	go func() {
@@ -198,12 +216,45 @@ func Main() bool {
 		}
 	}()
 
-	logStartup(cfg, scfg.Logger)
+	logStartup(scfg)
 
 	// Test for Prometheus and Outbound dependencies before starting.
 	if err := selfTest(ctx, scfg); err != nil {
 		level.Error(scfg.Logger).Log("msg", "selftest failed, not starting", "err", err)
 		return false
+	}
+
+	telem := internal.StartTelemetry(
+		scfg,
+		"opentelemetry-prometheus-sidecar",
+		isSupervisor,
+		scfg.Monitor.GetGlobalConfig().ExternalLabels,
+	)
+	defer telem.Shutdown(context.Background())
+
+	// Let HealthChecker know Controller/metrics are ready to be consumed.
+	metricsContGetter.SetController(telem.Controller)
+
+	tailer, err := internal.NewTailer(ctx, scfg)
+	if err != nil {
+		level.Error(scfg.Logger).Log("msg", "tailing WAL failed", "err", err)
+		return false
+	}
+
+	// Show the external labels, if any.
+	externalLabels := scfg.Monitor.GetGlobalConfig().ExternalLabels
+	if len(externalLabels) != 0 {
+		level.Info(scfg.Logger).Log(
+			"msg", "process has external labels",
+			"labels", scfg.Monitor.GetGlobalConfig().ExternalLabels.String(),
+		)
+	}
+
+	if scfg.LeaderElection.Enabled {
+		if err := internal.StartLeaderElection(ctx, &scfg); err != nil {
+			level.Error(scfg.Logger).Log("msg", "leader election", "err", err)
+			return false
+		}
 	}
 
 	level.Debug(scfg.Logger).Log("msg", "entering run state")
@@ -274,7 +325,9 @@ func selfTest(ctx context.Context, scfg internal.SidecarConfig) error {
 	return nil
 }
 
-func logStartup(cfg config.MainConfig, logger log.Logger) {
+func logStartup(cfg internal.SidecarConfig) {
+	logger := cfg.Logger
+
 	level.Info(logger).Log(
 		"msg", "starting OpenTelemetry Prometheus sidecar",
 		"version", version.Info(),
@@ -300,6 +353,7 @@ func startSupervisor(scfg internal.SidecarConfig, telem *telemetry.Telemetry) bo
 	})
 
 	os.Setenv(supervisorEnv, "active")
+	os.Setenv(serviceIdEnv, scfg.InstanceId)
 
 	return super.Run(os.Args)
 }
