@@ -128,7 +128,7 @@ func (i *FailingSet) observeLocked(result metric.Int64ObserverResult) stateMap {
 			}
 			observedCount++
 			result.Observe(failingConstant,
-				DroppedKeyReason.String(reason),
+				ReasonKey.String(reason),
 				MetricNameKey.String(metricName),
 			)
 		}

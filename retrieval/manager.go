@@ -16,6 +16,8 @@ package retrieval
 import (
 	"context"
 	"encoding/json"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/leader"
+	"go.opentelemetry.io/otel/attribute"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -72,6 +74,7 @@ func NewPrometheusReader(
 	maxPointAge time.Duration,
 	scrapeConfig []*promconfig.ScrapeConfig,
 	failingReporter common.FailingReporter,
+	leaderCandidate leader.Candidate,
 ) *PrometheusReader {
 	if logger == nil {
 		logger = log.NewNopLogger()
@@ -89,6 +92,7 @@ func NewPrometheusReader(
 		maxPointAge:          maxPointAge,
 		scrapeConfig:         scrapeConfig,
 		failingReporter:      failingReporter,
+		leaderCandidate:      leaderCandidate,
 	}
 }
 
@@ -105,6 +109,7 @@ type PrometheusReader struct {
 	maxPointAge          time.Duration
 	scrapeConfig         []*promconfig.ScrapeConfig
 	failingReporter      common.FailingReporter
+	leaderCandidate      leader.Candidate
 }
 
 func (r *PrometheusReader) Next() {
@@ -226,7 +231,7 @@ Outer:
 				common.DroppedSeries.Add(
 					ctx,
 					int64(failed),
-					common.DroppedKeyReason.String("metadata"),
+					common.ReasonKey.String("metadata"),
 				)
 			}
 			seriesDefined.Add(ctx, int64(success))
@@ -297,15 +302,21 @@ Outer:
 				produced++
 			}
 
+			if !r.leaderCandidate.IsLeader() {
+				common.SkippedPoints.Add(ctx, int64(len(outputs)), common.ReasonKey.String("not_leader"))
+				// This side is not the leader, we should not append these samples.
+				continue
+			}
+
 			appendSamples(r.appender, outputs)
 
 			if droppedPoints != 0 {
 				common.DroppedPoints.Add(ctx, int64(droppedPoints),
-					common.DroppedKeyReason.String("metadata"),
+					common.ReasonKey.String("metadata"),
 				)
 			}
 			if skippedPoints != 0 {
-				common.SkippedPoints.Add(ctx, int64(skippedPoints))
+				common.SkippedPoints.Add(ctx, int64(skippedPoints), attribute.String("reason", "no_sample"))
 			}
 
 			pointsProduced.Add(ctx, int64(produced))

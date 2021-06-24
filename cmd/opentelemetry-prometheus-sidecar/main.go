@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/leader"
 	"io/ioutil"
 	"net/http"
 	_ "net/http/pprof" // Comment this line to disable pprof endpoint.
@@ -117,6 +118,7 @@ func Main() bool {
 		MetadataCache:   nil,
 		MainConfig:      cfg,
 		FailingReporter: common.NewFailingSet(log.With(logger, "component", "failing_metrics")),
+		LeaderCandidate: leader.NewAlwaysLeaderCandidate(),
 	}
 
 	telemetry.StaticSetup(scfg.Logger)
@@ -191,10 +193,17 @@ func Main() bool {
 		FailingReporter:  scfg.FailingReporter,
 	})
 
+	if scfg.LeaderElection.Enabled {
+		if err := internal.StartLeaderElection(ctx, &scfg); err != nil {
+			level.Error(scfg.Logger).Log("msg", "leader election", "err", err)
+			return false
+		}
+	}
+
 	// metrics controller will be ready for consumption upon starting telemetry.
 	metricsContGetter := ControllerGetter{}
 	healthChecker := health.NewChecker(
-		&metricsContGetter, scfg.Monitor, scfg.Admin.HealthCheckPeriod.Duration, scfg.Logger, scfg.Admin.HealthCheckThresholdRatio,
+		&metricsContGetter, scfg.Monitor, scfg.Admin.HealthCheckPeriod.Duration, scfg.Logger, scfg.Admin.HealthCheckThresholdRatio, scfg.LeaderCandidate,
 	)
 
 	// Start the admin server.
@@ -248,13 +257,6 @@ func Main() bool {
 			"msg", "process has external labels",
 			"labels", scfg.Monitor.GetGlobalConfig().ExternalLabels.String(),
 		)
-	}
-
-	if scfg.LeaderElection.Enabled {
-		if err := internal.StartLeaderElection(ctx, &scfg); err != nil {
-			level.Error(scfg.Logger).Log("msg", "leader election", "err", err)
-			return false
-		}
 	}
 
 	level.Debug(scfg.Logger).Log("msg", "entering run state")

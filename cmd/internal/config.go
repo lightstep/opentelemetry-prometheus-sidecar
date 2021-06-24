@@ -24,7 +24,7 @@ type SidecarConfig struct {
 
 	FailingReporter common.FailingReporter
 
-	LeaderElector leader.Candidate
+	LeaderCandidate leader.Candidate
 
 	config.MainConfig
 }

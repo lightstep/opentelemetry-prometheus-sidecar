@@ -26,7 +26,7 @@ func newTest() *testController {
 func TestLeaderElection(t *testing.T) {
 	fc := fake.NewSimpleClientset()
 	tc := newTest()
-	le, err := NewCandidate(fc, "default", "hello", "world", tc, telemetry.DefaultLogger())
+	le, err := NewKubernetesCandidate(fc, "default", "hello", "world", tc, telemetry.DefaultLogger())
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
