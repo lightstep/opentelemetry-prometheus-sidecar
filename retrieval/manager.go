@@ -324,12 +324,6 @@ Outer:
 				produced++
 			}
 
-			if !r.leaderCandidate.IsLeader() {
-				common.SkippedPoints.Add(ctx, int64(len(outputs)), common.ReasonKey.String("not_leader"))
-				// This side is not the leader, we should not append these samples.
-				continue
-			}
-
 			appendSamples(r.appender, outputs)
 
 			if droppedPoints != 0 {
