@@ -5,12 +5,13 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/leader"
 	"os"
+	"sync/atomic"
 	"testing"
 	"time"
 )
 
 type settableLeader struct {
-	leader bool
+	leader atomic.Value
 }
 
 func (s settableLeader) Start(_ context.Context) error {
@@ -18,13 +19,14 @@ func (s settableLeader) Start(_ context.Context) error {
 }
 
 func (s settableLeader) IsLeader() bool {
-	return s.leader
+	return s.leader.Load().(bool)
 }
 
 var _ leader.Candidate = (*settableLeader)(nil)
 
 func TestDelayWhenLeaderShouldEndWithoutContextError(t *testing.T) {
-	l := &settableLeader{true}
+	l := &settableLeader{}
+	l.leader.Store(true)
 	logger := log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
 
 	d := delay{
@@ -44,7 +46,8 @@ func TestDelayWhenLeaderShouldEndWithoutContextError(t *testing.T) {
 }
 
 func TestDelayWhenNotLeaderShouldEndWithContextError(t *testing.T) {
-	l := &settableLeader{false}
+	l := &settableLeader{}
+	l.leader.Store(false)
 	logger := log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
 
 	d := delay{
@@ -64,7 +67,8 @@ func TestDelayWhenNotLeaderShouldEndWithContextError(t *testing.T) {
 }
 
 func TestDelayWhenNotLeaderShouldDelay(t *testing.T) {
-	l := &settableLeader{false}
+	l := &settableLeader{}
+	l.leader.Store(false)
 	logger := log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
 
 	d := delay{
@@ -85,7 +89,8 @@ func TestDelayWhenNotLeaderShouldDelay(t *testing.T) {
 }
 
 func TestDelayBecomeLeaderShouldStopDelay(t *testing.T) {
-	l := &settableLeader{false}
+	l := &settableLeader{}
+	l.leader.Store(false)
 	logger := log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
 
 	d := delay{
@@ -100,7 +105,7 @@ func TestDelayBecomeLeaderShouldStopDelay(t *testing.T) {
 
 	go func() {
 		time.Sleep(100 * time.Millisecond)
-		l.leader = true
+		l.leader.Store(true)
 	}()
 
 	d.delayNonLeaderSidecar(ctx, time.Now().UnixNano()/int64(time.Millisecond))
