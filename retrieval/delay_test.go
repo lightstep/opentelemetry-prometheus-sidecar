@@ -39,7 +39,7 @@ func TestDelayWhenLeaderShouldEndWithoutContextError(t *testing.T) {
 
 	d.delayNonLeaderSidecar(ctx, 0)
 	if ctx.Err() != nil {
-		t.Error("context should not contain error when leader sidecar is leader")
+		t.Error("context should not contain error when sidecar is leader")
 	}
 }
 
@@ -105,7 +105,7 @@ func TestDelayBecomeLeaderShouldStopDelay(t *testing.T) {
 
 	d.delayNonLeaderSidecar(ctx, time.Now().UnixNano()/int64(time.Millisecond))
 	if ctx.Err() != nil {
-		t.Errorf("context should not contain error when leader sidecar is leader, got error: %v", ctx.Err())
+		t.Errorf("context should not contain error when sidecar becomes leader before maximum delay time, got error: %v", ctx.Err())
 	}
 
 }
