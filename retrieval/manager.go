@@ -282,7 +282,6 @@ Outer:
 					samples = samples[1:]
 
 					common.SkippedPoints.Add(ctx, 1, common.ReasonKey.String("not_leader"))
-					// This side is not the leader, we should not append these samples.
 					continue
 				}
 
