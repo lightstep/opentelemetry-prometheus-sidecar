@@ -277,13 +277,6 @@ Outer:
 				}
 
 				delay.delayNonLeaderSidecar(ctx, samples[0].T)
-				if !r.leaderCandidate.IsLeader() {
-					// sidecar is not the leader and this is an old sample, just ignore it.
-					samples = samples[1:]
-
-					common.SkippedPoints.Add(ctx, 1, common.ReasonKey.String("not_leader"))
-					continue
-				}
 
 				outputSample, newSamples, err := builder.next(ctx, samples)
 
@@ -323,6 +316,11 @@ Outer:
 				produced++
 			}
 
+			if !r.leaderCandidate.IsLeader() {
+				common.SkippedPoints.Add(ctx, 1, common.ReasonKey.String("not_leader"))
+				// This side is not the leader, we should not append these samples to the queue.
+				continue
+			}
 			appendSamples(r.appender, outputs)
 
 			if droppedPoints != 0 {
