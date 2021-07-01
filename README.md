@@ -440,9 +440,9 @@ Note:
 
 In a HA prometheus setup, a prometheus sidecar can be attached to each replica. All sidecars will write all metric points, it is responsibility of the backend of choice to deduplicate these points.
 
-The leader election can be enabled in order to restrict which replica will send metrics to the Collector, reducing the amount of metrics transferred in the wire.
+The leader election can be enabled in order to restrict which replica will send metrics to the Collector, reducing the amount of metrics transferred on the wire.
 
-One of the sidecars will be elected as the Leader, this leader sidecar will tail the prometheus wal log, transform and send OTLP metrics to the Collector. All other  non leaders sidecars will be in a stand-by mode, it will tail the prometheus wal log, but will not send any data to the Collector.
+One of the sidecars will be elected as the Leader, this leader sidecar will tail the Prometheus WAL log, transform and send OTLP metrics to the Collector. All other non-leader sidecars will be in a stand-by mode, it will tail the Prometheus WAL log, but will not send any data to the Collector.
 
 If the leader sidecar fails, a new Leader will be elected and will resume sending data to the collector.
 
