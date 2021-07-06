@@ -87,7 +87,7 @@ jobs:
         CF_API_KEY: ${{ secrets.CODEFRESH_API_TOKEN }}
       id: run-pipeline-ps
       with:
-        args: -v IMAGE_TAG=${{ env.IMAGE_TAG }} -v PROM-VERSION=${{ secrets.PROMETHEUS_VERSION }}
+        args: -v OTEL-VERSION=${{ env.IMAGE_TAG }} -v PROM-VERSION=${{ secrets.PROMETHEUS_VERSION }}
 
 
 #------------------------------------------------------------------
@@ -136,6 +136,6 @@ jobs:
         CF_API_KEY: ${{ secrets.CODEFRESH_API_TOKEN }}
       id: run-pipeline-ps
       with:
-        args: -v IMAGE_TAG=${{ env.IMAGE_TAG }} -v PROM-VERSION=${{ secrets.PROMETHEUS_VERSION }}
+        args: -v OTEL-VERSION=${{ env.IMAGE_TAG }} -v PROM-VERSION=${{ secrets.PROMETHEUS_VERSION }}
 
 
