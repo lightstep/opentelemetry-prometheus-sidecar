@@ -55,7 +55,12 @@ var (
 	errBuildFailed = errors.New("unknown build failure")
 )
 
-const batchLimit = config.DefaultSingleMetricBatchSizeLimit
+const (
+	batchLimit = config.DefaultSingleMetricBatchSizeLimit
+
+	delayDuration      = 5 * time.Minute
+	delayIntervalCheck = 10 * time.Second
+)
 
 type MetadataGetter interface {
 	Get(ctx context.Context, job, instance, metric string) (*config.MetadataEntry, error)
@@ -179,6 +184,13 @@ func (r *PrometheusReader) Run(ctx context.Context, startOffset int) error {
 		maxPointAge: r.maxPointAge,
 	}
 
+	delay := &delay{
+		duration:      delayDuration,
+		intervalCheck: delayIntervalCheck,
+		lc:            r.leaderCandidate,
+		logger:        r.logger,
+	}
+
 	// NOTE(fabxc): wrap the tailer into a buffered reader once we become concerned
 	// with performance. The WAL reader will do a lot of tiny reads otherwise.
 	var (
@@ -237,7 +249,7 @@ Outer:
 			seriesDefined.Add(ctx, int64(success))
 
 		case record.Samples:
-			// Skip sample records before the the boundary offset.
+			// Skip sample records before the boundary offset.
 			if offset < startOffset {
 				startupBypassed++
 				continue
@@ -263,6 +275,8 @@ Outer:
 					break Outer
 				default:
 				}
+
+				delay.delayNonLeaderSidecar(ctx, samples[0].T)
 
 				outputSample, newSamples, err := builder.next(ctx, samples)
 
@@ -303,11 +317,10 @@ Outer:
 			}
 
 			if !r.leaderCandidate.IsLeader() {
-				common.SkippedPoints.Add(ctx, int64(len(outputs)), common.ReasonKey.String("not_leader"))
-				// This side is not the leader, we should not append these samples.
+				common.SkippedPoints.Add(ctx, 1, common.ReasonKey.String("not_leader"))
+				// This side is not the leader, we should not append these samples to the queue.
 				continue
 			}
-
 			appendSamples(r.appender, outputs)
 
 			if droppedPoints != 0 {

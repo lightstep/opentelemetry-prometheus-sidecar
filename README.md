@@ -314,6 +314,9 @@ Flags:
                                  more; 1 is automatically added when log.level
                                  is 'debug'; impacts logging from the gRPC
                                  library in particular
+      --leader-election.enabled  Enable leader election to choose a single writer.
+      --leader-election.k8s-namespace=LEADER-ELECTION.K8S-NAMESPACE  
+                                 Namespace used for the leadership election lease.
       --disable-supervisor       Disable the supervisor.
       --disable-diagnostics      Disable diagnostics by default; if unset,
                                  diagnostics will be auto-configured to the
@@ -432,6 +435,31 @@ Note:
 
 * All `static_metadata` entries must have `type` specified.
 * If `value_type` is specified, it will override the default value type for counters and gauges. All Prometheus metrics have a default type of double.
+
+#### High Availability Prometheus Setup
+
+In a HA prometheus setup, a prometheus sidecar can be attached to each replica. All sidecars will write all metric points, it is responsibility of the backend of choice to deduplicate these points.
+
+The leader election can be enabled in order to restrict which replica will send metrics to the Collector, reducing the amount of metrics transferred on the wire.
+
+One of the sidecars will be elected as the Leader, this leader sidecar will tail the Prometheus WAL log, transform and send OTLP metrics to the Collector. All other non-leader sidecars will be in a stand-by mode, it will tail the Prometheus WAL log, but will not send any data to the Collector.
+
+If the leader sidecar fails, a new Leader will be elected and will resume sending data to the collector.
+
+The leader election uses the kubernetes coordination API to elect a leader. The prometheus service account needs additional roles to work correctly:
+```yaml
+rules:
+  - apiGroups:
+      - coordination.k8s.io
+    resources:
+      - leases
+    verbs:
+      - '*'
+```
+
+To enabled leader election, set `--leader-election.enabled` to `true`.
+
+To change the namespace used for the leadership election lease, set `--leader-election.k8s-namespace=LEADER-ELECTION.K8S-NAMESPACE`.
 
 ## Monitoring
 
@@ -560,6 +588,7 @@ sidecar performance.
 | sidecar.segment.reads | counter | number of WAL segment read() calls | |
 | sidecar.segment.bytes | counter | number of WAL segment bytes read | |
 | sidecar.segment.skipped | counter | number of skipped WAL segments | |
+| sidecar.leadership | gauge | indicate if this sidecar is the leader or not | |
 
 ## Upstream
 
