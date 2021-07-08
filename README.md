@@ -457,7 +457,7 @@ rules:
       - '*'
 ```
 
-To enabled leader election, set `--leader-election.enabled` to `true`.
+To enabled leader election, set the argument flag  `--leader-election.enabled`.
 
 To change the namespace used for the leadership election lease, set `--leader-election.k8s-namespace=LEADER-ELECTION.K8S-NAMESPACE`.
 
@@ -508,7 +508,7 @@ The Prometheus sidecar provides options for logging in the case of diagnosing an
 
 #### Disabling Diagnostics
 
-To disable diagnostics, set `--disable-diagnostics` to `true`.
+To disable diagnostics, set the argument flag `--disable-diagnostics`.
 
 ### Diagnostic Outputs
 
