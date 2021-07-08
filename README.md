@@ -600,7 +600,7 @@ The matrix below lists the versions of Prometheus Server and other dependencies 
 
 | Sidecar Version | Compatible Prometheus Server Version(s)   | Incompatible Prometheus Server Version(s) |
 | -- | -- | -- |
-| **0.1.x** | 2.10, 2.11, 2.13, 2.15, 2.16, 2.18, 2.19, 2.21, 2.22, 2.23, 2.24 | 2.5 |
+| **0.1.x** | 2.15, 2.16, 2.18, 2.19, 2.21, 2.22, 2.23, 2.24 | 2.5 |
 
 ## Troubleshooting
 
