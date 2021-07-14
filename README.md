@@ -446,7 +446,7 @@ One of the sidecars will be elected as the Leader, this leader sidecar will tail
 
 If the leader sidecar fails, a new Leader will be elected and will resume sending data to the collector.
 
-The leader election uses the kubernetes coordination API to elect a leader. The prometheus service account needs additional roles to work correctly:
+The leader election uses the kubernetes coordination API to elect a leader. Ensure that there is a service account for Prometheus in Kubernetes and then bind it to the role with the following permissions:
 ```yaml
 rules:
   - apiGroups:
@@ -457,7 +457,7 @@ rules:
       - '*'
 ```
 
-To enabled leader election, set the argument flag  `--leader-election.enabled`.
+After to the service account permissions are set up, set the argument flag  `--leader-election.enabled` on the prometheus sidecar.
 
 To change the namespace used for the leadership election lease, set `--leader-election.k8s-namespace=LEADER-ELECTION.K8S-NAMESPACE`.
 
