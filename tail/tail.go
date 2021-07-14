@@ -619,7 +619,7 @@ func dirContents(dir string) string {
 		return fmt.Sprintf("%s: %s", dir, err)
 	}
 	for _, entry := range files {
-		r = append(r, entry.Name())
+		r = append(r, fmt.Sprintf("file:%s size:%d", entry.Name(), entry.Size()))
 	}
 	return fmt.Sprint(r)
 }
