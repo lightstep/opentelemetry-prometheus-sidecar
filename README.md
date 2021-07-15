@@ -446,7 +446,7 @@ One of the sidecars will be elected as the Leader, this leader sidecar will tail
 
 If the leader sidecar fails, a new Leader will be elected and will resume sending data to the collector.
 
-The leader election uses the kubernetes coordination API to elect a leader. The prometheus service account needs additional roles to work correctly:
+The leader election uses the kubernetes coordination API to elect a leader. Ensure that there is a service account for Prometheus in Kubernetes and then bind it to the role with the following permissions:
 ```yaml
 rules:
   - apiGroups:
@@ -457,7 +457,7 @@ rules:
       - '*'
 ```
 
-To enabled leader election, set `--leader-election.enabled` to `true`.
+After to the service account permissions are set up, set the argument flag  `--leader-election.enabled` on the prometheus sidecar.
 
 To change the namespace used for the leadership election lease, set `--leader-election.k8s-namespace=LEADER-ELECTION.K8S-NAMESPACE`.
 
@@ -508,7 +508,7 @@ The Prometheus sidecar provides options for logging in the case of diagnosing an
 
 #### Disabling Diagnostics
 
-To disable diagnostics, set `--disable-diagnostics` to `true`.
+To disable diagnostics, set the argument flag `--disable-diagnostics`.
 
 ### Diagnostic Outputs
 
@@ -600,7 +600,7 @@ The matrix below lists the versions of Prometheus Server and other dependencies 
 
 | Sidecar Version | Compatible Prometheus Server Version(s)   | Incompatible Prometheus Server Version(s) |
 | -- | -- | -- |
-| **0.1.x** | 2.10, 2.11, 2.13, 2.15, 2.16, 2.18, 2.19, 2.21, 2.22, 2.23, 2.24 | 2.5 |
+| **0.1.x** | 2.15, 2.16, 2.18, 2.19, 2.21, 2.22, 2.23, 2.24 | 2.5 |
 
 ## Troubleshooting
 
