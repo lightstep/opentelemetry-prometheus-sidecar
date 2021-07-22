@@ -8,7 +8,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
-## [0.26.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.26.0) - TBD
+## [0.27.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.26.0) - 2021-07-22
+
+### Added
+
+- Added option `--prometheus.health-check-request-timeout` to set the timeout used for health-check requests to the prometheus endpoint, defaulting to 5s. (#268)
+
+## [0.26.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.26.0) - 2021-07-15
 
 ### Added
 
