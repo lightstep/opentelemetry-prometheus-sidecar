@@ -159,6 +159,7 @@ func Main() bool {
 		Logger:                         log.With(scfg.Logger, "component", "prom_ready"),
 		PromURL:                        promURL,
 		StartupDelayEffectiveStartTime: time.Now(),
+		HealthCheckRequestTimeout:      scfg.Prometheus.HealthCheckRequestTimeout.Duration,
 	})
 
 	targetsMetadataURL, err := promURL.Parse(config.PrometheusTargetMetadataEndpointPath)
