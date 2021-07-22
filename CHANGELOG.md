@@ -8,7 +8,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
-## [0.27.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.26.0) - 2021-07-22
+## [0.27.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.27.0) - 2021-07-22
 
 ### Added
 
