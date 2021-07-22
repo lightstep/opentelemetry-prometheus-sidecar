@@ -167,8 +167,9 @@ func (fp *FakePrometheus) Test() *url.URL {
 
 func (fp *FakePrometheus) ReadyConfig() config.PromReady {
 	return config.PromReady{
-		Logger:  telemetry.DefaultLogger(),
-		PromURL: fp.Test(),
+		Logger:                    telemetry.DefaultLogger(),
+		PromURL:                   fp.Test(),
+		HealthCheckRequestTimeout: config.DefaultHealthCheckTimeout,
 	}
 }
 

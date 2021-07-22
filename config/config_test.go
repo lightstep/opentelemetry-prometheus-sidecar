@@ -173,6 +173,8 @@ startup_timeout: 1777s
 					MaxPointAge: DurationConfig{
 						25 * time.Hour,
 					},
+					HealthCheckRequestTimeout: DurationConfig{config.DefaultHealthCheckTimeout},
+					HealthCheckRequestTimeout: DurationConfig{config.DefaultHealthCheckTimeout},
 				},
 				OpenTelemetry: OTelConfig{
 					MaxBytesPerRequest: 65536,
@@ -290,6 +292,7 @@ log:
 					MaxPointAge: DurationConfig{
 						10 * time.Hour,
 					},
+					HealthCheckRequestTimeout: DurationConfig{config.DefaultHealthCheckTimeout},
 				},
 				OpenTelemetry: OTelConfig{
 					MaxBytesPerRequest: 5,
@@ -444,6 +447,7 @@ leader_election:
 					MaxPointAge: DurationConfig{
 						72 * time.Hour,
 					},
+					HealthCheckRequestTimeout: DurationConfig{config.DefaultHealthCheckTimeout},
 				},
 				OpenTelemetry: OTelConfig{
 					MaxBytesPerRequest: 10,
