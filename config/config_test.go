@@ -162,7 +162,7 @@ destination:
 
 prometheus:
   wal: wal-eeee
-
+  health_check_request_timeout: 5m
 startup_timeout: 1777s
 `,
 			nil,
@@ -173,6 +173,7 @@ startup_timeout: 1777s
 					MaxPointAge: DurationConfig{
 						25 * time.Hour,
 					},
+					HealthCheckRequestTimeout: DurationConfig{5 * time.Minute},
 				},
 				OpenTelemetry: OTelConfig{
 					MaxBytesPerRequest: 65536,
@@ -269,6 +270,7 @@ log:
 				"--destination.compression", "compression_fmt",
 				"--prometheus.wal", "wal-eeee",
 				"--prometheus.max-point-age", "10h",
+				"--prometheus.health-check-request-timeout", "1m",
 				"--opentelemetry.max-bytes-per-request", "5",
 				"--opentelemetry.min-shards", "5",
 				"--opentelemetry.max-shards", "10",
@@ -290,6 +292,7 @@ log:
 					MaxPointAge: DurationConfig{
 						10 * time.Hour,
 					},
+					HealthCheckRequestTimeout: DurationConfig{time.Minute},
 				},
 				OpenTelemetry: OTelConfig{
 					MaxBytesPerRequest: 5,
@@ -444,6 +447,7 @@ leader_election:
 					MaxPointAge: DurationConfig{
 						72 * time.Hour,
 					},
+					HealthCheckRequestTimeout: DurationConfig{config.DefaultHealthCheckTimeout},
 				},
 				OpenTelemetry: OTelConfig{
 					MaxBytesPerRequest: 10,

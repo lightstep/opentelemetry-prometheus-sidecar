@@ -268,6 +268,8 @@ Flags:
       --prometheus.max-point-age=PROMETHEUS.MAX-POINT-AGE
                                  Skip points older than this, to assist
                                  recovery. Default: 25h0m0s
+      --prometheus.health-check-request-timeout=PROMETHEUS.HEALTH-CHECK-REQUEST-TIMEOUT  
+                                 Timeout used for health-check requests to the prometheus endpoint. Default: 5s
       --prometheus.scrape-interval=PROMETHEUS.SCRAPE-INTERVAL ...
                                  Ignored. This is inferred from the Prometheus
                                  via api/v1/status/config

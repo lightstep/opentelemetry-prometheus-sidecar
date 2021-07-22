@@ -40,7 +40,8 @@ func Example() {
 	//   "prometheus": {
 	//     "endpoint": "http://127.0.0.1:19090",
 	//     "wal": "/volume/wal",
-	//     "max_point_age": "72h0m0s"
+	//     "max_point_age": "72h0m0s",
+	//     "health_check_request_timeout": "5s"
 	//   },
 	//   "opentelemetry": {
 	//     "max_bytes_per_request": 1500,

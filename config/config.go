@@ -222,9 +222,10 @@ type LogConfig struct {
 }
 
 type PromConfig struct {
-	Endpoint    string         `json:"endpoint"`
-	WAL         string         `json:"wal"`
-	MaxPointAge DurationConfig `json:"max_point_age"`
+	Endpoint                  string         `json:"endpoint"`
+	WAL                       string         `json:"wal"`
+	MaxPointAge               DurationConfig `json:"max_point_age"`
+	HealthCheckRequestTimeout DurationConfig `json:"health_check_request_timeout"`
 }
 
 type OTelConfig struct {
@@ -298,9 +299,10 @@ type FileReadFunc func(filename string) ([]byte, error)
 func DefaultMainConfig() MainConfig {
 	return MainConfig{
 		Prometheus: PromConfig{
-			WAL:         DefaultWALDirectory,
-			Endpoint:    DefaultPrometheusEndpoint,
-			MaxPointAge: DurationConfig{DefaultMaxPointAge},
+			WAL:                       DefaultWALDirectory,
+			Endpoint:                  DefaultPrometheusEndpoint,
+			MaxPointAge:               DurationConfig{DefaultMaxPointAge},
+			HealthCheckRequestTimeout: DurationConfig{DefaultHealthCheckTimeout},
 		},
 		OpenTelemetry: OTelConfig{
 			MaxBytesPerRequest: DefaultMaxBytesPerRequest,
@@ -383,6 +385,9 @@ func Configure(args []string, readFunc FileReadFunc) (MainConfig, map[string]str
 
 	a.Flag("prometheus.max-point-age", "Skip points older than this, to assist recovery. Default: "+DefaultMaxPointAge.String()).
 		DurationVar(&cfg.Prometheus.MaxPointAge.Duration)
+
+	a.Flag("prometheus.health-check-request-timeout", "Timeout used for health-check requests to prometheus. Default: "+DefaultHealthCheckTimeout.String()).
+		DurationVar(&cfg.Prometheus.HealthCheckRequestTimeout.Duration)
 
 	var ignoredScrapeIntervals []string
 	a.Flag("prometheus.scrape-interval", "Ignored. This is inferred from the Prometheus via api/v1/status/config").
@@ -639,6 +644,7 @@ type PromReady struct {
 	Logger                         log.Logger
 	PromURL                        *url.URL
 	StartupDelayEffectiveStartTime time.Time
+	HealthCheckRequestTimeout      time.Duration
 }
 
 // TODO: The use of Kind and ValueType are Stackdriver terms that
