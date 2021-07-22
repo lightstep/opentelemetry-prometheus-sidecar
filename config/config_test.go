@@ -174,7 +174,6 @@ startup_timeout: 1777s
 						25 * time.Hour,
 					},
 					HealthCheckRequestTimeout: DurationConfig{config.DefaultHealthCheckTimeout},
-					HealthCheckRequestTimeout: DurationConfig{config.DefaultHealthCheckTimeout},
 				},
 				OpenTelemetry: OTelConfig{
 					MaxBytesPerRequest: 65536,
