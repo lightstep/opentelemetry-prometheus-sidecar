@@ -225,7 +225,7 @@ type PromConfig struct {
 	Endpoint                  string         `json:"endpoint"`
 	WAL                       string         `json:"wal"`
 	MaxPointAge               DurationConfig `json:"max_point_age"`
-	HealthCheckRequestTimeout DurationConfig `json:"health-check-request-timeout"`
+	HealthCheckRequestTimeout DurationConfig `json:"health_check_request_timeout"`
 }
 
 type OTelConfig struct {
