@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand"
 	"strings"
+	"time"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -42,7 +43,10 @@ func StartLeaderElection(ctx context.Context, cfg *SidecarConfig) error {
 	}
 	lockID := cleanName(externalLabels.Get(IDKey))
 	if lockID == "" {
-		lockID = fmt.Sprintf("unlabeled-%016x", rand.Uint64())
+		src := rand.NewSource(time.Now().UnixNano())
+		r := rand.New(src)
+
+		lockID = fmt.Sprintf("unlabeled-%016x", r.Uint64())
 	}
 
 	logger := log.With(cfg.Logger, "component", "leader")
@@ -52,7 +56,7 @@ func StartLeaderElection(ctx context.Context, cfg *SidecarConfig) error {
 		return errors.Wrap(err, "leader election client")
 	}
 
-	cfg.LeaderElector, err = leader.NewCandidate(
+	cfg.LeaderCandidate, err = leader.NewKubernetesCandidate(
 		client,
 		lockNamespace,
 		lockName,
@@ -71,7 +75,7 @@ func StartLeaderElection(ctx context.Context, cfg *SidecarConfig) error {
 		"ID", lockID,
 	)
 
-	if err := cfg.LeaderElector.Start(ctx); err != nil {
+	if err := cfg.LeaderCandidate.Start(ctx); err != nil {
 		return errors.Wrap(err, "leader election start")
 	}
 	return nil

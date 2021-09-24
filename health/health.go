@@ -17,6 +17,7 @@ package health
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/leader"
 	"math"
 	"net/http"
 	"runtime"
@@ -55,6 +56,7 @@ type (
 		startTime         time.Time
 		metricsContGetter ControllerGetter
 		promConfigGetter  PromGlobalConfigGetter
+		lc                leader.Candidate
 
 		lock         sync.Mutex
 		isRunning    bool
@@ -83,12 +85,12 @@ type (
 	}
 
 	Response struct {
-		Code            int                       `json:"code"`
-		Status          string                    `json:"status"`
-		Metrics         map[string][]exportRecord `json:"metrics"`
-		ExternalLabels	map[string]string         `json:"external_labels"`
-		Running         bool                      `json:"running"`
-		Stackdump       string                    `json:"stackdump"`
+		Code           int                       `json:"code"`
+		Status         string                    `json:"status"`
+		Metrics        map[string][]exportRecord `json:"metrics"`
+		ExternalLabels map[string]string         `json:"external_labels"`
+		Running        bool                      `json:"running"`
+		Stackdump      string                    `json:"stackdump"`
 	}
 
 	exportRecord struct {
@@ -100,14 +102,14 @@ type (
 		GetController() *controller.Controller
 	}
 
-        PromGlobalConfigGetter interface {
-                GetGlobalConfig() promconfig.GlobalConfig
-        }
+	PromGlobalConfigGetter interface {
+		GetGlobalConfig() promconfig.GlobalConfig
+	}
 )
 
 // NewChecker returns a new ready and liveness checkers based on
 // state from the metrics controller.
-func NewChecker(contGetter ControllerGetter, promConfigGetter PromGlobalConfigGetter, period time.Duration, logger log.Logger, thresholdRatio float64) *Checker {
+func NewChecker(contGetter ControllerGetter, promConfigGetter PromGlobalConfigGetter, period time.Duration, logger log.Logger, thresholdRatio float64, lc leader.Candidate) *Checker {
 	c := &Checker{
 		logger:            logger,
 		period:            period,
@@ -119,6 +121,7 @@ func NewChecker(contGetter ControllerGetter, promConfigGetter PromGlobalConfigGe
 			Code: http.StatusOK,
 		},
 		thresholdRatio: thresholdRatio,
+		lc:             lc,
 	}
 	c.readyHandler.Checker = c
 	c.aliveHandler.Checker = c
@@ -193,7 +196,7 @@ func (a *alive) getMetrics() (map[string][]exportRecord, error) {
 }
 
 func (a *alive) getExternalLabels() map[string]string {
-        return a.promConfigGetter.GetGlobalConfig().ExternalLabels.Map()
+	return a.promConfigGetter.GetGlobalConfig().ExternalLabels.Map()
 }
 
 // ServeHTTP implements a healthcheck handler that returns healthy as
@@ -287,6 +290,12 @@ func ok(w http.ResponseWriter, f func() Response) {
 // check parses selected counter metrics and returns an error if the
 // sidecar is unhealthy based on their values.
 func (a *alive) check(metrics map[string][]exportRecord) error {
+	if !a.lc.IsLeader() {
+		// TODO: non leaders sidecar doesn't produce samples
+		// we should check if the offset is not far from the head.
+		return nil
+	}
+
 	sumWhere := func(name, labels string) *metricTracker {
 		t, ok := a.tracker[name]
 		if !ok {

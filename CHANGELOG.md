@@ -8,6 +8,25 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+## [0.27.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.27.0) - 2021-07-22
+
+### Added
+
+- Added option `--prometheus.health-check-request-timeout` to set the timeout used for health-check requests to the prometheus endpoint, defaulting to 5s. (#268)
+
+## [0.26.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.26.0) - 2021-07-15
+
+### Added
+
+- Added a leader election feature for HA prometheus setup to reduce the amount of data 
+ transported on the wire. The leader sidecar will send data as normal, while other non-leaders 
+ sidecars will be in a stand-by mode. (#264, #263)
+- Added `sidecar.metrics.current` to report the number of active metrics grouped by metric type. (#259)
+
+### Changed
+
+- limited the number of failing metrics reported via metrics and logs. (#261)
+
 ## [0.25.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.25.0) - 2021-05-13
 
 ### Changed

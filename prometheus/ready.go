@@ -22,7 +22,7 @@ const (
 )
 
 func (m *Monitor) scrapeMetrics(inCtx context.Context) (Result, error) {
-	ctx, cancel := context.WithTimeout(inCtx, config.DefaultHealthCheckTimeout)
+	ctx, cancel := context.WithTimeout(inCtx, m.cfg.HealthCheckRequestTimeout)
 	defer cancel()
 
 	return m.GetMetrics(ctx)
@@ -117,7 +117,7 @@ func (m *Monitor) completedFirstScrapes(res Result, promcfg promconfig.Config, p
 }
 
 func (m *Monitor) getConfig(inCtx context.Context) (promconfig.Config, error) {
-	ctx, cancel := context.WithTimeout(inCtx, config.DefaultHealthCheckTimeout)
+	ctx, cancel := context.WithTimeout(inCtx, m.cfg.HealthCheckRequestTimeout)
 	defer cancel()
 
 	return m.GetConfig(ctx)
@@ -172,11 +172,11 @@ func (m *Monitor) WaitForReady(inCtx context.Context, inCtxCancel context.Cancel
 	// will try again and this lets us avoid the first sleep
 	warnSkipped := false
 
-	tick := time.NewTicker(config.DefaultHealthCheckTimeout)
+	tick := time.NewTicker(m.cfg.HealthCheckRequestTimeout)
 	defer tick.Stop()
 
 	for {
-		ctx, cancel := context.WithTimeout(inCtx, config.DefaultHealthCheckTimeout)
+		ctx, cancel := context.WithTimeout(inCtx, m.cfg.HealthCheckRequestTimeout)
 		req, err := http.NewRequestWithContext(ctx, "GET", u.String(), nil)
 		if err != nil {
 			cancel()

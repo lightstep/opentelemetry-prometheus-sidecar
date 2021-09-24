@@ -23,10 +23,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
-        "github.com/prometheus/prometheus/pkg/labels"
-        promconfig "github.com/prometheus/prometheus/config"
+	promconfig "github.com/prometheus/prometheus/config"
+	"github.com/prometheus/prometheus/pkg/labels"
 
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/leader"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/attribute"
@@ -52,14 +53,27 @@ func (getter *controllerGetter) GetController() *controller.Controller {
 }
 
 type promGlobalConfigGetter struct {
-        externalLabels labels.Labels
+	externalLabels labels.Labels
 }
 
 func (getter *promGlobalConfigGetter) GetGlobalConfig() promconfig.GlobalConfig {
-        return promconfig.GlobalConfig{
-                ExternalLabels: getter.externalLabels,
-        }
+	return promconfig.GlobalConfig{
+		ExternalLabels: getter.externalLabels,
+	}
 }
+
+type alwaysLeaderCandidate struct {
+}
+
+func (n alwaysLeaderCandidate) Start(ctx context.Context) error {
+	return nil
+}
+
+func (n alwaysLeaderCandidate) IsLeader() bool {
+	return true
+}
+
+var _ leader.Candidate = (*alwaysLeaderCandidate)(nil)
 
 func testController(t *testing.T) *tester {
 	cont := telemetry.InternalOnly().Controller
@@ -68,7 +82,7 @@ func testController(t *testing.T) *tester {
 	outcome := metric.Must(provider.Meter("test")).NewInt64Counter(config.OutcomeMetric)
 	configGetter := &promGlobalConfigGetter{externalLabels: labels.FromStrings("test_name", "test_value")}
 
-	checker := NewChecker(&controllerGetter{cont}, configGetter, 0 /* uncached */, telemetry.DefaultLogger(), config.DefaultHealthCheckThresholdRatio)
+	checker := NewChecker(&controllerGetter{cont}, configGetter, 0 /* uncached */, telemetry.DefaultLogger(), config.DefaultHealthCheckThresholdRatio, &alwaysLeaderCandidate{})
 
 	aliveServer := httptest.NewServer(checker.Alive())
 

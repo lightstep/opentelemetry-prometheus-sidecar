@@ -76,8 +76,9 @@ func TestReadyFail(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*config.DefaultHealthCheckTimeout)
 	defer cancel()
 	err = NewMonitor(config.PromReady{
-		Logger:  logger,
-		PromURL: tu,
+		Logger:                    logger,
+		PromURL:                   tu,
+		HealthCheckRequestTimeout: config.DefaultHealthCheckTimeout,
 	}).WaitForReady(ctx, cancel)
 	require.Error(t, err)
 }

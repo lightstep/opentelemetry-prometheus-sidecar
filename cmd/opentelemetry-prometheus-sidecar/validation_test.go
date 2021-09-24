@@ -204,7 +204,7 @@ outer:
 				var reason, mname string
 				for _, attr := range attrs {
 					switch attribute.Key(attr.Key) {
-					case common.DroppedKeyReason:
+					case common.ReasonKey:
 						reason = attr.Value.Value.(*otlpcommon.AnyValue_StringValue).StringValue
 					case common.MetricNameKey:
 						mname = attr.Value.Value.(*otlpcommon.AnyValue_StringValue).StringValue

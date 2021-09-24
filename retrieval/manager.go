@@ -16,6 +16,8 @@ package retrieval
 import (
 	"context"
 	"encoding/json"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/leader"
+	"go.opentelemetry.io/otel/attribute"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -53,7 +55,12 @@ var (
 	errBuildFailed = errors.New("unknown build failure")
 )
 
-const batchLimit = config.DefaultSingleMetricBatchSizeLimit
+const (
+	batchLimit = config.DefaultSingleMetricBatchSizeLimit
+
+	delayDuration      = 5 * time.Minute
+	delayIntervalCheck = 10 * time.Second
+)
 
 type MetadataGetter interface {
 	Get(ctx context.Context, job, instance, metric string) (*config.MetadataEntry, error)
@@ -72,6 +79,7 @@ func NewPrometheusReader(
 	maxPointAge time.Duration,
 	scrapeConfig []*promconfig.ScrapeConfig,
 	failingReporter common.FailingReporter,
+	leaderCandidate leader.Candidate,
 ) *PrometheusReader {
 	if logger == nil {
 		logger = log.NewNopLogger()
@@ -89,6 +97,7 @@ func NewPrometheusReader(
 		maxPointAge:          maxPointAge,
 		scrapeConfig:         scrapeConfig,
 		failingReporter:      failingReporter,
+		leaderCandidate:      leaderCandidate,
 	}
 }
 
@@ -105,6 +114,7 @@ type PrometheusReader struct {
 	maxPointAge          time.Duration
 	scrapeConfig         []*promconfig.ScrapeConfig
 	failingReporter      common.FailingReporter
+	leaderCandidate      leader.Candidate
 }
 
 func (r *PrometheusReader) Next() {
@@ -174,6 +184,13 @@ func (r *PrometheusReader) Run(ctx context.Context, startOffset int) error {
 		maxPointAge: r.maxPointAge,
 	}
 
+	delay := &delay{
+		duration:      delayDuration,
+		intervalCheck: delayIntervalCheck,
+		lc:            r.leaderCandidate,
+		logger:        r.logger,
+	}
+
 	// NOTE(fabxc): wrap the tailer into a buffered reader once we become concerned
 	// with performance. The WAL reader will do a lot of tiny reads otherwise.
 	var (
@@ -226,13 +243,13 @@ Outer:
 				common.DroppedSeries.Add(
 					ctx,
 					int64(failed),
-					common.DroppedKeyReason.String("metadata"),
+					common.ReasonKey.String("metadata"),
 				)
 			}
 			seriesDefined.Add(ctx, int64(success))
 
 		case record.Samples:
-			// Skip sample records before the the boundary offset.
+			// Skip sample records before the boundary offset.
 			if offset < startOffset {
 				startupBypassed++
 				continue
@@ -258,6 +275,8 @@ Outer:
 					break Outer
 				default:
 				}
+
+				delay.delayNonLeaderSidecar(ctx, samples[0].T)
 
 				outputSample, newSamples, err := builder.next(ctx, samples)
 
@@ -297,15 +316,20 @@ Outer:
 				produced++
 			}
 
+			if !r.leaderCandidate.IsLeader() {
+				common.SkippedPoints.Add(ctx, 1, common.ReasonKey.String("not_leader"))
+				// This side is not the leader, we should not append these samples to the queue.
+				continue
+			}
 			appendSamples(r.appender, outputs)
 
 			if droppedPoints != 0 {
 				common.DroppedPoints.Add(ctx, int64(droppedPoints),
-					common.DroppedKeyReason.String("metadata"),
+					common.ReasonKey.String("metadata"),
 				)
 			}
 			if skippedPoints != 0 {
-				common.SkippedPoints.Add(ctx, int64(skippedPoints))
+				common.SkippedPoints.Add(ctx, int64(skippedPoints), attribute.String("reason", "no_sample"))
 			}
 
 			pointsProduced.Add(ctx, int64(produced))

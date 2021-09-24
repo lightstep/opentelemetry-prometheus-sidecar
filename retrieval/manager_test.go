@@ -15,6 +15,7 @@ package retrieval
 
 import (
 	"context"
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/leader"
 	"io/ioutil"
 	"os"
 	"strings"
@@ -94,7 +95,7 @@ func TestReader_Progress(t *testing.T) {
 	}
 
 	failingSet := testFailingReporter{}
-	r := NewPrometheusReader(nil, dir, tailer, nil, nil, metadataMap, &nopAppender{}, "", 0, nil, failingSet)
+	r := NewPrometheusReader(nil, dir, tailer, nil, nil, metadataMap, &nopAppender{}, "", 0, nil, failingSet, leader.NewAlwaysLeaderCandidate())
 	r.progressSaveInterval = 200 * time.Millisecond
 
 	// Populate sample data
@@ -160,7 +161,7 @@ func TestReader_Progress(t *testing.T) {
 
 	recorder := &nopAppender{}
 
-	r = NewPrometheusReader(nil, dir, tailer, nil, nil, metadataMap, recorder, "", 0, nil, failingSet)
+	r = NewPrometheusReader(nil, dir, tailer, nil, nil, metadataMap, recorder, "", 0, nil, failingSet, leader.NewAlwaysLeaderCandidate())
 	go r.Run(ctx, progressOffset)
 
 	// Wait for reader to process until the end.
