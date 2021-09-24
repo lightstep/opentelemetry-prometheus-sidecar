@@ -221,7 +221,7 @@ func (s *Supervisor) healthcheckErr(ctx context.Context) (err error) {
 	}()
 
 	span.AddEvent("recent-logs", trace.WithAttributes(
-		attribute.Array("activity", s.copyLogs()),
+		attribute.StringSlice("activity", s.copyLogs()),
 	))
 
 	var hr health.Response
@@ -280,7 +280,7 @@ func (s *Supervisor) finalSpan(err error) {
 	defer span.End()
 
 	span.AddEvent("recent-logs", trace.WithAttributes(
-		attribute.Array("activity", s.copyLogs()),
+		attribute.StringSlice("activity", s.copyLogs()),
 	))
 
 	if err != nil {

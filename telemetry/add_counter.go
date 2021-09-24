@@ -7,6 +7,7 @@ import (
 	"github.com/pkg/errors"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/number"
+	"go.opentelemetry.io/otel/metric/sdkapi"
 	export "go.opentelemetry.io/otel/sdk/export/metric"
 	"go.opentelemetry.io/otel/sdk/export/metric/aggregation"
 	"go.opentelemetry.io/otel/sdk/metric/aggregator/sum"
@@ -51,7 +52,7 @@ func (c *copyToCounterProcessor) Process(accum export.Accumulation) error {
 		return err
 	}
 	// If it is not a value recorder, return.
-	if desc.InstrumentKind() != metric.ValueRecorderInstrumentKind {
+	if desc.InstrumentKind() != sdkapi.HistogramInstrumentKind {
 		return nil
 	}
 
@@ -68,7 +69,7 @@ func (c *copyToCounterProcessor) Process(accum export.Accumulation) error {
 	if !ok {
 		d := metric.NewDescriptor(
 			cname,
-			metric.CounterInstrumentKind,
+			sdkapi.CounterInstrumentKind,
 			number.Int64Kind,
 			metric.WithUnit(desc.Unit()),
 			metric.WithDescription(desc.Description()),
@@ -84,7 +85,6 @@ func (c *copyToCounterProcessor) Process(accum export.Accumulation) error {
 		export.NewAccumulation(
 			cdesc,
 			accum.Labels(),
-			accum.Resource(),
 			cnt,
 		),
 	)

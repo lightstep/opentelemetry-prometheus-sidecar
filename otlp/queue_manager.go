@@ -136,10 +136,10 @@ type QueueManager struct {
 	sendOutcomesCounter metric.Int64Counter
 	queueLengthCounter  metric.Int64UpDownCounter
 	queueRunningCounter metric.Int64UpDownCounter
-	queueCapacityObs    metric.Int64UpDownSumObserver
-	numShardsObs        metric.Int64UpDownSumObserver
-	walSizeObs          metric.Int64UpDownSumObserver
-	walOffsetObs        metric.Int64UpDownSumObserver
+	queueCapacityObs    metric.Int64UpDownCounterObserver
+	numShardsObs        metric.Int64UpDownCounterObserver
+	walSizeObs          metric.Int64UpDownCounterObserver
+	walOffsetObs        metric.Int64UpDownCounterObserver
 }
 
 // NewQueueManager builds a new QueueManager.
@@ -194,7 +194,7 @@ func NewQueueManager(logger log.Logger, cfg promconfig.QueueConfig, timeout time
 			"The number of shards that have started and not stopped.",
 		),
 	)
-	t.queueCapacityObs = sidecar.OTelMeterMust.NewInt64UpDownSumObserver(
+	t.queueCapacityObs = sidecar.OTelMeterMust.NewInt64UpDownCounterObserver(
 		"sidecar.queue.capacity",
 		func(ctx context.Context, result metric.Int64ObserverResult) {
 			result.Observe(int64(t.cfg.Capacity))
@@ -203,7 +203,7 @@ func NewQueueManager(logger log.Logger, cfg promconfig.QueueConfig, timeout time
 			"The capacity of the queue of samples to be sent to the remote storage.",
 		),
 	)
-	t.numShardsObs = sidecar.OTelMeterMust.NewInt64UpDownSumObserver(
+	t.numShardsObs = sidecar.OTelMeterMust.NewInt64UpDownCounterObserver(
 		"sidecar.queue.shards",
 		func(ctx context.Context, result metric.Int64ObserverResult) {
 			t.shardsMtx.Lock()
@@ -214,13 +214,13 @@ func NewQueueManager(logger log.Logger, cfg promconfig.QueueConfig, timeout time
 			"The number of shards used for parallel sending to the remote storage.",
 		),
 	)
-	t.walSizeObs = sidecar.OTelMeterMust.NewInt64UpDownSumObserver(
+	t.walSizeObs = sidecar.OTelMeterMust.NewInt64UpDownCounterObserver(
 		"sidecar.wal.size",
 		func(ctx context.Context, result metric.Int64ObserverResult) {
 			result.Observe(int64(t.lastSize))
 		},
 	)
-	t.walOffsetObs = sidecar.OTelMeterMust.NewInt64UpDownSumObserver(
+	t.walOffsetObs = sidecar.OTelMeterMust.NewInt64UpDownCounterObserver(
 		"sidecar.wal.offset",
 		func(ctx context.Context, result metric.Int64ObserverResult) {
 			result.Observe(int64(t.lastOffset))

@@ -197,7 +197,7 @@ func newConfig(opts ...Option) Config {
 // configurePropagators configures B3 propagation by default
 func configurePropagators(c *Config) error {
 	propagatorsMap := map[string]propagation.TextMapPropagator{
-		"b3":           b3.B3{},
+		"b3":           b3.New(),
 		"baggage":      propagation.Baggage{},
 		"tracecontext": propagation.TraceContext{},
 	}

@@ -37,7 +37,7 @@ type (
 
 	// FailingSet reports a set of gauges to describe failing data points.
 	FailingSet struct {
-		observer metric.Int64ValueObserver
+		observer metric.Int64GaugeObserver
 		logger   log.Logger
 
 		lock  sync.Mutex
@@ -67,7 +67,7 @@ func NewFailingSet(logger log.Logger) *FailingSet {
 		long:   stateMap{},
 		logger: logger,
 	}
-	i.observer = sidecar.OTelMeterMust.NewInt64ValueObserver(
+	i.observer = sidecar.OTelMeterMust.NewInt64GaugeObserver(
 		config.FailingMetricsMetric,
 		i.observe,
 		metric.WithDescription("labeled examples of failing metric data"),
