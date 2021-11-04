@@ -305,17 +305,15 @@ func (c *Config) setupMetrics(telem *Telemetry) (start, stop func(ctx context.Co
 	metricExporter := newMetricExporter(c.MetricsExporterEndpoint, c.MetricsExporterEndpointInsecure, c.Headers, c.Compressor)
 
 	cont := controller.New(
-		newCopyToCounterProcessor(
-			processor.New(
-				selector.NewWithHistogramDistribution(histogram.WithExplicitBoundaries([]float64{
-					0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10,
-				})),
-				metricsdk.CumulativeExportKindSelector(),
-				// Note: we don't really need memory for all metrics, and this
-				// becomes a problem when there is high cardinality.  This is to
-				// enable the healthz handler support in this package.
-				processor.WithMemory(true),
-			),
+		processor.NewFactory(
+			selector.NewWithHistogramDistribution(histogram.WithExplicitBoundaries([]float64{
+				0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10,
+			})),
+			metricsdk.CumulativeExportKindSelector(),
+			// Note: we don't really need memory for all metrics, and this
+			// becomes a problem when there is high cardinality.  This is to
+			// enable the healthz handler support in this package.
+			processor.WithMemory(true),
 		),
 		controller.WithExporter(metricExporter),
 		controller.WithResource(c.resource),
@@ -323,9 +321,7 @@ func (c *Config) setupMetrics(telem *Telemetry) (start, stop func(ctx context.Co
 		controller.WithPushTimeout(c.ExportTimeout),
 	)
 
-	provider := cont.MeterProvider()
-
-	metricglobal.SetMeterProvider(provider)
+	metricglobal.SetMeterProvider(cont)
 
 	telem.Controller = cont
 
@@ -334,11 +330,11 @@ func (c *Config) setupMetrics(telem *Telemetry) (start, stop func(ctx context.Co
 				return errors.Wrap(err, "failed to start OTLP exporter")
 			}
 
-			if err := runtimeMetrics.Start(runtimeMetrics.WithMeterProvider(provider)); err != nil {
+			if err := runtimeMetrics.Start(runtimeMetrics.WithMeterProvider(cont)); err != nil {
 				return errors.Wrap(err, "failed to start runtime metrics")
 			}
 
-			if err := hostMetrics.Start(hostMetrics.WithMeterProvider(provider)); err != nil {
+			if err := hostMetrics.Start(hostMetrics.WithMeterProvider(cont)); err != nil {
 				return errors.Wrap(err, "failed to start host metrics")
 			}
 
@@ -362,7 +358,7 @@ func (c *Config) setupMetrics(telem *Telemetry) (start, stop func(ctx context.Co
 
 func InternalOnly() *Telemetry {
 	cont := controller.New(
-		processor.New(
+		processor.NewFactory(
 			selector.NewWithInexpensiveDistribution(),
 			metricsdk.CumulativeExportKindSelector(),
 			processor.WithMemory(true),
@@ -370,7 +366,7 @@ func InternalOnly() *Telemetry {
 		controller.WithCollectPeriod(0),
 	)
 
-	metricglobal.SetMeterProvider(cont.MeterProvider())
+	metricglobal.SetMeterProvider(cont)
 	return &Telemetry{
 		Controller: cont,
 	}

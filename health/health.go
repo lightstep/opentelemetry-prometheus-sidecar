@@ -17,13 +17,14 @@ package health
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/lightstep/opentelemetry-prometheus-sidecar/leader"
 	"math"
 	"net/http"
 	"runtime"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/lightstep/opentelemetry-prometheus-sidecar/leader"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -34,6 +35,7 @@ import (
 	"go.opentelemetry.io/otel/metric/number"
 	export "go.opentelemetry.io/otel/sdk/export/metric"
 	"go.opentelemetry.io/otel/sdk/export/metric/aggregation"
+	"go.opentelemetry.io/otel/sdk/instrumentation"
 	controller "go.opentelemetry.io/otel/sdk/metric/controller/basic"
 )
 
@@ -155,40 +157,44 @@ func (a *alive) getMetrics() (map[string][]exportRecord, error) {
 
 	// Note: we use the latest checkpoint, which is computed
 	// periodically for the OTLP metrics exporter.
-	if err := cont.ForEach(export.CumulativeExportKindSelector(),
-		func(rec export.Record) error {
-			var num number.Number
-			var err error
+	if err := cont.ForEach(
+		func(_ instrumentation.Library, reader export.Reader) error {
+			return reader.ForEach(
+				export.CumulativeExportKindSelector(),
+				func(rec export.Record) error {
+					var num number.Number
+					var err error
 
-			desc := rec.Descriptor()
-			agg := rec.Aggregation()
+					desc := rec.Descriptor()
+					agg := rec.Aggregation()
 
-			// Only return sidecar metrics.
-			if !strings.HasPrefix(desc.Name(), config.SidecarPrefix) {
-				return nil
-			}
+					// Only return sidecar metrics.
+					if !strings.HasPrefix(desc.Name(), config.SidecarPrefix) {
+						return nil
+					}
 
-			if s, ok := agg.(aggregation.Sum); ok {
-				num, err = s.Sum()
-			} else if lv, ok := agg.(aggregation.LastValue); ok {
-				num, _, err = lv.LastValue()
-			} else {
-				// Do not use histograms for health checking.
-				return nil
-			}
-			if err != nil {
-				return err
-			}
-			value := num.CoerceToFloat64(desc.NumberKind())
-			lstr := enc.Encode(rec.Labels().Iter())
+					if s, ok := agg.(aggregation.Sum); ok {
+						num, err = s.Sum()
+					} else if lv, ok := agg.(aggregation.LastValue); ok {
+						num, _, err = lv.LastValue()
+					} else {
+						// Do not use histograms for health checking.
+						return nil
+					}
+					if err != nil {
+						return err
+					}
+					value := num.CoerceToFloat64(desc.NumberKind())
+					lstr := enc.Encode(rec.Labels().Iter())
 
-			ret[desc.Name()] = append(ret[desc.Name()], exportRecord{
-				Labels: lstr,
-				Value:  value,
-			})
-			return nil
-		},
-	); err != nil {
+					ret[desc.Name()] = append(ret[desc.Name()], exportRecord{
+						Labels: lstr,
+						Value:  value,
+					})
+					return nil
+				},
+			)
+		}); err != nil {
 		return nil, err
 	}
 
