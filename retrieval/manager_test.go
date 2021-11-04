@@ -193,7 +193,7 @@ func TestReader_Progress(t *testing.T) {
 			monotonic bool,
 			point interface{},
 		) error {
-			nanos := point.(*metric_pb.DoubleDataPoint).TimeUnixNano
+			nanos := point.(*metric_pb.NumberDataPoint).TimeUnixNano
 			tseconds := time.Unix(0, int64(nanos)).Unix()
 
 			if tseconds <= int64(progressOffset)-progressBufferMargin {
@@ -249,25 +249,25 @@ func TestCombinePair(t *testing.T) {
 	t4 := t3.Add(time.Second)
 
 	dp1 := otlptest.DoubleDataPoint(
-		otlptest.Labels(
-			otlptest.Label("A", "B"),
-			otlptest.Label("C", "D"),
+		otlptest.Attributes(
+			otlptest.Attribute("A", "B"),
+			otlptest.Attribute("C", "D"),
 		),
 		t1, t2, 10,
 	)
 	dp2 := otlptest.DoubleDataPoint(
-		otlptest.Labels(
-			otlptest.Label("A", "C"),
-			otlptest.Label("B", "D"),
+		otlptest.Attributes(
+			otlptest.Attribute("A", "C"),
+			otlptest.Attribute("B", "D"),
 		),
 		t3, t4, 20,
 	)
 
-	p1 := otlptest.DoubleGauge("test", "", "", dp1)
-	p2 := otlptest.DoubleGauge("test", "", "", dp2)
+	p1 := otlptest.Gauge("test", "", "", dp1)
+	p2 := otlptest.Gauge("test", "", "", dp2)
 
 	require.True(t, combine(p1, p2))
-	require.Equal(t, p1, otlptest.DoubleGauge("test", "", "", dp1, dp2))
+	require.Equal(t, p1, otlptest.Gauge("test", "", "", dp1, dp2))
 }
 
 func TestAppendSamples(t *testing.T) {
@@ -276,7 +276,7 @@ func TestAppendSamples(t *testing.T) {
 		lsize    = 1024
 		overhead = 100
 	)
-	hugeLabels := otlptest.Labels(otlptest.Label("1kb", strings.Repeat("x", lsize)))
+	hugeLabels := otlptest.Attributes(otlptest.Attribute("1kb", strings.Repeat("x", lsize)))
 	recorder := &nopAppender{}
 
 	startTime := time.Now()
@@ -285,7 +285,7 @@ func TestAppendSamples(t *testing.T) {
 	var points []*metric_pb.Metric
 
 	newPoint := func(i int) *metric_pb.Metric {
-		return otlptest.DoubleGauge("test", "", "",
+		return otlptest.Gauge("test", "", "",
 			otlptest.DoubleDataPoint(
 				hugeLabels, startTime, startTime.Add(time.Duration(i)*time.Second), float64(i)))
 	}
@@ -324,10 +324,12 @@ func TestAppendSamples(t *testing.T) {
 			monotonic bool,
 			point interface{},
 		) error {
-			ddp := point.(*metric_pb.DoubleDataPoint)
-			received = append(received, ddp.Value)
+			ddp := point.(*metric_pb.NumberDataPoint)
+			number := ddp.Value
+			value := number.(*metric_pb.NumberDataPoint_AsDouble).AsDouble
+			received = append(received, value)
 			require.Equal(t, uint64(startTime.UnixNano()), ddp.StartTimeUnixNano)
-			require.Equal(t, uint64(startTime.Add(time.Second*time.Duration(int64(ddp.Value))).UnixNano()), ddp.TimeUnixNano)
+			require.Equal(t, uint64(startTime.Add(time.Second*time.Duration(int64(value))).UnixNano()), ddp.TimeUnixNano)
 			return nil
 		},
 		otlptest.ResourceMetrics(

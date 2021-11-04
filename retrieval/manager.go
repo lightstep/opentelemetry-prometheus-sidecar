@@ -450,73 +450,43 @@ func appendSamples(appender Appender, samples []*metric_pb.Metric) {
 // monotonicity settings between points of the same kind.
 func combine(pt0, pt1 *metric_pb.Metric) bool {
 	switch t0 := pt0.Data.(type) {
-	case *metric_pb.Metric_IntSum:
-		if t1, ok := pt1.Data.(*metric_pb.Metric_IntSum); !ok {
+	case *metric_pb.Metric_Sum:
+		if t1, ok := pt1.Data.(*metric_pb.Metric_Sum); !ok {
 			return false
 		} else {
-			t0.IntSum.DataPoints = append(
-				t0.IntSum.DataPoints,
-				t1.IntSum.DataPoints[0],
+			t0.Sum.DataPoints = append(
+				t0.Sum.DataPoints,
+				t1.Sum.DataPoints[0],
 			)
 		}
 
-	case *metric_pb.Metric_IntGauge:
-		if t1, ok := pt1.Data.(*metric_pb.Metric_IntGauge); !ok {
+	case *metric_pb.Metric_Gauge:
+		if t1, ok := pt1.Data.(*metric_pb.Metric_Gauge); !ok {
 			return false
 		} else {
-			t0.IntGauge.DataPoints = append(
-				t0.IntGauge.DataPoints,
-				t1.IntGauge.DataPoints[0],
+			t0.Gauge.DataPoints = append(
+				t0.Gauge.DataPoints,
+				t1.Gauge.DataPoints[0],
 			)
 		}
 
-	case *metric_pb.Metric_DoubleSum:
-		if t1, ok := pt1.Data.(*metric_pb.Metric_DoubleSum); !ok {
+	case *metric_pb.Metric_Histogram:
+		if t1, ok := pt1.Data.(*metric_pb.Metric_Histogram); !ok {
 			return false
 		} else {
-			t0.DoubleSum.DataPoints = append(
-				t0.DoubleSum.DataPoints,
-				t1.DoubleSum.DataPoints[0],
+			t0.Histogram.DataPoints = append(
+				t0.Histogram.DataPoints,
+				t1.Histogram.DataPoints[0],
 			)
 		}
 
-	case *metric_pb.Metric_DoubleGauge:
-		if t1, ok := pt1.Data.(*metric_pb.Metric_DoubleGauge); !ok {
+	case *metric_pb.Metric_Summary:
+		if t1, ok := pt1.Data.(*metric_pb.Metric_Summary); !ok {
 			return false
 		} else {
-			t0.DoubleGauge.DataPoints = append(
-				t0.DoubleGauge.DataPoints,
-				t1.DoubleGauge.DataPoints[0],
-			)
-		}
-
-	case *metric_pb.Metric_IntHistogram:
-		if t1, ok := pt1.Data.(*metric_pb.Metric_IntHistogram); !ok {
-			return false
-		} else {
-			t0.IntHistogram.DataPoints = append(
-				t0.IntHistogram.DataPoints,
-				t1.IntHistogram.DataPoints[0],
-			)
-		}
-
-	case *metric_pb.Metric_DoubleHistogram:
-		if t1, ok := pt1.Data.(*metric_pb.Metric_DoubleHistogram); !ok {
-			return false
-		} else {
-			t0.DoubleHistogram.DataPoints = append(
-				t0.DoubleHistogram.DataPoints,
-				t1.DoubleHistogram.DataPoints[0],
-			)
-		}
-
-	case *metric_pb.Metric_DoubleSummary:
-		if t1, ok := pt1.Data.(*metric_pb.Metric_DoubleSummary); !ok {
-			return false
-		} else {
-			t0.DoubleSummary.DataPoints = append(
-				t0.DoubleSummary.DataPoints,
-				t1.DoubleSummary.DataPoints[0],
+			t0.Summary.DataPoints = append(
+				t0.Summary.DataPoints,
+				t1.Summary.DataPoints[0],
 			)
 		}
 

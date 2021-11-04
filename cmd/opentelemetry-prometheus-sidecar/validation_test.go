@@ -32,7 +32,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb/wal"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/attribute"
-	metrics "go.opentelemetry.io/proto/otlp/metrics/v1"
+	otlpcommon "go.opentelemetry.io/proto/otlp/common/v1"
 	otlpmetrics "go.opentelemetry.io/proto/otlp/metrics/v1"
 	otlpresource "go.opentelemetry.io/proto/otlp/resource/v1"
 	grpcmeta "google.golang.org/grpc/metadata"
@@ -165,8 +165,8 @@ func TestValidationErrorReporting(t *testing.T) {
 	var droppedPointsFound, droppedSeriesFound int64
 	var got = 0
 outer:
-	for got < 5 || droppedPointsFound == 0 || droppedSeriesFound == 0 {
-		var data *metrics.ResourceMetrics
+	for got < 5 || droppedPointsFound == 0 || droppedSeriesFound == 0 || len(invalid) < 3 {
+		var data *otlpmetrics.ResourceMetrics
 		select {
 		case data = <-ms.metrics:
 		case <-timer.C:
@@ -184,26 +184,30 @@ outer:
 		) error {
 			switch name {
 			case "counter", "gauge", "correct":
-				if point.(*otlpmetrics.DoubleDataPoint).Value == 0 {
+				num := point.(*otlpmetrics.NumberDataPoint).Value
+				val := num.(*otlpmetrics.NumberDataPoint_AsDouble).AsDouble
+				if val == 0 {
 					// OK!
 				} else {
-					require.InEpsilon(t, 100, point.(*otlpmetrics.DoubleDataPoint).Value, 0.01)
+					require.InEpsilon(t, 100, val, 0.01)
 				}
 				got++
 			case config.DroppedPointsMetric:
-				droppedPointsFound = point.(*otlpmetrics.IntDataPoint).Value
+				num := point.(*otlpmetrics.NumberDataPoint).Value
+				droppedPointsFound = num.(*otlpmetrics.NumberDataPoint_AsInt).AsInt
 			case config.DroppedSeriesMetric:
-				droppedSeriesFound = point.(*otlpmetrics.IntDataPoint).Value
+				num := point.(*otlpmetrics.NumberDataPoint).Value
+				droppedSeriesFound = num.(*otlpmetrics.NumberDataPoint_AsInt).AsInt
 			case config.FailingMetricsMetric:
-				labels := point.(*otlpmetrics.IntDataPoint).Labels
+				attrs := point.(*otlpmetrics.NumberDataPoint).Attributes
 
 				var reason, mname string
-				for _, label := range labels {
-					switch attribute.Key(label.Key) {
+				for _, attr := range attrs {
+					switch attribute.Key(attr.Key) {
 					case common.ReasonKey:
-						reason = label.Value
+						reason = attr.Value.Value.(*otlpcommon.AnyValue_StringValue).StringValue
 					case common.MetricNameKey:
-						mname = label.Value
+						mname = attr.Value.Value.(*otlpcommon.AnyValue_StringValue).StringValue
 					}
 				}
 				invalid[reason+"/"+mname] = true

@@ -29,9 +29,11 @@ import (
 	"go.opentelemetry.io/contrib/propagators/b3"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/exporters/otlp"
-	"go.opentelemetry.io/otel/exporters/otlp/otlpgrpc"
-	metricotel "go.opentelemetry.io/otel/metric/global"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	metricglobal "go.opentelemetry.io/otel/metric/global"
 	"go.opentelemetry.io/otel/propagation"
 	metricsdk "go.opentelemetry.io/otel/sdk/export/metric"
 	"go.opentelemetry.io/otel/sdk/metric/aggregator/histogram"
@@ -195,7 +197,7 @@ func newConfig(opts ...Option) Config {
 // configurePropagators configures B3 propagation by default
 func configurePropagators(c *Config) error {
 	propagatorsMap := map[string]propagation.TextMapPropagator{
-		"b3":           b3.B3{},
+		"b3":           b3.New(),
 		"baggage":      propagation.Baggage{},
 		"tracecontext": propagation.TraceContext{},
 	}
@@ -226,22 +228,40 @@ func newResource(c *Config) (*resource.Resource, error) {
 	)
 }
 
-func newExporter(endpoint string, insecure bool, headers map[string]string, compressor string) *otlp.Exporter {
-	secureOption := otlpgrpc.WithTLSCredentials(credentials.NewClientTLSFromCert(nil, ""))
+func newTraceExporter(endpoint string, insecure bool, headers map[string]string, compressor string) *otlptrace.Exporter {
+	secureOption := otlptracegrpc.WithTLSCredentials(credentials.NewClientTLSFromCert(nil, ""))
 	if insecure {
-		secureOption = otlpgrpc.WithInsecure()
+		secureOption = otlptracegrpc.WithInsecure()
 	}
-	opts := []otlpgrpc.Option{
+	opts := []otlptracegrpc.Option{
 		secureOption,
-		otlpgrpc.WithEndpoint(endpoint),
-		otlpgrpc.WithHeaders(headers),
+		otlptracegrpc.WithEndpoint(endpoint),
+		otlptracegrpc.WithHeaders(headers),
 	}
 	if compressor != "" && compressor != "none" {
-		opts = append(opts, otlpgrpc.WithCompressor(compressor))
+		opts = append(opts, otlptracegrpc.WithCompressor(compressor))
 	}
-	driver := otlpgrpc.NewDriver(opts...)
-	return otlp.NewUnstartedExporter(driver,
-		otlp.WithMetricExportKindSelector(metricsdk.CumulativeExportKindSelector()),
+	return otlptrace.NewUnstarted(otlptracegrpc.NewClient(opts...))
+}
+
+func newMetricExporter(endpoint string, insecure bool, headers map[string]string, compressor string) *otlpmetric.Exporter {
+	secureOption := otlpmetricgrpc.WithTLSCredentials(credentials.NewClientTLSFromCert(nil, ""))
+	if insecure {
+		secureOption = otlpmetricgrpc.WithInsecure()
+	}
+	opts := []otlpmetricgrpc.Option{
+		secureOption,
+		otlpmetricgrpc.WithEndpoint(endpoint),
+		otlpmetricgrpc.WithHeaders(headers),
+	}
+	if compressor != "" && compressor != "none" {
+		opts = append(opts, otlpmetricgrpc.WithCompressor(compressor))
+	}
+	return otlpmetric.NewUnstarted(
+		otlpmetricgrpc.NewClient(opts...),
+		otlpmetric.WithMetricExportKindSelector(
+			metricsdk.CumulativeExportKindSelector(),
+		),
 	)
 }
 
@@ -250,15 +270,18 @@ func (c *Config) setupTracing(_ *Telemetry) (start, stop func(ctx context.Contex
 		level.Debug(c.logger).Log("msg", "tracing is disabled: no endpoint set")
 		return nil, nil, nil
 	}
-	spanExporter := newExporter(c.SpanExporterEndpoint, c.SpanExporterEndpointInsecure, c.Headers, c.Compressor)
+	spanExporter := newTraceExporter(c.SpanExporterEndpoint, c.SpanExporterEndpointInsecure, c.Headers, c.Compressor)
 
-	// TODO: Make a way to set the export timeout, there is
-	// apparently not such a thing for OTel-Go:
-	// https://github.com/open-telemetry/opentelemetry-go/issues/1386
+	// Note: Resources given to tracing are relatively small, it's
+	// just the supervisor tracing a periodic status report.
 	tp := trace.NewTracerProvider(
-		trace.WithConfig(trace.Config{DefaultSampler: trace.AlwaysSample()}),
-		trace.WithSyncer(spanExporter),
+		trace.WithSampler(trace.AlwaysSample()),
 		trace.WithResource(c.resource),
+		trace.WithBatcher(spanExporter,
+			trace.WithBatchTimeout(1*time.Millisecond),
+			trace.WithMaxQueueSize(2),
+			trace.WithExportTimeout(c.ExportTimeout),
+		),
 	)
 
 	if err := configurePropagators(c); err != nil {
@@ -279,30 +302,26 @@ func (c *Config) setupMetrics(telem *Telemetry) (start, stop func(ctx context.Co
 		level.Debug(c.logger).Log("msg", "metrics are disabled: no endpoint set")
 		return nil, nil, nil
 	}
-	metricExporter := newExporter(c.MetricsExporterEndpoint, c.MetricsExporterEndpointInsecure, c.Headers, c.Compressor)
+	metricExporter := newMetricExporter(c.MetricsExporterEndpoint, c.MetricsExporterEndpointInsecure, c.Headers, c.Compressor)
 
 	cont := controller.New(
-		newCopyToCounterProcessor(
-			processor.New(
-				selector.NewWithHistogramDistribution(histogram.WithExplicitBoundaries([]float64{
-					0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10,
-				})),
-				metricsdk.CumulativeExportKindSelector(),
-				// Note: we don't really need memory for all metrics, and this
-				// becomes a problem when there is high cardinality.  This is to
-				// enable the healthz handler support in this package.
-				processor.WithMemory(true),
-			),
+		processor.NewFactory(
+			selector.NewWithHistogramDistribution(histogram.WithExplicitBoundaries([]float64{
+				0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10,
+			})),
+			metricsdk.CumulativeExportKindSelector(),
+			// Note: we don't really need memory for all metrics, and this
+			// becomes a problem when there is high cardinality.  This is to
+			// enable the healthz handler support in this package.
+			processor.WithMemory(true),
 		),
-		controller.WithPusher(metricExporter),
+		controller.WithExporter(metricExporter),
 		controller.WithResource(c.resource),
 		controller.WithCollectPeriod(c.MetricReportingPeriod),
 		controller.WithPushTimeout(c.ExportTimeout),
 	)
 
-	provider := cont.MeterProvider()
-
-	metricotel.SetMeterProvider(provider)
+	metricglobal.SetMeterProvider(cont)
 
 	telem.Controller = cont
 
@@ -311,11 +330,11 @@ func (c *Config) setupMetrics(telem *Telemetry) (start, stop func(ctx context.Co
 				return errors.Wrap(err, "failed to start OTLP exporter")
 			}
 
-			if err := runtimeMetrics.Start(runtimeMetrics.WithMeterProvider(provider)); err != nil {
+			if err := runtimeMetrics.Start(runtimeMetrics.WithMeterProvider(cont)); err != nil {
 				return errors.Wrap(err, "failed to start runtime metrics")
 			}
 
-			if err := hostMetrics.Start(hostMetrics.WithMeterProvider(provider)); err != nil {
+			if err := hostMetrics.Start(hostMetrics.WithMeterProvider(cont)); err != nil {
 				return errors.Wrap(err, "failed to start host metrics")
 			}
 
@@ -339,7 +358,7 @@ func (c *Config) setupMetrics(telem *Telemetry) (start, stop func(ctx context.Co
 
 func InternalOnly() *Telemetry {
 	cont := controller.New(
-		processor.New(
+		processor.NewFactory(
 			selector.NewWithInexpensiveDistribution(),
 			metricsdk.CumulativeExportKindSelector(),
 			processor.WithMemory(true),
@@ -347,7 +366,7 @@ func InternalOnly() *Telemetry {
 		controller.WithCollectPeriod(0),
 	)
 
-	metricotel.SetMeterProvider(cont.MeterProvider())
+	metricglobal.SetMeterProvider(cont)
 	return &Telemetry{
 		Controller: cont,
 	}

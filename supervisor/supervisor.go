@@ -38,7 +38,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/semconv"
+	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -221,7 +221,7 @@ func (s *Supervisor) healthcheckErr(ctx context.Context) (err error) {
 	}()
 
 	span.AddEvent("recent-logs", trace.WithAttributes(
-		attribute.Array("activity", s.copyLogs()),
+		attribute.StringSlice("activity", s.copyLogs()),
 	))
 
 	var hr health.Response
@@ -280,7 +280,7 @@ func (s *Supervisor) finalSpan(err error) {
 	defer span.End()
 
 	span.AddEvent("recent-logs", trace.WithAttributes(
-		attribute.Array("activity", s.copyLogs()),
+		attribute.StringSlice("activity", s.copyLogs()),
 	))
 
 	if err != nil {
@@ -419,9 +419,9 @@ func (s *Supervisor) isStackdump(text []byte) bool {
 }
 
 func mapToStringAttributes(mapValues map[string]string) []attribute.KeyValue {
-        attrs := make([]attribute.KeyValue, 0, len(mapValues))
-        for name, value := range mapValues {
-                attrs = append(attrs, attribute.String(name, value))
-        }
-        return attrs
+	attrs := make([]attribute.KeyValue, 0, len(mapValues))
+	for name, value := range mapValues {
+		attrs = append(attrs, attribute.String(name, value))
+	}
+	return attrs
 }

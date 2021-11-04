@@ -20,13 +20,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
-	"go.opentelemetry.io/otel/metric"
 	"net/http"
 	"net/url"
 	"strings"
 	"sync"
 	"time"
+
+	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
+	"go.opentelemetry.io/otel/metric"
 
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/common"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
@@ -55,7 +56,7 @@ type Cache struct {
 	seenJobs       map[string]struct{}
 	staticMetadata map[string]*config.MetadataEntry
 
-	currentMetricsObs metric.Int64UpDownSumObserver
+	currentMetricsObs metric.Int64UpDownCounterObserver
 	mtx               sync.Mutex
 }
 
@@ -83,7 +84,7 @@ func NewCache(client *http.Client, targetMetadataURL *url.URL, metadataURL *url.
 		c.staticMetadata[m.Metric] = m
 	}
 
-	c.currentMetricsObs = sidecar.OTelMeterMust.NewInt64UpDownSumObserver(
+	c.currentMetricsObs = sidecar.OTelMeterMust.NewInt64UpDownCounterObserver(
 		config.CurrentMetricsMetric,
 		func(ctx context.Context, result metric.Int64ObserverResult) {
 			c.mtx.Lock()

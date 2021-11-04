@@ -73,7 +73,7 @@ type seriesCache struct {
 	// Map for jobs where "instance" has been relabelled
 	jobInstanceMap map[string]string
 
-	currentSeriesObs metric.Int64UpDownSumObserver
+	currentSeriesObs metric.Int64UpDownCounterObserver
 
 	failingReporter common.FailingReporter
 }
@@ -179,7 +179,7 @@ func newSeriesCache(
 		failingReporter: failingReporter,
 	}
 
-	sc.currentSeriesObs = sidecar.OTelMeterMust.NewInt64UpDownSumObserver(
+	sc.currentSeriesObs = sidecar.OTelMeterMust.NewInt64UpDownCounterObserver(
 		config.CurrentSeriesMetric,
 		func(ctx context.Context, result metric.Int64ObserverResult) {
 			sc.mtx.Lock()

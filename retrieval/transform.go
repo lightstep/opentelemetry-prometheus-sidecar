@@ -119,7 +119,7 @@ func (b *sampleBuilder) next(ctx context.Context, samples []record.RefSample) (*
 
 	// Allocate the proto and fill in its metadata.
 	point := protoMetric(entry.desc)
-	labels := protoStringLabels(entry.desc.Labels)
+	attrs := protoAttributes(entry.desc.Labels)
 
 	var resetTimestamp int64
 	switch entry.metadata.MetricType {
@@ -128,30 +128,30 @@ func (b *sampleBuilder) next(ctx context.Context, samples []record.RefSample) (*
 		resetTimestamp, value = b.series.getResetAdjusted(entry, sample.T, sample.V)
 
 		if entry.metadata.ValueType == config.INT64 {
-			point.Data = &metric_pb.Metric_IntSum{
-				IntSum: monotonicIntegerPoint(labels, resetTimestamp, sample.T, value),
+			point.Data = &metric_pb.Metric_Sum{
+				Sum: monotonicIntegerPoint(attrs, resetTimestamp, sample.T, value),
 			}
 		} else {
-			point.Data = &metric_pb.Metric_DoubleSum{
-				DoubleSum: monotonicDoublePoint(labels, resetTimestamp, sample.T, value),
+			point.Data = &metric_pb.Metric_Sum{
+				Sum: monotonicDoublePoint(attrs, resetTimestamp, sample.T, value),
 			}
 		}
 
 	case textparse.MetricTypeGauge, textparse.MetricTypeUnknown:
 		if entry.metadata.ValueType == config.INT64 {
-			point.Data = &metric_pb.Metric_IntGauge{
-				IntGauge: intGauge(labels, sample.T, sample.V),
+			point.Data = &metric_pb.Metric_Gauge{
+				Gauge: intGauge(attrs, sample.T, sample.V),
 			}
 		} else {
-			point.Data = &metric_pb.Metric_DoubleGauge{
-				DoubleGauge: doubleGauge(labels, sample.T, sample.V),
+			point.Data = &metric_pb.Metric_Gauge{
+				Gauge: doubleGauge(attrs, sample.T, sample.V),
 			}
 		}
 
 	case textparse.MetricTypeSummary:
 		// We pass in the original lset for matching since Prometheus's target label must
 		// be the same as well.
-		var value *metric_pb.DoubleSummaryDataPoint
+		var value *metric_pb.SummaryDataPoint
 		value, resetTimestamp, tailSamples, err = b.buildSummary(ctx, entry.metadata.Metric, entry.lset, samples)
 		if value == nil || err != nil {
 			if err == nil {
@@ -160,25 +160,25 @@ func (b *sampleBuilder) next(ctx context.Context, samples []record.RefSample) (*
 			return nil, tailSamples, err
 		}
 
-		value.Labels = labels
+		value.Attributes = attrs
 		value.StartTimeUnixNano = getNanos(resetTimestamp)
 		value.TimeUnixNano = getNanos(sample.T)
 
-		doubleSummary := &metric_pb.DoubleSummary{
-			DataPoints: []*metric_pb.DoubleSummaryDataPoint{
+		doubleSummary := &metric_pb.Summary{
+			DataPoints: []*metric_pb.SummaryDataPoint{
 				value,
 			},
 		}
 
-		point.Data = &metric_pb.Metric_DoubleSummary{
-			DoubleSummary: doubleSummary,
+		point.Data = &metric_pb.Metric_Summary{
+			Summary: doubleSummary,
 		}
 
 	case textparse.MetricTypeHistogram:
 		// We pass in the original lset for matching since Prometheus's target label must
 		// be the same as well.
-		// Note: Always using DoubleHistogram points, ignores entry.metadata.ValueType.
-		var value *metric_pb.DoubleHistogramDataPoint
+		// Note: Always using Histogram points, ignores entry.metadata.ValueType.
+		var value *metric_pb.HistogramDataPoint
 		value, resetTimestamp, tailSamples, err = b.buildHistogram(ctx, entry.metadata.Metric, entry.lset, samples)
 		if value == nil || err != nil {
 			if err == nil {
@@ -187,19 +187,19 @@ func (b *sampleBuilder) next(ctx context.Context, samples []record.RefSample) (*
 			return nil, tailSamples, err
 		}
 
-		value.Labels = labels
+		value.Attributes = attrs
 		value.StartTimeUnixNano = getNanos(resetTimestamp)
 		value.TimeUnixNano = getNanos(sample.T)
 
-		doubleHist := &metric_pb.DoubleHistogram{
+		doubleHist := &metric_pb.Histogram{
 			AggregationTemporality: otlpCUMULATIVE,
-			DataPoints: []*metric_pb.DoubleHistogramDataPoint{
+			DataPoints: []*metric_pb.HistogramDataPoint{
 				value,
 			},
 		}
 
-		point.Data = &metric_pb.Metric_DoubleHistogram{
-			DoubleHistogram: doubleHist,
+		point.Data = &metric_pb.Metric_Histogram{
+			Histogram: doubleHist,
 		}
 
 	default:
@@ -217,7 +217,7 @@ func (b *sampleBuilder) next(ctx context.Context, samples []record.RefSample) (*
 	return point, tailSamples, nil
 }
 
-func protoLabel(l labels.Label) *common_pb.KeyValue {
+func protoAttribute(l labels.Label) *common_pb.KeyValue {
 	return &common_pb.KeyValue{
 		Key: l.Name,
 		Value: &common_pb.AnyValue{
@@ -225,13 +225,6 @@ func protoLabel(l labels.Label) *common_pb.KeyValue {
 				StringValue: l.Value,
 			},
 		},
-	}
-}
-
-func protoStringLabel(l labels.Label) *common_pb.StringKeyValue {
-	return &common_pb.StringKeyValue{
-		Key:   l.Name,
-		Value: l.Value,
 	}
 }
 
@@ -243,26 +236,18 @@ func protoMetric(desc *tsDesc) *metric_pb.Metric {
 	}
 }
 
-func protoResourceAttributes(labels labels.Labels) []*common_pb.KeyValue {
+func protoAttributes(labels labels.Labels) []*common_pb.KeyValue {
 	ret := make([]*common_pb.KeyValue, len(labels))
 	for i := range labels {
-		ret[i] = protoLabel(labels[i])
+		ret[i] = protoAttribute(labels[i])
 	}
 	return ret
 }
 
 func LabelsToResource(labels labels.Labels) *resource_pb.Resource {
 	return &resource_pb.Resource{
-		Attributes: protoResourceAttributes(labels),
+		Attributes: protoAttributes(labels),
 	}
-}
-
-func protoStringLabels(labels labels.Labels) []*common_pb.StringKeyValue {
-	ret := make([]*common_pb.StringKeyValue, len(labels))
-	for i := range labels {
-		ret[i] = protoStringLabel(labels[i])
-	}
-	return ret
 }
 
 const (
@@ -327,13 +312,13 @@ func (b *sampleBuilder) buildSummary(
 	baseName string,
 	matchLset labels.Labels,
 	samples []record.RefSample,
-) (*metric_pb.DoubleSummaryDataPoint, int64, []record.RefSample, error) {
+) (*metric_pb.SummaryDataPoint, int64, []record.RefSample, error) {
 	var (
 		consumed       int
 		count, sum     float64
 		resetTimestamp int64
 		lastTimestamp  int64
-		values         = make([]*metric_pb.DoubleSummaryDataPoint_ValueAtQuantile, 0)
+		values         = make([]*metric_pb.SummaryDataPoint_ValueAtQuantile, 0)
 	)
 	// We assume that all series belonging to the summary are sequential. Consume series
 	// until we hit a new metric.
@@ -392,7 +377,7 @@ Loop:
 				// TODO: increment metric.
 				continue
 			}
-			values = append(values, &metric_pb.DoubleSummaryDataPoint_ValueAtQuantile{
+			values = append(values, &metric_pb.SummaryDataPoint_ValueAtQuantile{
 				Quantile: quantile,
 				Value:    v,
 			})
@@ -413,7 +398,7 @@ Loop:
 		return nil, 0, samples[consumed:], nil
 	}
 
-	summary := &metric_pb.DoubleSummaryDataPoint{
+	summary := &metric_pb.SummaryDataPoint{
 		Count:          uint64(count),
 		Sum:            sum,
 		QuantileValues: values,
@@ -429,7 +414,7 @@ func (b *sampleBuilder) buildHistogram(
 	baseName string,
 	matchLset labels.Labels,
 	samples []record.RefSample,
-) (*metric_pb.DoubleHistogramDataPoint, int64, []record.RefSample, error) {
+) (*metric_pb.HistogramDataPoint, int64, []record.RefSample, error) {
 	var (
 		consumed       int
 		count, sum     float64
@@ -528,7 +513,7 @@ Loop:
 	if len(dist.bounds) > 0 {
 		bounds = dist.bounds[:len(dist.bounds)-1]
 	}
-	histogram := &metric_pb.DoubleHistogramDataPoint{
+	histogram := &metric_pb.HistogramDataPoint{
 		Count:          uint64(count),
 		Sum:            sum,
 		BucketCounts:   values,
@@ -575,52 +560,52 @@ func labelsEqual(a, b labels.Labels, commonLabel string) bool {
 	return i == len(a) && j == len(b)
 }
 
-func monotonicIntegerPoint(labels []*common_pb.StringKeyValue, start, end int64, value float64) *metric_pb.IntSum {
-	integer := &metric_pb.IntDataPoint{
-		Labels:            labels,
+func monotonicIntegerPoint(attrs []*common_pb.KeyValue, start, end int64, value float64) *metric_pb.Sum {
+	integer := &metric_pb.NumberDataPoint{
+		Attributes:        attrs,
 		StartTimeUnixNano: getNanos(start),
 		TimeUnixNano:      getNanos(end),
-		Value:             int64(value + 0.5),
+		Value:             &metric_pb.NumberDataPoint_AsInt{AsInt: int64(value + 0.5)},
 	}
-	return &metric_pb.IntSum{
+	return &metric_pb.Sum{
 		IsMonotonic:            true,
 		AggregationTemporality: otlpCUMULATIVE,
-		DataPoints:             []*metric_pb.IntDataPoint{integer},
+		DataPoints:             []*metric_pb.NumberDataPoint{integer},
 	}
 }
 
-func monotonicDoublePoint(labels []*common_pb.StringKeyValue, start, end int64, value float64) *metric_pb.DoubleSum {
-	double := &metric_pb.DoubleDataPoint{
-		Labels:            labels,
+func monotonicDoublePoint(attrs []*common_pb.KeyValue, start, end int64, value float64) *metric_pb.Sum {
+	double := &metric_pb.NumberDataPoint{
+		Attributes:        attrs,
 		StartTimeUnixNano: getNanos(start),
 		TimeUnixNano:      getNanos(end),
-		Value:             value,
+		Value:             &metric_pb.NumberDataPoint_AsDouble{AsDouble: value},
 	}
-	return &metric_pb.DoubleSum{
+	return &metric_pb.Sum{
 		IsMonotonic:            true,
 		AggregationTemporality: otlpCUMULATIVE,
-		DataPoints:             []*metric_pb.DoubleDataPoint{double},
+		DataPoints:             []*metric_pb.NumberDataPoint{double},
 	}
 }
 
-func intGauge(labels []*common_pb.StringKeyValue, ts int64, value float64) *metric_pb.IntGauge {
-	integer := &metric_pb.IntDataPoint{
-		Labels:       labels,
+func intGauge(attrs []*common_pb.KeyValue, ts int64, value float64) *metric_pb.Gauge {
+	integer := &metric_pb.NumberDataPoint{
+		Attributes:   attrs,
 		TimeUnixNano: getNanos(ts),
-		Value:        int64(value + 0.5),
+		Value:        &metric_pb.NumberDataPoint_AsInt{AsInt: int64(value + 0.5)},
 	}
-	return &metric_pb.IntGauge{
-		DataPoints: []*metric_pb.IntDataPoint{integer},
+	return &metric_pb.Gauge{
+		DataPoints: []*metric_pb.NumberDataPoint{integer},
 	}
 }
 
-func doubleGauge(labels []*common_pb.StringKeyValue, ts int64, value float64) *metric_pb.DoubleGauge {
-	double := &metric_pb.DoubleDataPoint{
-		Labels:       labels,
+func doubleGauge(attrs []*common_pb.KeyValue, ts int64, value float64) *metric_pb.Gauge {
+	double := &metric_pb.NumberDataPoint{
+		Attributes:   attrs,
 		TimeUnixNano: getNanos(ts),
-		Value:        value,
+		Value:        &metric_pb.NumberDataPoint_AsDouble{AsDouble: value},
 	}
-	return &metric_pb.DoubleGauge{
-		DataPoints: []*metric_pb.DoubleDataPoint{double},
+	return &metric_pb.Gauge{
+		DataPoints: []*metric_pb.NumberDataPoint{double},
 	}
 }

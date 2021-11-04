@@ -12,7 +12,7 @@ import (
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/telemetry"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"go.opentelemetry.io/otel/semconv"
+	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
 )
 
 type ShutdownFunc func(context.Context)

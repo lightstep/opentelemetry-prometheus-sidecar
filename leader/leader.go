@@ -3,10 +3,11 @@ package leader
 import (
 	"context"
 	"fmt"
+	"time"
+
 	sidecar "github.com/lightstep/opentelemetry-prometheus-sidecar"
 	"github.com/lightstep/opentelemetry-prometheus-sidecar/config"
 	"go.opentelemetry.io/otel/metric"
-	"time"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -35,7 +36,7 @@ type candidate struct {
 	id           string
 	elector      *leaderelection.LeaderElector
 	logger       log.Logger
-	leaderMetric metric.Int64UpDownSumObserver
+	leaderMetric metric.Int64UpDownCounterObserver
 }
 
 type LoggingController struct {
@@ -76,7 +77,7 @@ func NewKubernetesCandidate(client kubernetes.Interface, namespace, name, id str
 		logger: logger,
 	}
 
-	c.leaderMetric = sidecar.OTelMeterMust.NewInt64UpDownSumObserver(
+	c.leaderMetric = sidecar.OTelMeterMust.NewInt64UpDownCounterObserver(
 		config.LeadershipMetric,
 		func(ctx context.Context, result metric.Int64ObserverResult) {
 			if c.IsLeader() {
