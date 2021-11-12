@@ -27,7 +27,7 @@ type (
 	// Timer is a simple instrument for measuring a section of
 	// code, a kind of light-weight span that outputs a
 	// ValueRecorder of its duration.
-	Timer metric.Float64ValueRecorder
+	Timer metric.Float64Histogram
 
 	Timing struct {
 		ctx     context.Context
@@ -39,7 +39,7 @@ type (
 )
 
 func NewTimer(name, desc string) Timer {
-	return Timer(sidecar.OTelMeterMust.NewFloat64ValueRecorder(
+	return Timer(sidecar.OTelMeterMust.NewFloat64Histogram(
 		name,
 		metric.WithDescription(desc),
 		metric.WithUnit("s"),
@@ -62,7 +62,7 @@ func (t Timing) Stop(err *error, kvs ...attribute.KeyValue) {
 
 	kvs = append(kvs, attribute.String("error", errorval))
 
-	metric.Float64ValueRecorder(t.timer).Record(t.ctx, time.Since(t.started).Seconds(), kvs...)
+	metric.Float64Histogram(t.timer).Record(t.ctx, time.Since(t.started).Seconds(), kvs...)
 }
 
 func NewCounter(name, desc string) Counter {

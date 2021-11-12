@@ -77,9 +77,8 @@ var _ leader.Candidate = (*alwaysLeaderCandidate)(nil)
 
 func testController(t *testing.T) *tester {
 	cont := telemetry.InternalOnly().Controller
-	provider := cont.MeterProvider()
-	produced := metric.Must(provider.Meter("test")).NewInt64Counter(config.ProducedPointsMetric)
-	outcome := metric.Must(provider.Meter("test")).NewInt64Counter(config.OutcomeMetric)
+	produced := metric.Must(cont.Meter("test")).NewInt64Counter(config.ProducedPointsMetric)
+	outcome := metric.Must(cont.Meter("test")).NewInt64Counter(config.OutcomeMetric)
 	configGetter := &promGlobalConfigGetter{externalLabels: labels.FromStrings("test_name", "test_value")}
 
 	checker := NewChecker(&controllerGetter{cont}, configGetter, 0 /* uncached */, telemetry.DefaultLogger(), config.DefaultHealthCheckThresholdRatio, &alwaysLeaderCandidate{})

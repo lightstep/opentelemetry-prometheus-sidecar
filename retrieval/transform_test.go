@@ -40,32 +40,34 @@ type seriesMap map[uint64]labels.Labels
 
 func TestSampleBuilder(t *testing.T) {
 	type (
-		DoubleHistogramBucketStruct      = otlptest.DoubleHistogramBucketStruct
-		DoubleSummaryQuantileValueStruct = otlptest.DoubleSummaryQuantileValueStruct
+		HistogramBucketStruct      = otlptest.HistogramBucketStruct
+		SummaryQuantileValueStruct = otlptest.SummaryQuantileValueStruct
 	)
 	var (
-		IntSumCumulativeMonotonic    = otlptest.IntSumCumulativeMonotonic
-		IntGauge                     = otlptest.IntGauge
-		IntDataPoint                 = otlptest.IntDataPoint
-		DoubleSumCumulativeMonotonic = otlptest.DoubleSumCumulativeMonotonic
-		DoubleGauge                  = otlptest.DoubleGauge
-		DoubleDataPoint              = otlptest.DoubleDataPoint
-		DoubleHistogramDataPoint     = otlptest.DoubleHistogramDataPoint
-		DoubleHistogramCumulative    = otlptest.DoubleHistogramCumulative
-		DoubleHistogramBucket        = otlptest.DoubleHistogramBucket
-		DoubleSummary                = otlptest.DoubleSummary
-		DoubleSummaryDataPoint       = otlptest.DoubleSummaryDataPoint
-		DoubleSummaryQuantileValue   = otlptest.DoubleSummaryQuantileValue
-		Labels                       = otlptest.Labels
-		Label                        = otlptest.Label
+		DoubleDataPoint = otlptest.DoubleDataPoint
+		IntDataPoint    = otlptest.IntDataPoint
+
+		SumCumulativeMonotonic = otlptest.SumCumulativeMonotonic
+		Gauge                  = otlptest.Gauge
+
+		HistogramBucket     = otlptest.HistogramBucket
+		HistogramCumulative = otlptest.HistogramCumulative
+		HistogramDataPoint  = otlptest.HistogramDataPoint
+
+		Summary              = otlptest.Summary
+		SummaryDataPoint     = otlptest.SummaryDataPoint
+		SummaryQuantileValue = otlptest.SummaryQuantileValue
+
+		Attribute  = otlptest.Attribute
+		Attributes = otlptest.Attributes
 
 		DoubleCounterPoint = func(
-			labels []*common_pb.StringKeyValue,
+			labels []*common_pb.KeyValue,
 			name string,
 			start, end time.Time,
 			value float64,
 		) *metric_pb.Metric {
-			return DoubleSumCumulativeMonotonic(
+			return SumCumulativeMonotonic(
 				name, "", "",
 				DoubleDataPoint(
 					labels,
@@ -75,13 +77,13 @@ func TestSampleBuilder(t *testing.T) {
 				),
 			)
 		}
-		DoubleGaugePoint = func(
-			labels []*common_pb.StringKeyValue,
+		GaugePoint = func(
+			labels []*common_pb.KeyValue,
 			name string,
 			end time.Time,
 			value float64,
 		) *metric_pb.Metric {
-			return DoubleGauge(
+			return Gauge(
 				name, "", "",
 				DoubleDataPoint(
 					labels,
@@ -92,12 +94,12 @@ func TestSampleBuilder(t *testing.T) {
 			)
 		}
 		IntCounterPoint = func(
-			labels []*common_pb.StringKeyValue,
+			labels []*common_pb.KeyValue,
 			name string,
 			start, end time.Time,
 			value int64,
 		) *metric_pb.Metric {
-			return IntSumCumulativeMonotonic(
+			return SumCumulativeMonotonic(
 				name, "", "",
 				IntDataPoint(
 					labels,
@@ -108,12 +110,12 @@ func TestSampleBuilder(t *testing.T) {
 			)
 		}
 		IntGaugePoint = func(
-			labels []*common_pb.StringKeyValue,
+			labels []*common_pb.KeyValue,
 			name string,
 			end time.Time,
 			value int64,
 		) *metric_pb.Metric {
-			return IntGauge(
+			return Gauge(
 				name, "", "",
 				IntDataPoint(
 					labels,
@@ -124,16 +126,16 @@ func TestSampleBuilder(t *testing.T) {
 			)
 		}
 
-		DoubleHistogramPoint = func(
-			labels []*common_pb.StringKeyValue,
+		HistogramPoint = func(
+			labels []*common_pb.KeyValue,
 			name string,
 			start, end time.Time,
 			sum float64, count uint64,
-			buckets ...DoubleHistogramBucketStruct,
+			buckets ...HistogramBucketStruct,
 		) *metric_pb.Metric {
-			return DoubleHistogramCumulative(
+			return HistogramCumulative(
 				name, "", "",
-				DoubleHistogramDataPoint(
+				HistogramDataPoint(
 					labels,
 					start,
 					end,
@@ -144,16 +146,16 @@ func TestSampleBuilder(t *testing.T) {
 			)
 		}
 
-		DoubleSummaryPoint = func(
-			labels []*common_pb.StringKeyValue,
+		SummaryPoint = func(
+			labels []*common_pb.KeyValue,
 			name string,
 			start, end time.Time,
 			sum float64, count uint64,
-			quantiles ...DoubleSummaryQuantileValueStruct,
+			quantiles ...SummaryQuantileValueStruct,
 		) *metric_pb.Metric {
-			return DoubleSummary(
+			return Summary(
 				name, "", "",
-				DoubleSummaryDataPoint(
+				SummaryDataPoint(
 					labels,
 					start,
 					end,
@@ -240,9 +242,9 @@ func TestSampleBuilder(t *testing.T) {
 			},
 			result: []*metric_pb.Metric{
 				DoubleCounterPoint( // 1: second point in series, first reported.
-					Labels(
-						Label("instance", "instance1"),
-						Label("job", "job1"),
+					Attributes(
+						Attribute("instance", "instance1"),
+						Attribute("job", "job1"),
 					),
 					"metric2",
 					time.Unix(2, 0),
@@ -250,9 +252,9 @@ func TestSampleBuilder(t *testing.T) {
 					0,
 				),
 				DoubleCounterPoint( // 1: second point in series, first reported.
-					Labels(
-						Label("instance", "instance1"),
-						Label("job", "job1"),
+					Attributes(
+						Attribute("instance", "instance1"),
+						Attribute("job", "job1"),
 					),
 					"metric2",
 					time.Unix(2, 0),
@@ -260,9 +262,9 @@ func TestSampleBuilder(t *testing.T) {
 					2.5,
 				),
 				DoubleCounterPoint( // 2: third point in series, second reported.
-					Labels(
-						Label("instance", "instance1"),
-						Label("job", "job1"),
+					Attributes(
+						Attribute("instance", "instance1"),
+						Attribute("job", "job1"),
 					),
 					"metric2",
 					time.Unix(2, 0),
@@ -270,71 +272,71 @@ func TestSampleBuilder(t *testing.T) {
 					3.5,
 				),
 				DoubleCounterPoint( // 3: A reset
-					Labels(
-						Label("instance", "instance1"),
-						Label("job", "job1"),
+					Attributes(
+						Attribute("instance", "instance1"),
+						Attribute("job", "job1"),
 					),
 					"metric2",
 					time.Unix(5, 0),
 					time.Unix(5, 0),
 					3,
 				),
-				DoubleGaugePoint( // 4: A double Gauge
-					Labels(
-						Label("a", "1"),
-						Label("instance", "instance1"),
-						Label("job", "job1"),
+				GaugePoint( // 4: A double Gauge
+					Attributes(
+						Attribute("a", "1"),
+						Attribute("instance", "instance1"),
+						Attribute("job", "job1"),
 					),
 					"metric1",
 					time.Unix(1, 0),
 					200,
 				),
-				DoubleGaugePoint( // 5: A double gauge w/ 10 keys
-					Labels(
-						Label("a", "1"),
-						Label("b", "2"),
-						Label("c", "3"),
-						Label("d", "4"),
-						Label("e", "5"),
-						Label("f", "6"),
-						Label("g", "7"),
-						Label("h", "8"),
-						Label("i", "9"),
-						Label("instance", "instance1"),
-						Label("j", "10"),
-						Label("job", "job1"),
+				GaugePoint( // 5: A double gauge w/ 10 keys
+					Attributes(
+						Attribute("a", "1"),
+						Attribute("b", "2"),
+						Attribute("c", "3"),
+						Attribute("d", "4"),
+						Attribute("e", "5"),
+						Attribute("f", "6"),
+						Attribute("g", "7"),
+						Attribute("h", "8"),
+						Attribute("i", "9"),
+						Attribute("instance", "instance1"),
+						Attribute("j", "10"),
+						Attribute("job", "job1"),
 					),
 					"labelnum_ok",
 					time.Unix(3, 0),
 					1,
 				),
-				DoubleGaugePoint( // 6: A double gauge w/ 11 keys
-					Labels(
-						Label("a", "1"),
-						Label("b", "2"),
-						Label("c", "3"),
-						Label("d", "4"),
-						Label("e", "5"),
-						Label("f", "6"),
-						Label("g", "7"),
-						Label("h", "8"),
-						Label("i", "9"),
-						Label("instance", "instance1"),
-						Label("j", "10"),
-						Label("job", "job1"),
-						Label("k", "11"),
+				GaugePoint( // 6: A double gauge w/ 11 keys
+					Attributes(
+						Attribute("a", "1"),
+						Attribute("b", "2"),
+						Attribute("c", "3"),
+						Attribute("d", "4"),
+						Attribute("e", "5"),
+						Attribute("f", "6"),
+						Attribute("g", "7"),
+						Attribute("h", "8"),
+						Attribute("i", "9"),
+						Attribute("instance", "instance1"),
+						Attribute("j", "10"),
+						Attribute("job", "job1"),
+						Attribute("k", "11"),
 					),
 					"labelnum_11k",
 					time.Unix(4, 0),
 					2,
 				),
-				DoubleGaugePoint( // 7
+				GaugePoint( // 7
 					// A double gauge w/ 2 labels
-					Labels(
-						Label("a", "1"),
-						Label("instance", "instance1"),
-						Label("job", "job2"),
-						Label("metric_label", "aaa"),
+					Attributes(
+						Attribute("a", "1"),
+						Attribute("instance", "instance1"),
+						Attribute("job", "job2"),
+						Attribute("metric_label", "aaa"),
 					),
 					"resource_from_metric",
 					time.Unix(1, 0),
@@ -342,9 +344,9 @@ func TestSampleBuilder(t *testing.T) {
 				),
 				IntGaugePoint( // 8
 					// An integer gauge: rounding from 12.5 to 13
-					Labels(
-						Label("instance", "instance1"),
-						Label("job", "job1"),
+					Attributes(
+						Attribute("instance", "instance1"),
+						Attribute("job", "job1"),
 					),
 					"metric3",
 					time.Unix(8, 0),
@@ -352,9 +354,9 @@ func TestSampleBuilder(t *testing.T) {
 				),
 				IntCounterPoint( // 9
 					// An integer counter.
-					Labels(
-						Label("instance", "instance1"),
-						Label("job", "job1"),
+					Attributes(
+						Attribute("instance", "instance1"),
+						Attribute("job", "job1"),
 					),
 					"metric4",
 					time.Unix(6, 0),
@@ -363,28 +365,28 @@ func TestSampleBuilder(t *testing.T) {
 				),
 				IntCounterPoint( // 10
 					// An integer counter.
-					Labels(
-						Label("instance", "instance1"),
-						Label("job", "job1"),
+					Attributes(
+						Attribute("instance", "instance1"),
+						Attribute("job", "job1"),
 					),
 					"metric4",
 					time.Unix(6, 0),
 					time.Unix(7, 0),
 					3,
 				),
-				DoubleGaugePoint( // 11
+				GaugePoint( // 11
 					// A double gauge.
-					Labels(
-						Label("instance", "instance1"),
-						Label("job", "job1"),
+					Attributes(
+						Attribute("instance", "instance1"),
+						Attribute("job", "job1"),
 					),
 					"metric5",
 					time.Unix(8, 0),
 					22.5),
 				DoubleCounterPoint( // 12
-					Labels(
-						Label("instance", "instance1"),
-						Label("job", "job1"),
+					Attributes(
+						Attribute("instance", "instance1"),
+						Attribute("job", "job1"),
 					),
 					"metric6",
 					time.Unix(8, 0),
@@ -392,9 +394,9 @@ func TestSampleBuilder(t *testing.T) {
 					0,
 				),
 				DoubleCounterPoint( // 13
-					Labels(
-						Label("instance", "instance1"),
-						Label("job", "job1"),
+					Attributes(
+						Attribute("instance", "instance1"),
+						Attribute("job", "job1"),
 					),
 					"metric6",
 					time.Unix(8, 0),
@@ -468,61 +470,61 @@ func TestSampleBuilder(t *testing.T) {
 				{Ref: 7, T: 2000, V: 3},
 			},
 			result: []*metric_pb.Metric{
-				DoubleSummaryPoint( // 0:
-					Labels(
-						Label("instance", "instance1"),
-						Label("job", "job1"),
+				SummaryPoint( // 0:
+					Attributes(
+						Attribute("instance", "instance1"),
+						Attribute("job", "job1"),
 					),
 					"metric1",
 					time.Unix(1, 0),
 					time.Unix(1, 0),
 					0,
 					0,
-					DoubleSummaryQuantileValue(0.5, 0),
-					DoubleSummaryQuantileValue(0.9, 0),
+					SummaryQuantileValue(0.5, 0),
+					SummaryQuantileValue(0.9, 0),
 				),
-				DoubleSummaryPoint( // 1:
-					Labels(
-						Label("instance", "instance1"),
-						Label("job", "job1"),
-					),
-					"metric1",
-					time.Unix(1, 0),
-					time.Unix(2, 0),
-					float64(123.4)-float64(55.1),
-					21-10,
-					DoubleSummaryQuantileValue(0.5, float64(0.7)-float64(0.3)),
-					DoubleSummaryQuantileValue(0.9, float64(0.8)-float64(0.6)),
-				),
-				DoubleSummaryPoint( // 2: summary w/ no quantile values
-					Labels(
-						Label("a", "b"),
-						Label("instance", "instance1"),
-						Label("job", "job1"),
-					),
-					"metric1",
-					time.Unix(1, 0),
-					time.Unix(1, 0),
-					0,
-					0,
-				),
-				DoubleSummaryPoint( // 3: summary w/ no quantile values
-					Labels(
-						Label("a", "b"),
-						Label("instance", "instance1"),
-						Label("job", "job1"),
+				SummaryPoint( // 1:
+					Attributes(
+						Attribute("instance", "instance1"),
+						Attribute("job", "job1"),
 					),
 					"metric1",
 					time.Unix(1, 0),
 					time.Unix(2, 0),
 					float64(123.4)-float64(55.1),
 					21-10,
+					SummaryQuantileValue(0.5, float64(0.7)-float64(0.3)),
+					SummaryQuantileValue(0.9, float64(0.8)-float64(0.6)),
 				),
-				DoubleGaugePoint( // 4: not a summary
-					Labels(
-						Label("a", "b"),
-						Label("instance", "instance1"),
-						Label("job", "job1"),
+				SummaryPoint( // 2: summary w/ no quantile values
+					Attributes(
+						Attribute("a", "b"),
+						Attribute("instance", "instance1"),
+						Attribute("job", "job1"),
+					),
+					"metric1",
+					time.Unix(1, 0),
+					time.Unix(1, 0),
+					0,
+					0,
+				),
+				SummaryPoint( // 3: summary w/ no quantile values
+					Attributes(
+						Attribute("a", "b"),
+						Attribute("instance", "instance1"),
+						Attribute("job", "job1"),
+					),
+					"metric1",
+					time.Unix(1, 0),
+					time.Unix(2, 0),
+					float64(123.4)-float64(55.1),
+					21-10,
+				),
+				GaugePoint( // 4: not a summary
+					Attributes(
+						Attribute("a", "b"),
+						Attribute("instance", "instance1"),
+						Attribute("job", "job1"),
 					),
 					"metric1_a_count",
 					time.Unix(2, 0),
@@ -579,43 +581,43 @@ func TestSampleBuilder(t *testing.T) {
 				{Ref: 10, T: 1000, V: 3},
 			},
 			result: []*metric_pb.Metric{
-				DoubleHistogramPoint( // 0:
-					Labels(
-						Label("instance", "instance1"),
-						Label("job", "job1"),
+				HistogramPoint( // 0:
+					Attributes(
+						Attribute("instance", "instance1"),
+						Attribute("job", "job1"),
 					),
 					"metric1",
 					time.Unix(1, 0),
 					time.Unix(1, 0),
 					0,
 					0,
-					DoubleHistogramBucket(0.1, 0),
-					DoubleHistogramBucket(0.5, 0),
-					DoubleHistogramBucket(1, 0),
-					DoubleHistogramBucket(2.5, 0),
-					DoubleHistogramBucket(math.Inf(+1), 0),
+					HistogramBucket(0.1, 0),
+					HistogramBucket(0.5, 0),
+					HistogramBucket(1, 0),
+					HistogramBucket(2.5, 0),
+					HistogramBucket(math.Inf(+1), 0),
 				),
-				DoubleHistogramPoint( // 1:
-					Labels(
-						Label("instance", "instance1"),
-						Label("job", "job1"),
+				HistogramPoint( // 1:
+					Attributes(
+						Attribute("instance", "instance1"),
+						Attribute("job", "job1"),
 					),
 					"metric1",
 					time.Unix(1, 0),
 					time.Unix(2, 0),
 					float64(123.4)-float64(55.1),
 					21-10,
-					DoubleHistogramBucket(0.1, 2),
-					DoubleHistogramBucket(0.5, 2),
-					DoubleHistogramBucket(1, 1),
-					DoubleHistogramBucket(2.5, 2),
-					DoubleHistogramBucket(math.Inf(+1), 4),
+					HistogramBucket(0.1, 2),
+					HistogramBucket(0.5, 2),
+					HistogramBucket(1, 1),
+					HistogramBucket(2.5, 2),
+					HistogramBucket(math.Inf(+1), 4),
 				),
-				DoubleHistogramPoint( // 2: histogram w/ no buckets
-					Labels(
-						Label("a", "b"),
-						Label("instance", "instance1"),
-						Label("job", "job1"),
+				HistogramPoint( // 2: histogram w/ no buckets
+					Attributes(
+						Attribute("a", "b"),
+						Attribute("instance", "instance1"),
+						Attribute("job", "job1"),
 					),
 					"metric1",
 					time.Unix(1, 0),
@@ -623,11 +625,11 @@ func TestSampleBuilder(t *testing.T) {
 					0,
 					0,
 				),
-				DoubleHistogramPoint( // 3: histogram w/ no buckets
-					Labels(
-						Label("a", "b"),
-						Label("instance", "instance1"),
-						Label("job", "job1"),
+				HistogramPoint( // 3: histogram w/ no buckets
+					Attributes(
+						Attribute("a", "b"),
+						Attribute("instance", "instance1"),
+						Attribute("job", "job1"),
 					),
 					"metric1",
 					time.Unix(1, 0),
@@ -635,11 +637,11 @@ func TestSampleBuilder(t *testing.T) {
 					15,
 					3,
 				),
-				DoubleGaugePoint( // 4: not a histogram
-					Labels(
-						Label("a", "b"),
-						Label("instance", "instance1"),
-						Label("job", "job1"),
+				GaugePoint( // 4: not a histogram
+					Attributes(
+						Attribute("a", "b"),
+						Attribute("instance", "instance1"),
+						Attribute("job", "job1"),
 					),
 					"metric1_a_count",
 					time.Unix(1, 0),
@@ -670,27 +672,27 @@ func TestSampleBuilder(t *testing.T) {
 				{Ref: 4, T: 1000, V: 10},
 			},
 			result: []*metric_pb.Metric{
-				DoubleGaugePoint(
-					Labels(
-						Label("a", "1"),
-						Label("instance", "instance1"),
-						Label("job", "job1"),
+				GaugePoint(
+					Attributes(
+						Attribute("a", "1"),
+						Attribute("instance", "instance1"),
+						Attribute("job", "job1"),
 					),
 					"test.otel.io/metric1",
 					time.Unix(1, 0),
 					200,
 				),
-				DoubleSummaryPoint(
-					Labels(
-						Label("instance", "instance1"),
-						Label("job", "job1"),
+				SummaryPoint(
+					Attributes(
+						Attribute("instance", "instance1"),
+						Attribute("job", "job1"),
 					),
 					"test.otel.io/metric2",
 					time.Unix(1, 0),
 					time.Unix(1, 0),
 					0,
 					0,
-					DoubleSummaryQuantileValue(0.5, 0),
+					SummaryQuantileValue(0.5, 0),
 				),
 			},
 		},
@@ -710,10 +712,10 @@ func TestSampleBuilder(t *testing.T) {
 			},
 			result: []*metric_pb.Metric{
 				DoubleCounterPoint(
-					Labels(
-						Label("a", "1"),
-						Label("instance", "instance1"),
-						Label("job", "job1"),
+					Attributes(
+						Attribute("a", "1"),
+						Attribute("instance", "instance1"),
+						Attribute("job", "job1"),
 					),
 					"metric1_total",
 					time.Unix(2, 0),
@@ -721,10 +723,10 @@ func TestSampleBuilder(t *testing.T) {
 					0,
 				),
 				DoubleCounterPoint(
-					Labels(
-						Label("a", "1"),
-						Label("instance", "instance1"),
-						Label("job", "job1"),
+					Attributes(
+						Attribute("a", "1"),
+						Attribute("instance", "instance1"),
+						Attribute("job", "job1"),
 					),
 					"metric1_total",
 					time.Unix(2, 0),
@@ -750,10 +752,10 @@ func TestSampleBuilder(t *testing.T) {
 			},
 			result: []*metric_pb.Metric{
 				DoubleCounterPoint(
-					Labels(
-						Label("a", "1"),
-						Label("instance", "instance1"),
-						Label("job", "job1"),
+					Attributes(
+						Attribute("a", "1"),
+						Attribute("instance", "instance1"),
+						Attribute("job", "job1"),
 					),
 					"metric1",
 					time.Unix(2, 0),
@@ -761,10 +763,10 @@ func TestSampleBuilder(t *testing.T) {
 					0,
 				),
 				DoubleCounterPoint(
-					Labels(
-						Label("a", "1"),
-						Label("instance", "instance1"),
-						Label("job", "job1"),
+					Attributes(
+						Attribute("a", "1"),
+						Attribute("instance", "instance1"),
+						Attribute("job", "job1"),
 					),
 					"metric1",
 					time.Unix(2, 0),
@@ -788,11 +790,11 @@ func TestSampleBuilder(t *testing.T) {
 				{Ref: 1, T: 3000, V: 8},
 			},
 			result: []*metric_pb.Metric{
-				DoubleGaugePoint(
-					Labels(
-						Label("a", "1"),
-						Label("instance", "instance1"),
-						Label("job", "job1"),
+				GaugePoint(
+					Attributes(
+						Attribute("a", "1"),
+						Attribute("instance", "instance1"),
+						Attribute("job", "job1"),
 					),
 					"metric1_total",
 					time.Unix(3, 0),
@@ -837,9 +839,9 @@ func TestSampleBuilder(t *testing.T) {
 			},
 			result: []*metric_pb.Metric{
 				IntCounterPoint(
-					Labels(
-						Label("instance", "instance1"),
-						Label("job", "job1"),
+					Attributes(
+						Attribute("instance", "instance1"),
+						Attribute("job", "job1"),
 					),
 					"metric1",
 					time.Unix(2, 0),
@@ -848,9 +850,9 @@ func TestSampleBuilder(t *testing.T) {
 				),
 				nil, // due to NaN
 				IntCounterPoint(
-					Labels(
-						Label("instance", "instance1"),
-						Label("job", "job1"),
+					Attributes(
+						Attribute("instance", "instance1"),
+						Attribute("job", "job1"),
 					),
 					"metric1",
 					time.Unix(2, 0),

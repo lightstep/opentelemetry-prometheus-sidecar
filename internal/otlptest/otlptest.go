@@ -61,88 +61,41 @@ func InstrumentationLibraryMetrics(lib *otlpcommon.InstrumentationLibrary, ms ..
 	}
 }
 
-func Label(key, value string) *otlpcommon.StringKeyValue {
-	return &otlpcommon.StringKeyValue{
-		Key:   key,
-		Value: value,
+func Attribute(key, value string) *otlpcommon.KeyValue {
+	return &otlpcommon.KeyValue{
+		Key: key,
+		Value: &otlpcommon.AnyValue{
+			Value: &otlpcommon.AnyValue_StringValue{
+				StringValue: value,
+			},
+		},
 	}
 }
 
-func Labels(kvs ...*otlpcommon.StringKeyValue) []*otlpcommon.StringKeyValue {
-	if len(kvs) == 0 {
-		return []*otlpcommon.StringKeyValue{}
-	}
-	return kvs
-}
-
-func ResourceLabels(kvs ...*otlpcommon.KeyValue) []*otlpcommon.KeyValue {
+func Attributes(kvs ...*otlpcommon.KeyValue) []*otlpcommon.KeyValue {
 	if len(kvs) == 0 {
 		return []*otlpcommon.KeyValue{}
 	}
 	return kvs
 }
 
-func IntSumCumulative(name, desc, unit string, idps ...*otlpmetrics.IntDataPoint) *otlpmetrics.Metric {
-
-	return &otlpmetrics.Metric{
-		Name:        name,
-		Description: desc,
-		Unit:        unit,
-		Data: &otlpmetrics.Metric_IntSum{
-			IntSum: &otlpmetrics.IntSum{
-				AggregationTemporality: otlpmetrics.AggregationTemporality_AGGREGATION_TEMPORALITY_CUMULATIVE,
-				IsMonotonic:            false,
-				DataPoints:             idps,
-			},
-		},
-	}
-}
-
-func IntSumCumulativeMonotonic(name, desc, unit string, idps ...*otlpmetrics.IntDataPoint) *otlpmetrics.Metric {
-	return &otlpmetrics.Metric{
-		Name:        name,
-		Description: desc,
-		Unit:        unit,
-		Data: &otlpmetrics.Metric_IntSum{
-			IntSum: &otlpmetrics.IntSum{
-				AggregationTemporality: otlpmetrics.AggregationTemporality_AGGREGATION_TEMPORALITY_CUMULATIVE,
-				IsMonotonic:            true,
-				DataPoints:             idps,
-			},
-		},
-	}
-}
-
-func IntDataPoint(labels []*otlpcommon.StringKeyValue, start, end time.Time, value int64) *otlpmetrics.IntDataPoint {
-	return &otlpmetrics.IntDataPoint{
-		Labels:            labels,
+func IntDataPoint(labels []*otlpcommon.KeyValue, start, end time.Time, value int64) *otlpmetrics.NumberDataPoint {
+	return &otlpmetrics.NumberDataPoint{
+		Attributes:        labels,
 		StartTimeUnixNano: uint64(start.UnixNano()),
 		TimeUnixNano:      uint64(end.UnixNano()),
-		Value:             value,
+		Value:             &otlpmetrics.NumberDataPoint_AsInt{AsInt: value},
 	}
 }
 
-func IntGauge(name, desc, unit string, idps ...*otlpmetrics.IntDataPoint) *otlpmetrics.Metric {
-	return &otlpmetrics.Metric{
-		Name:        name,
-		Description: desc,
-		Unit:        unit,
-		Data: &otlpmetrics.Metric_IntGauge{
-			IntGauge: &otlpmetrics.IntGauge{
-				DataPoints: idps,
-			},
-		},
-	}
-}
-
-func DoubleSumCumulative(name, desc, unit string, ddps ...*otlpmetrics.DoubleDataPoint) *otlpmetrics.Metric {
+func SumCumulative(name, desc, unit string, ddps ...*otlpmetrics.NumberDataPoint) *otlpmetrics.Metric {
 
 	return &otlpmetrics.Metric{
 		Name:        name,
 		Description: desc,
 		Unit:        unit,
-		Data: &otlpmetrics.Metric_DoubleSum{
-			DoubleSum: &otlpmetrics.DoubleSum{
+		Data: &otlpmetrics.Metric_Sum{
+			Sum: &otlpmetrics.Sum{
 				AggregationTemporality: otlpmetrics.AggregationTemporality_AGGREGATION_TEMPORALITY_CUMULATIVE,
 				IsMonotonic:            false,
 				DataPoints:             ddps,
@@ -151,13 +104,13 @@ func DoubleSumCumulative(name, desc, unit string, ddps ...*otlpmetrics.DoubleDat
 	}
 }
 
-func DoubleSumCumulativeMonotonic(name, desc, unit string, ddps ...*otlpmetrics.DoubleDataPoint) *otlpmetrics.Metric {
+func SumCumulativeMonotonic(name, desc, unit string, ddps ...*otlpmetrics.NumberDataPoint) *otlpmetrics.Metric {
 	return &otlpmetrics.Metric{
 		Name:        name,
 		Description: desc,
 		Unit:        unit,
-		Data: &otlpmetrics.Metric_DoubleSum{
-			DoubleSum: &otlpmetrics.DoubleSum{
+		Data: &otlpmetrics.Metric_Sum{
+			Sum: &otlpmetrics.Sum{
 				AggregationTemporality: otlpmetrics.AggregationTemporality_AGGREGATION_TEMPORALITY_CUMULATIVE,
 				IsMonotonic:            true,
 				DataPoints:             ddps,
@@ -166,41 +119,41 @@ func DoubleSumCumulativeMonotonic(name, desc, unit string, ddps ...*otlpmetrics.
 	}
 }
 
-func DoubleDataPoint(labels []*otlpcommon.StringKeyValue, start, end time.Time, value float64) *otlpmetrics.DoubleDataPoint {
-	return &otlpmetrics.DoubleDataPoint{
-		Labels:            labels,
+func DoubleDataPoint(labels []*otlpcommon.KeyValue, start, end time.Time, value float64) *otlpmetrics.NumberDataPoint {
+	return &otlpmetrics.NumberDataPoint{
+		Attributes:        labels,
 		StartTimeUnixNano: uint64(start.UnixNano()),
 		TimeUnixNano:      uint64(end.UnixNano()),
-		Value:             value,
+		Value:             &otlpmetrics.NumberDataPoint_AsDouble{AsDouble: value},
 	}
 }
 
-func DoubleGauge(name, desc, unit string, ddps ...*otlpmetrics.DoubleDataPoint) *otlpmetrics.Metric {
+func Gauge(name, desc, unit string, ddps ...*otlpmetrics.NumberDataPoint) *otlpmetrics.Metric {
 	return &otlpmetrics.Metric{
 		Name:        name,
 		Description: desc,
 		Unit:        unit,
-		Data: &otlpmetrics.Metric_DoubleGauge{
-			DoubleGauge: &otlpmetrics.DoubleGauge{
+		Data: &otlpmetrics.Metric_Gauge{
+			Gauge: &otlpmetrics.Gauge{
 				DataPoints: ddps,
 			},
 		},
 	}
 }
 
-type DoubleHistogramBucketStruct struct {
+type HistogramBucketStruct struct {
 	Boundary float64
 	Count    uint64
 }
 
-func DoubleHistogramBucket(boundary float64, count uint64) DoubleHistogramBucketStruct {
-	return DoubleHistogramBucketStruct{
+func HistogramBucket(boundary float64, count uint64) HistogramBucketStruct {
+	return HistogramBucketStruct{
 		Boundary: boundary,
 		Count:    count,
 	}
 }
 
-func DoubleHistogramDataPoint(labels []*otlpcommon.StringKeyValue, start, end time.Time, sum float64, total uint64, buckets ...DoubleHistogramBucketStruct) *otlpmetrics.DoubleHistogramDataPoint {
+func HistogramDataPoint(labels []*otlpcommon.KeyValue, start, end time.Time, sum float64, total uint64, buckets ...HistogramBucketStruct) *otlpmetrics.HistogramDataPoint {
 	blen := 0
 	if len(buckets) > 0 {
 		blen = len(buckets) - 1
@@ -214,8 +167,8 @@ func DoubleHistogramDataPoint(labels []*otlpcommon.StringKeyValue, start, end ti
 	if len(buckets) > 0 {
 		counts[len(buckets)-1] = buckets[len(buckets)-1].Count
 	}
-	return &otlpmetrics.DoubleHistogramDataPoint{
-		Labels:            labels,
+	return &otlpmetrics.HistogramDataPoint{
+		Attributes:        labels,
 		StartTimeUnixNano: uint64(start.UnixNano()),
 		TimeUnixNano:      uint64(end.UnixNano()),
 		Sum:               sum,
@@ -225,16 +178,16 @@ func DoubleHistogramDataPoint(labels []*otlpcommon.StringKeyValue, start, end ti
 	}
 }
 
-func DoubleHistogramCumulative(name, desc, unit string, idps ...*otlpmetrics.DoubleHistogramDataPoint) *otlpmetrics.Metric {
+func HistogramCumulative(name, desc, unit string, idps ...*otlpmetrics.HistogramDataPoint) *otlpmetrics.Metric {
 	if len(idps) == 0 {
-		idps = []*otlpmetrics.DoubleHistogramDataPoint{}
+		idps = []*otlpmetrics.HistogramDataPoint{}
 	}
 	return &otlpmetrics.Metric{
 		Name:        name,
 		Description: desc,
 		Unit:        unit,
-		Data: &otlpmetrics.Metric_DoubleHistogram{
-			DoubleHistogram: &otlpmetrics.DoubleHistogram{
+		Data: &otlpmetrics.Metric_Histogram{
+			Histogram: &otlpmetrics.Histogram{
 				AggregationTemporality: otlpmetrics.AggregationTemporality_AGGREGATION_TEMPORALITY_CUMULATIVE,
 				DataPoints:             idps,
 			},
@@ -242,28 +195,28 @@ func DoubleHistogramCumulative(name, desc, unit string, idps ...*otlpmetrics.Dou
 	}
 }
 
-type DoubleSummaryQuantileValueStruct struct {
+type SummaryQuantileValueStruct struct {
 	Quantile float64
 	Value    float64
 }
 
-func DoubleSummaryQuantileValue(quantile, value float64) DoubleSummaryQuantileValueStruct {
-	return DoubleSummaryQuantileValueStruct{
+func SummaryQuantileValue(quantile, value float64) SummaryQuantileValueStruct {
+	return SummaryQuantileValueStruct{
 		Quantile: quantile,
-		Value   : value,
+		Value:    value,
 	}
 }
 
-func DoubleSummaryDataPoint(labels []*otlpcommon.StringKeyValue, start, end time.Time, sum float64, count uint64, quantiles ...DoubleSummaryQuantileValueStruct) *otlpmetrics.DoubleSummaryDataPoint {
-	quantileValues := make([]*otlpmetrics.DoubleSummaryDataPoint_ValueAtQuantile, 0, len(quantiles))
+func SummaryDataPoint(labels []*otlpcommon.KeyValue, start, end time.Time, sum float64, count uint64, quantiles ...SummaryQuantileValueStruct) *otlpmetrics.SummaryDataPoint {
+	quantileValues := make([]*otlpmetrics.SummaryDataPoint_ValueAtQuantile, 0, len(quantiles))
 	for _, value := range quantiles {
-		quantileValues = append(quantileValues, &otlpmetrics.DoubleSummaryDataPoint_ValueAtQuantile{
+		quantileValues = append(quantileValues, &otlpmetrics.SummaryDataPoint_ValueAtQuantile{
 			Quantile: value.Quantile,
 			Value:    value.Value,
 		})
 	}
-	return &otlpmetrics.DoubleSummaryDataPoint{
-		Labels:            labels,
+	return &otlpmetrics.SummaryDataPoint{
+		Attributes:        labels,
 		StartTimeUnixNano: uint64(start.UnixNano()),
 		TimeUnixNano:      uint64(end.UnixNano()),
 		Sum:               sum,
@@ -272,16 +225,16 @@ func DoubleSummaryDataPoint(labels []*otlpcommon.StringKeyValue, start, end time
 	}
 }
 
-func DoubleSummary(name, desc, unit string, dps ...*otlpmetrics.DoubleSummaryDataPoint) *otlpmetrics.Metric {
+func Summary(name, desc, unit string, dps ...*otlpmetrics.SummaryDataPoint) *otlpmetrics.Metric {
 	if len(dps) == 0 {
-		dps = []*otlpmetrics.DoubleSummaryDataPoint{}
+		dps = []*otlpmetrics.SummaryDataPoint{}
 	}
 	return &otlpmetrics.Metric{
 		Name:        name,
 		Description: desc,
 		Unit:        unit,
-		Data: &otlpmetrics.Metric_DoubleSummary{
-			DoubleSummary: &otlpmetrics.DoubleSummary{
+		Data: &otlpmetrics.Metric_Summary{
+			Summary: &otlpmetrics.Summary{
 				DataPoints: dps,
 			},
 		},
@@ -304,8 +257,8 @@ type Visitor func(
 	// information is not conveyed via OTLP-v0.5 for the histogram
 	// representation.
 	monotonic bool,
-	// point is one of IntDataPoint, DoubleDataPoint,
-	// IntHistogram, DoubleHistogram.
+	// point is one of NumberDataPoint, HistogramDataPoint,
+	// SummaryDataPoint.
 	point interface{},
 ) error
 
@@ -349,55 +302,28 @@ func (vs *VisitorState) Visit(
 				}
 
 				switch t := m.Data.(type) {
-				case *otlpmetrics.Metric_IntGauge:
-					if t.IntGauge != nil {
+				case *otlpmetrics.Metric_Gauge:
+					if t.Gauge != nil {
 						kind := config.GAUGE
-						for _, p := range t.IntGauge.DataPoints {
+						for _, p := range t.Gauge.DataPoints {
 							vs.pointCount++
 							noticeError(m, visitor(res, m.Name, kind, false, p))
 						}
 						continue
 					}
-				case *otlpmetrics.Metric_DoubleGauge:
-					if t.DoubleGauge != nil {
-						kind := config.GAUGE
-						for _, p := range t.DoubleGauge.DataPoints {
+				case *otlpmetrics.Metric_Sum:
+					if t.Sum != nil {
+						kind := toModelKind(t.Sum.AggregationTemporality)
+						for _, p := range t.Sum.DataPoints {
 							vs.pointCount++
-							noticeError(m, visitor(res, m.Name, kind, false, p))
+							noticeError(m, visitor(res, m.Name, kind, t.Sum.IsMonotonic, p))
 						}
 						continue
 					}
-				case *otlpmetrics.Metric_IntSum:
-					if t.IntSum != nil {
-						kind := toModelKind(t.IntSum.AggregationTemporality)
-						for _, p := range t.IntSum.DataPoints {
-							vs.pointCount++
-							noticeError(m, visitor(res, m.Name, kind, t.IntSum.IsMonotonic, p))
-						}
-						continue
-					}
-				case *otlpmetrics.Metric_DoubleSum:
-					if t.DoubleSum != nil {
-						kind := toModelKind(t.DoubleSum.AggregationTemporality)
-						for _, p := range t.DoubleSum.DataPoints {
-							vs.pointCount++
-							noticeError(m, visitor(res, m.Name, kind, t.DoubleSum.IsMonotonic, p))
-						}
-						continue
-					}
-				case *otlpmetrics.Metric_IntHistogram:
-					if t.IntHistogram != nil {
-						kind := toModelKind(t.IntHistogram.AggregationTemporality)
-						for _, p := range t.IntHistogram.DataPoints {
-							vs.pointCount++
-							noticeError(m, visitor(res, m.Name, kind, false, p))
-						}
-						continue
-					}
-				case *otlpmetrics.Metric_DoubleHistogram:
-					if t.DoubleHistogram != nil {
-						kind := toModelKind(t.DoubleHistogram.AggregationTemporality)
-						for _, p := range t.DoubleHistogram.DataPoints {
+				case *otlpmetrics.Metric_Histogram:
+					if t.Histogram != nil {
+						kind := toModelKind(t.Histogram.AggregationTemporality)
+						for _, p := range t.Histogram.DataPoints {
 							vs.pointCount++
 							noticeError(m, visitor(res, m.Name, kind, false, p))
 						}

@@ -8,6 +8,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Unreleased
 
+### Changed
+
+- :stop_sign: Update to OTLP v0.9.0 protocol.  [Users should be aware this is not a 
+  backwards-compatible change.](https://github.com/open-telemetry/opentelemetry-proto/blob/main/CHANGELOG.md#historical-breaking-change-notice) (#235)
+- Remove four internal counter metrics that are redundant with existing histogram instruments: `sidecar.connect.duration.count`, `sidecar.export.duration.count`, `sidecar.monitor.duration.count`, and `sidecar.metadata.fetch.duration.count`.  These counters had been simply derived from the histogram data. (#235)
+
 ## [0.27.0](https://github.com/lightstep/opentelemetry-prometheus-sidecar/releases/tag/v0.27.0) - 2021-07-22
 
 ### Added
