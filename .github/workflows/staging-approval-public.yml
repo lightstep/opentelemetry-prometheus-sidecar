@@ -65,11 +65,8 @@ jobs:
         echo IMAGE_TAG is $IMAGE_TAG
 
     - name: debug
-      env:
-        PROMETHEUS_VERSION: ${{ secrets.PROMETHEUS_VERSION }}
       run: |
         echo IMAGE_TAG is $IMAGE_TAG
-        echo PROMETHEUS_VERSION is $PROMETHEUS_VERSION
 
     - name: codefresh-pipeline-runner-prom-stack
       uses: codefresh-io/codefresh-pipeline-runner@v7
@@ -78,7 +75,7 @@ jobs:
         CF_API_KEY: ${{ secrets.CODEFRESH_API_TOKEN }}
       id: run-pipeline-ps
       with:
-        args: -v OTEL-VERSION=${{ env.IMAGE_TAG }} -v PROM-VERSION=${{ secrets.PROMETHEUS_VERSION }}
+        args: -v OTEL-VERSION=${{ env.IMAGE_TAG }}
 
 
 #------------------------------------------------------------------
@@ -105,11 +102,8 @@ jobs:
         echo IMAGE_TAG is $IMAGE_TAG
 
     - name: debug
-      env:
-        PROMETHEUS_VERSION: ${{ secrets.PROMETHEUS_VERSION }}
       run: |
         echo IMAGE_TAG is $IMAGE_TAG
-        echo PROMETHEUS_VERSION is $PROMETHEUS_VERSION
 
     - name: codefresh-pipeline-runner-prom-stack
       uses: codefresh-io/codefresh-pipeline-runner@v7
@@ -118,6 +112,6 @@ jobs:
         CF_API_KEY: ${{ secrets.CODEFRESH_API_TOKEN }}
       id: run-pipeline-ps
       with:
-        args: -v OTEL-VERSION=${{ env.IMAGE_TAG }} -v PROM-VERSION=${{ secrets.PROMETHEUS_VERSION }}
+        args: -v OTEL-VERSION=${{ env.IMAGE_TAG }}
 
 
