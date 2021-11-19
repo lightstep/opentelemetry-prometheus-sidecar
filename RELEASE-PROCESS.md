@@ -1,6 +1,5 @@
 # Release Process
 
-
 1. Once a change has been pushed to `main`, the [publish GitHub action](https://github.com/lightstep/opentelemetry-prometheus-sidecar/blob/main/.github/workflows/publish.yml) automatically publishes a new Docker image. See an example [here](https://github.com/lightstep/opentelemetry-prometheus-sidecar/actions/runs/654707395).
 2. Validate the changes by testing the new image.
 3. Update [VERSION](https://github.com/lightstep/opentelemetry-prometheus-sidecar/blob/main/VERSION) and [CHANGELOG.md](https://github.com/lightstep/opentelemetry-prometheus-sidecar/blob/main/CHANGELOG.md) to the updated version.
@@ -18,7 +17,7 @@ The `staging-approval-public` Github Action initiates deployment to staging (pas
 * A Video walkthrough can be found [here](https://lightstep.atlassian.net/wiki/spaces/EPD/pages/2558689283/Prometheus#Releasing-the-OTEL-Prometheus-sidecar)
 
 ### Approval for deployment to public
-The approval is implemented using a Github Environment protection rule [here](https://github.com/lightstep/opentelemetry-prometheus-sidecar/settings/environments).  Owners of this repo can modify the approvers list be navigating to Settings > Enviroments > public
+The approval is implemented using a Github Environment protection rule [here](https://github.com/lightstep/opentelemetry-prometheus-sidecar/settings/environments).  Owners of this repo can modify the approvers list by navigating to `Settings > Enviroments > public`
 
 
 
