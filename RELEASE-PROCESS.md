@@ -12,9 +12,7 @@
 Both the publish Github Action and the Release Github Action initiate the [staging-approval-public Github Action](https://github.com/lightstep/opentelemetry-prometheus-sidecar/actions/workflows/staging-approval-public.yml). If the initiation is from the publish Github Action the OTEL sidecar image tag will be set to the commit sha, if the initiation is from the release Github Action the OTEL sidecar image tag will be set to the tag. 
 
 
-The `staging-approval-public` Github Action initiates deployment to staging and then waits for approval before deploying to public - see [Approval for deployment to public](#approval-for-deployment-to-public) . The deployments themselves are carried out by the Codefresh listed pipelines below, i.e the staging-approval-public Github Action  calls the Codefresh pipelines. 
-* staging Codefresh Pipeline: https://github.com/lightstep/lightstep/blob/main/codefresh/static_yaml/prom-stack/deploy-operator-to-stg.yaml
-* public (production) Codefresh Pipeline: https://github.com/lightstep/lightstep/blob/main/codefresh/static_yaml/prom-stack/deploy-operator-to-pub.yaml
+The `staging-approval-public` Github Action initiates deployment to staging and then waits for approval before deploying to public - see [Approval for deployment to public](#approval-for-deployment-to-public). The deployments themselves are carried out by the Codefresh listed pipelines `deploy-prometheus-to-stg` and `deploy-prometheus-to-pub` under [this Codefresh Project](https://g.codefresh.io/projects/prom-stack/edit/pipelines/?projectId=60affcb1860d2d30404b2317)
 
 
 ### Approval for deployment to public
