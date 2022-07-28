@@ -1,5 +1,7 @@
 # OpenTelemetry Prometheus sidecar
 
+> ❗ **This sidecar is no longer recommend**. Please the OpenTelemetry Collector Prometheus receiver instead, [documentation on setting up and configuring the collector for Prometheus](https://docs.lightstep.com/docs/replace-prometheus-with-an-otel-collector-on-kubernetes) is available on the [Lightstep Observability Learning Portal](https://docs.lightstep.com).
+
 This repository contains a sidecar for the
 [Prometheus](https://prometheus.io/) Server that sends metrics data to
 an [OpenTelemetry](https://opentelemetry.io) Metrics Protocol endpoint.  This
